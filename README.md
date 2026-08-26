@@ -16,6 +16,8 @@ A React Native community app for parents—connect by **curriculum** (IBDP, CBSE
 | [Architecture](./docs/ARCHITECTURE.md) | Roles, circles model, privacy, API surface, app structure |
 | [Database schema](./docs/DATABASE_SCHEMA.md) | Neon tables, indexes, RLS, discovery queries |
 | [Implementation plan](./docs/IMPLEMENTATION_PLAN.md) | 8-week phased delivery, monorepo layout, milestones |
+| [Business functionality](./docs/BUSINESS_FUNCTIONALITY.md) | Parent behaviour, Tier 1 & Tier 2 features, trust model, simulated examples |
+| [Feature implementation plan](./docs/FEATURE_IMPLEMENTATION_PLAN.md) | Schema, API, mobile and notification changes for the features above |
 
 ## Circles (core concept)
 
