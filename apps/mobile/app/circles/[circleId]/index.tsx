@@ -14,6 +14,7 @@ import {
   cardShadow,
   EmptyState,
   formatPostTime,
+  PollCard,
   PostMediaGallery,
   PostTagBadge,
   ScreenLoader,
@@ -24,10 +25,18 @@ import { getToken } from "@/lib/session";
 
 function PostCard({
   post,
+  circleId,
+  saved,
+  onToggleSave,
   onPress,
+  onPollVote,
 }: {
   post: CirclePost;
+  circleId: string;
+  saved?: boolean;
+  onToggleSave?: () => void;
   onPress: () => void;
+  onPollVote: (postId: string, optionId: string) => void;
 }) {
   return (
     <Pressable
@@ -43,6 +52,13 @@ function PostCard({
         <PostTagBadge tag={post.tag} />
         {post.body ? <Text style={styles.postText}>{post.body}</Text> : null}
       </View>
+      {post.poll ? (
+        <PollCard
+          poll={post.poll}
+          compact
+          onVote={(optionId) => onPollVote(post.id, optionId)}
+        />
+      ) : null}
       <PostMediaGallery media={post.media ?? []} />
       <View style={styles.postFooter}>
         <View style={styles.footerStat}>
@@ -57,6 +73,18 @@ function PostCard({
               : `${post.replyCount} repl${post.replyCount === 1 ? "y" : "ies"}`}
           </Text>
         </View>
+        {onToggleSave ? (
+          <Pressable style={styles.footerStat} onPress={onToggleSave} hitSlop={8}>
+            <Ionicons
+              name={saved ? "bookmark" : "bookmark-outline"}
+              size={14}
+              color={saved ? theme.primary : theme.textMuted}
+            />
+            <Text style={styles.footerStatText}>
+              {saved ? "Saved" : "Save"}
+            </Text>
+          </Pressable>
+        ) : null}
         <Text style={styles.footerTime}>{formatPostTime(post.createdAt)}</Text>
       </View>
     </Pressable>
@@ -71,6 +99,7 @@ export default function CircleFeedScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const [posts, setPosts] = useState<CirclePost[]>([]);
+  const [savedPostIds, setSavedPostIds] = useState<Set<string>>(new Set());
   const [memberCount, setMemberCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -84,12 +113,14 @@ export default function CircleFeedScreen() {
   const load = useCallback(async () => {
     const token = await getToken();
     if (!token) return;
-    const [feed, members] = await Promise.all([
+    const [feed, members, saved] = await Promise.all([
       api.getCircleFeed(token, circleId, { scope: "local" }),
       api.getCircleMembers(token, circleId),
+      api.getSaved(token),
     ]);
     setPosts(feed.posts);
     setMemberCount(members.length);
+    setSavedPostIds(new Set(saved.posts.map((post) => post.id)));
   }, [circleId]);
 
   useEffect(() => {
@@ -119,6 +150,41 @@ export default function CircleFeedScreen() {
       pathname: "/circles/[circleId]/members",
       params: { circleId, title },
     });
+  }
+
+  async function onPollVote(postId: string, optionId: string) {
+    const token = await getToken();
+    if (!token) return;
+    try {
+      const { poll } = await api.votePoll(token, circleId, postId, optionId);
+      if (!poll) return;
+      setPosts((current) =>
+        current.map((post) => (post.id === postId ? { ...post, poll } : post))
+      );
+    } catch {
+      // ignore vote errors in feed
+    }
+  }
+
+  async function toggleSave(postId: string) {
+    const token = await getToken();
+    if (!token) return;
+    const isSaved = savedPostIds.has(postId);
+    try {
+      if (isSaved) {
+        await api.unsaveItem(token, "post", postId);
+        setSavedPostIds((current) => {
+          const next = new Set(current);
+          next.delete(postId);
+          return next;
+        });
+      } else {
+        await api.saveItem(token, { itemType: "post", itemId: postId });
+        setSavedPostIds((current) => new Set(current).add(postId));
+      }
+    } catch {
+      // ignore save errors in feed
+    }
   }
 
   if (loading) {
@@ -185,6 +251,10 @@ export default function CircleFeedScreen() {
         renderItem={({ item }) => (
           <PostCard
             post={item}
+            circleId={circleId}
+            saved={savedPostIds.has(item.id)}
+            onToggleSave={() => toggleSave(item.id)}
+            onPollVote={onPollVote}
             onPress={() =>
               router.push({
                 pathname: "/circles/[circleId]/posts/[postId]",

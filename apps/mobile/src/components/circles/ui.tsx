@@ -10,6 +10,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { avatarPalette, colors } from "@/constants/theme";
+import type { PollView } from "@/lib/api";
 
 export const theme = colors;
 
@@ -188,6 +189,65 @@ export function PostMediaGallery({
           )}
         </Pressable>
       ))}
+    </View>
+  );
+}
+
+export function PollCard({
+  poll,
+  onVote,
+  compact,
+}: {
+  poll: PollView;
+  onVote?: (optionId: string) => void;
+  compact?: boolean;
+}) {
+  const maxVotes = Math.max(...poll.options.map((o) => o.voteCount), 1);
+
+  return (
+    <View style={[styles.pollCard, compact && styles.pollCardCompact]}>
+      <Text style={styles.pollQuestion}>{poll.question}</Text>
+      {poll.options.map((option) => {
+        const selected = poll.myOptionId === option.id;
+        const widthPct = poll.resultsVisible
+          ? Math.max((option.voteCount / maxVotes) * 100, selected ? 8 : 0)
+          : 0;
+        return (
+          <Pressable
+            key={option.id}
+            style={[
+              styles.pollOption,
+              selected && styles.pollOptionSelected,
+            ]}
+            onPress={() => onVote?.(option.id)}
+            disabled={!onVote}
+          >
+            {poll.resultsVisible ? (
+              <View
+                style={[styles.pollBar, { width: `${widthPct}%` }]}
+              />
+            ) : null}
+            <Text
+              style={[
+                styles.pollOptionText,
+                selected && styles.pollOptionTextSelected,
+              ]}
+            >
+              {option.label}
+            </Text>
+            {poll.resultsVisible ? (
+              <Text style={styles.pollCount}>{option.voteCount}</Text>
+            ) : null}
+          </Pressable>
+        );
+      })}
+      <Text style={styles.pollMeta}>
+        {poll.resultsVisible
+          ? `${poll.totalVotes} vote${poll.totalVotes === 1 ? "" : "s"}`
+          : poll.myOptionId
+            ? "Results appear after more parents vote"
+            : "Tap to vote — results may stay hidden in small circles"}
+      </Text>
     </View>
   );
 }
@@ -439,5 +499,64 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: theme.bg,
+  },
+  pollCard: {
+    marginTop: 12,
+    gap: 8,
+  },
+  pollCardCompact: {
+    marginTop: 8,
+  },
+  pollQuestion: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: theme.text,
+    marginBottom: 2,
+  },
+  pollOption: {
+    borderWidth: 1,
+    borderColor: theme.border,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    overflow: "hidden",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: theme.card,
+  },
+  pollOptionSelected: {
+    borderColor: theme.primary,
+    backgroundColor: theme.primarySoft,
+  },
+  pollBar: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: theme.primaryLight,
+    borderRadius: 11,
+  },
+  pollOptionText: {
+    flex: 1,
+    fontSize: 14,
+    color: theme.text,
+    zIndex: 1,
+  },
+  pollOptionTextSelected: {
+    fontWeight: "700",
+    color: theme.primaryDark,
+  },
+  pollCount: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: theme.textMuted,
+    marginLeft: 8,
+    zIndex: 1,
+  },
+  pollMeta: {
+    fontSize: 12,
+    color: theme.textMuted,
+    marginTop: 2,
   },
 });

@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import {
+  createListingMediaUpload,
   createMediaUpload,
   isMediaStorageConfigured,
   type MediaType,
@@ -26,6 +27,7 @@ export function createMediaRoutes() {
       mediaType?: MediaType;
       mimeType?: string;
       sizeBytes?: number;
+      purpose?: "post" | "listing";
     }>();
 
     const fileName = body.fileName?.trim() || "upload";
@@ -48,6 +50,20 @@ export function createMediaRoutes() {
     }
 
     try {
+      if (body.purpose === "listing") {
+        if (mediaType !== "image") {
+          return c.json({ error: "Listing photos must be images" }, 400);
+        }
+        return c.json(
+          await createListingMediaUpload({
+            userId,
+            fileName,
+            mimeType,
+            sizeBytes,
+          })
+        );
+      }
+
       return c.json(
         await createMediaUpload({
           userId,

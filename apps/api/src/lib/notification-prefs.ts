@@ -1,5 +1,6 @@
 export type NotificationPrefs = {
   circle_posts?: boolean;
+  circle_replies?: boolean;
   direct_messages?: boolean;
   reminders?: boolean;
   activity_nearby?: boolean;
@@ -7,6 +8,7 @@ export type NotificationPrefs = {
 
 export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
   circle_posts: true,
+  circle_replies: true,
   direct_messages: true,
   reminders: true,
   activity_nearby: true,

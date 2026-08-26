@@ -17,8 +17,24 @@ import { createInternalRoutes } from "./routes/internal.js";
 import { createAppRoutes } from "./routes/app.js";
 import { createSchoolsRoutes } from "./routes/schools.js";
 import { createMediaRoutes } from "./routes/media.js";
+import {
+  createProviderReviewReplyRoutes,
+  createProviderReviewRoutes,
+} from "./routes/reviews.js";
+import { createListingRoutes } from "./routes/listings.js";
+import { createSchoolEventsRoutes } from "./routes/school-events.js";
+import { createTopicsRoutes } from "./routes/topics.js";
+import { createPractitionerRoutes } from "./routes/practitioners.js";
+import { createExpertSessionRoutes } from "./routes/expert-sessions.js";
+import { createPlaydateRoutes } from "./routes/playdates.js";
+import { createCarpoolRoutes } from "./routes/carpool.js";
 import { pool } from "@vaara/db";
-import { processPendingReminders } from "./services/notifications.js";
+import {
+  notifyCirclePostMulti,
+  notifyCircleReply,
+  notifyDirectMessage,
+  processBackgroundJobs,
+} from "./services/notifications.js";
 
 const app = new Hono();
 
@@ -35,6 +51,15 @@ app.route("/v1/schools", createSchoolsRoutes());
 app.route("/v1/media", createMediaRoutes());
 app.route("/v1/provider", createProviderRoutes());
 app.route("/v1/activities", createActivitiesRoutes());
+app.route("/v1/listings", createListingRoutes());
+app.route("/v1/topics", createTopicsRoutes());
+app.route("/v1/school-events", createSchoolEventsRoutes());
+app.route("/v1/practitioners", createPractitionerRoutes());
+app.route("/v1/expert-sessions", createExpertSessionRoutes());
+app.route("/v1/playdates", createPlaydateRoutes());
+app.route("/v1/carpool", createCarpoolRoutes());
+app.route("/v1/providers", createProviderReviewRoutes());
+app.route("/v1/provider/reviews", createProviderReviewReplyRoutes());
 app.route("/v1/app", createAppRoutes());
 app.route("/internal", createInternalRoutes());
 
@@ -46,9 +71,11 @@ if (process.env.CRON_SECRET) {
   setInterval(async () => {
     const client = await pool.connect();
     try {
-      const sent = await processPendingReminders(client);
-      if (sent > 0) {
-        console.log(`Cron: sent ${sent} reminder(s)`);
+      const result = await processBackgroundJobs(client);
+      if (result.remindersSent > 0 || result.pushesDelivered > 0) {
+        console.log(
+          `Cron: ${result.remindersSent} reminder(s), ${result.pushesDelivered} push(es)`
+        );
       }
     } catch (err) {
       console.error("Cron reminder processing failed:", err);

@@ -6,7 +6,15 @@ export function mapActivity(
   row: ActivityRow,
   pinCodes: string[],
   curriculumIds: string[],
-  provider?: { orgName: string; providerType: string; verified: boolean }
+  provider?: {
+    orgName: string;
+    providerType: string;
+    verified: boolean;
+    ratingAvg?: number | null;
+    ratingCount?: number;
+    feeMin?: number | null;
+    feeMax?: number | null;
+  }
 ) {
   return {
     id: row.id,
@@ -25,11 +33,16 @@ export function mapActivity(
     curriculumIds,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    providerId: row.provider_id as string | undefined,
     provider: provider
       ? {
           orgName: provider.orgName,
           providerType: provider.providerType,
           verified: provider.verified,
+          ratingAvg: provider.ratingAvg ?? null,
+          ratingCount: provider.ratingCount ?? 0,
+          feeMin: provider.feeMin ?? null,
+          feeMax: provider.feeMax ?? null,
         }
       : undefined,
   };

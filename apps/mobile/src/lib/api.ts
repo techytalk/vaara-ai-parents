@@ -68,6 +68,7 @@ export type Circle = {
     | "locality"
     | "class"
     | "school"
+    | "school_class"
     | "community";
   key: string;
   displayName: string;
@@ -91,6 +92,16 @@ export type CirclePostMedia = {
   durationMs: number | null;
 };
 
+export type PollView = {
+  id: string;
+  question: string;
+  options: Array<{ id: string; label: string; voteCount: number }>;
+  myOptionId: string | null;
+  totalVotes: number;
+  resultsVisible: boolean;
+  closesAt: string | null;
+};
+
 export type CirclePost = {
   id: string;
   body: string;
@@ -98,14 +109,179 @@ export type CirclePost = {
   replyCount: number;
   createdAt: string;
   media: CirclePostMedia[];
+  poll: PollView | null;
+  topics?: Array<{ slug: string; name: string; category: string | null }>;
   author: CircleAuthor;
 };
 
 export type CircleMember = CircleAuthor;
 
+export type PeerView = {
+  userId: string;
+  anonymousHandle: string;
+  contextLabel: string;
+  disclosureLevel: 0 | 1 | 2 | 3;
+  firstName?: string;
+  blockOrFlat?: string;
+  fullName?: string;
+  contactPhone?: string;
+  vehicleDescription?: string;
+};
+
+export type DisclosureState = {
+  effectiveLevel: 0 | 1 | 2 | 3;
+  ownOffer: 0 | 1 | 2 | 3;
+  peerOffer: 0 | 1 | 2 | 3;
+  peer: PeerView | null;
+};
+
+export type ContactDetails = {
+  firstName: string | null;
+  blockOrFlat: string | null;
+  contactPhone: string | null;
+  vehicleDescription: string | null;
+  updatedAt: string;
+};
+
+export type SavedPost = {
+  id: string;
+  circleId?: string;
+  body?: string;
+  tag?: string;
+  createdAt?: string;
+  authorHandle?: string;
+  savedAt: string;
+  unavailable?: boolean;
+};
+
+export type ListingMedia = {
+  id: string;
+  url: string;
+  mimeType: string;
+  width: number | null;
+  height: number | null;
+};
+
+export type SchoolProfile = School & {
+  boardCodes: string[];
+  gradesOffered: string | null;
+  transportAvailable: boolean | null;
+  ratingAvg: number | null;
+  ratingCount: number;
+};
+
+export type SchoolReview = {
+  id: string;
+  rating: number;
+  body: string | null;
+  attendanceVerified: boolean;
+  academicYear: string | null;
+  createdAt: string;
+  author: { anonymousHandle: string; contextLabel: string };
+};
+
+export type TopicCatalogItem = {
+  slug: string;
+  name: string;
+  description?: string | null;
+  sensitive?: boolean;
+  followerCount?: number;
+  postCount?: number;
+};
+
+export type SchoolEvent = {
+  id: string;
+  schoolId?: string;
+  schoolName?: string;
+  title: string;
+  description?: string | null;
+  eventType: string;
+  startsAt: string;
+  endsAt?: string | null;
+  unconfirmed?: boolean;
+  needsReview?: boolean;
+};
+
+export type Practitioner = {
+  id: string;
+  name: string;
+  category: string;
+  clinicName: string | null;
+  pinCode: string;
+  locality: string | null;
+  city: string | null;
+  verified: boolean;
+  recommendationCount: number;
+};
+
+export type ExpertSession = {
+  id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  startsAt: string;
+  endsAt: string;
+  expert: { displayName: string; credentials: string; verified: boolean };
+};
+
+export type PlaydateMatch = {
+  userId: string;
+  anonymousHandle: string;
+  ageBand: string;
+};
+
+export type CarpoolOffer = {
+  id: string;
+  role: string;
+  direction: string;
+  daysOfWeek: number[];
+  departureTime: string;
+  seats: number | null;
+  notes: string | null;
+  ownerHandle: string;
+};
+
+export type CarpoolParticipant = {
+  userId: string;
+  role: string;
+  disclosureConfirmed: boolean;
+  handle: string;
+  peerView: PeerView | null;
+};
+
+export type CarpoolArrangement = {
+  id: string;
+  status: string;
+  departureTime: string;
+  daysOfWeek: number[];
+  disclaimer: string;
+  participants: CarpoolParticipant[];
+};
+
+export type Listing = {
+  id: string;
+  kind: "for_sale" | "free" | "wanted";
+  status: "active" | "reserved" | "completed" | "expired" | "removed";
+  category: string;
+  title: string;
+  description: string | null;
+  priceAmount: number | null;
+  priceCurrency: string;
+  communityKey: string | null;
+  pinCode: string;
+  schoolId: string | null;
+  gradeId: string | null;
+  expiresAt: string;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  media: ListingMedia[];
+  isMine: boolean;
+};
+
 export type ConversationPreview = {
   id: string;
-  peer: { userId: string; anonymousHandle: string };
+  peer: PeerView;
   lastMessage: { body: string; createdAt: string } | null;
   unread: boolean;
 };
@@ -135,11 +311,26 @@ export type Activity = {
   curriculumIds: string[];
   createdAt: string;
   updatedAt: string;
+  providerId?: string;
   provider?: {
     orgName: string;
     providerType: string;
     verified: boolean;
+    ratingAvg?: number | null;
+    ratingCount?: number;
+    feeMin?: number | null;
+    feeMax?: number | null;
   };
+};
+
+export type ProviderReview = {
+  id: string;
+  rating: number;
+  body: string | null;
+  engagementVerified: boolean;
+  createdAt: string;
+  author: CircleAuthor;
+  reply: { body: string; createdAt: string } | null;
 };
 
 export type ProviderProfile = {
@@ -182,6 +373,7 @@ export type AppVersionInfo = {
 
 export type NotificationPrefs = {
   circle_posts?: boolean;
+  circle_replies?: boolean;
   direct_messages?: boolean;
   reminders?: boolean;
   activity_nearby?: boolean;
@@ -350,12 +542,38 @@ export const api = {
         height?: number;
         durationMs?: number;
       }>;
+      poll?: {
+        question: string;
+        options: string[];
+        hideResultsUntilVote?: boolean;
+        closesAt?: string;
+      };
+      topicSlugs?: string[];
     }
   ) =>
     request<CirclePost>(`/v1/circles/${circleId}/posts`, {
       method: "POST",
       body: JSON.stringify(body),
     }, token),
+
+  votePoll: (
+    token: string,
+    circleId: string,
+    postId: string,
+    optionId: string
+  ) =>
+    request<{ poll: PollView | null }>(
+      `/v1/circles/${circleId}/posts/${postId}/vote`,
+      { method: "POST", body: JSON.stringify({ optionId }) },
+      token
+    ),
+
+  withdrawPollVote: (token: string, circleId: string, postId: string) =>
+    request<{ poll: PollView | null }>(
+      `/v1/circles/${circleId}/posts/${postId}/vote`,
+      { method: "DELETE" },
+      token
+    ),
 
   getMediaStatus: (token: string) =>
     request<{ configured: boolean }>("/v1/media/status", {}, token),
@@ -367,6 +585,7 @@ export const api = {
       mediaType: "image" | "video";
       mimeType: string;
       sizeBytes: number;
+      purpose?: "post" | "listing";
     }
   ) =>
     request<{
@@ -412,9 +631,14 @@ export const api = {
 
   startConversation: (
     token: string,
-    body: { peerUserId: string; circleId?: string; postId?: string }
+    body: {
+      peerUserId: string;
+      circleId?: string;
+      postId?: string;
+      listingId?: string;
+    }
   ) =>
-    request<{ id: string; peer: { userId: string; anonymousHandle: string } }>(
+    request<{ id: string; peer: PeerView }>(
       "/v1/conversations",
       { method: "POST", body: JSON.stringify(body) },
       token
@@ -422,9 +646,65 @@ export const api = {
 
   getMessages: (token: string, conversationId: string) =>
     request<{
-      peer: { userId: string; anonymousHandle: string };
+      peer: PeerView;
       messages: DirectMessage[];
     }>(`/v1/conversations/${conversationId}/messages`, {}, token),
+
+  getDisclosure: (token: string, conversationId: string) =>
+    request<DisclosureState>(
+      `/v1/conversations/${conversationId}/disclosure`,
+      {},
+      token
+    ),
+
+  offerDisclosure: (
+    token: string,
+    conversationId: string,
+    body: { level: number; purpose?: string }
+  ) =>
+    request<
+      DisclosureState & {
+        effectiveLevel: number;
+        ownOffer: number;
+        peerOffer: number;
+      }
+    >(
+      `/v1/conversations/${conversationId}/disclosure`,
+      { method: "POST", body: JSON.stringify(body) },
+      token
+    ),
+
+  getContactDetails: (token: string) =>
+    request<ContactDetails | null>("/v1/me/contact-details", {}, token),
+
+  updateContactDetails: (
+    token: string,
+    body: Partial<ContactDetails>
+  ) =>
+    request<{ ok: boolean }>(
+      "/v1/me/contact-details",
+      { method: "PUT", body: JSON.stringify(body) },
+      token
+    ),
+
+  getSaved: (token: string) =>
+    request<{ posts: SavedPost[]; activities: unknown[]; listings: unknown[] }>(
+      "/v1/me/saved",
+      {},
+      token
+    ),
+
+  saveItem: (token: string, body: { itemType: string; itemId: string }) =>
+    request<{ ok: boolean }>(
+      "/v1/me/saved",
+      { method: "POST", body: JSON.stringify(body) },
+      token
+    ),
+
+  unsaveItem: (token: string, itemType: string, itemId: string) =>
+    request<{ ok: boolean }>(`/v1/me/saved/${itemType}/${itemId}`, {
+      method: "DELETE",
+    }, token),
 
   sendMessage: (token: string, conversationId: string, body: string) =>
     request<DirectMessage>(
@@ -497,12 +777,20 @@ export const api = {
 
   discoverActivities: (
     token: string,
-    params?: { pin?: string; curriculum?: string; q?: string }
+    params?: {
+      pin?: string;
+      curriculum?: string;
+      q?: string;
+      verifiedOnly?: boolean;
+      sort?: "recent" | "rating" | "fee_low";
+    }
   ) => {
     const qs = new URLSearchParams();
     if (params?.pin) qs.set("pin", params.pin);
     if (params?.curriculum) qs.set("curriculum", params.curriculum);
     if (params?.q) qs.set("q", params.q);
+    if (params?.verifiedOnly) qs.set("verifiedOnly", "true");
+    if (params?.sort) qs.set("sort", params.sort);
     const q = qs.toString();
     return request<Activity[]>(
       `/v1/activities${q ? `?${q}` : ""}`,
@@ -510,6 +798,30 @@ export const api = {
       token
     );
   },
+
+  getProviderReviews: (token: string, providerId: string) =>
+    request<{
+      provider: {
+        id: string;
+        orgName: string;
+        verified: boolean;
+        ratingAvg: number | null;
+        ratingCount: number;
+        feeMin: number | null;
+        feeMax: number | null;
+      };
+      reviews: ProviderReview[];
+    }>(`/v1/providers/${providerId}/reviews`, {}, token),
+
+  submitProviderReview: (
+    token: string,
+    providerId: string,
+    body: { rating: number; reviewBody?: string }
+  ) =>
+    request<{ ok: boolean }>(`/v1/providers/${providerId}/reviews`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }, token),
 
   getActivity: (token: string, activityId: string) =>
     request<Activity>(`/v1/activities/${activityId}`, {}, token),
@@ -565,4 +877,363 @@ export const api = {
     }, token),
 
   getAppVersion: () => request<AppVersionInfo>("/v1/app/version"),
+
+  discoverListings: (
+    token: string,
+    params?: {
+      scope?: "community" | "pin";
+      category?: string;
+      kind?: string;
+      q?: string;
+    }
+  ) => {
+    const qs = new URLSearchParams();
+    if (params?.scope) qs.set("scope", params.scope);
+    if (params?.category) qs.set("category", params.category);
+    if (params?.kind) qs.set("kind", params.kind);
+    if (params?.q) qs.set("q", params.q);
+    const q = qs.toString();
+    return request<Listing[]>(`/v1/listings${q ? `?${q}` : ""}`, {}, token);
+  },
+
+  getMyListings: (token: string) =>
+    request<Listing[]>("/v1/listings/mine", {}, token),
+
+  getListing: (token: string, listingId: string) =>
+    request<Listing>(`/v1/listings/${listingId}`, {}, token),
+
+  createListing: (
+    token: string,
+    body: {
+      kind: string;
+      category: string;
+      title: string;
+      description?: string;
+      priceAmount?: number;
+      schoolId?: string;
+      gradeId?: string;
+      media?: Array<{
+        storageKey: string;
+        mimeType: string;
+        width?: number;
+        height?: number;
+      }>;
+    }
+  ) =>
+    request<Listing>("/v1/listings", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }, token),
+
+  updateListing: (
+    token: string,
+    listingId: string,
+    body: { status?: string; title?: string; description?: string }
+  ) =>
+    request<Listing>(`/v1/listings/${listingId}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }, token),
+
+  expressListingInterest: (token: string, listingId: string) =>
+    request<{ conversationId: string; peer: PeerView }>(
+      `/v1/listings/${listingId}/interest`,
+      { method: "POST" },
+      token
+    ),
+
+  getSchoolProfile: (token: string, schoolId: string) =>
+    request<SchoolProfile>(`/v1/schools/${schoolId}/profile`, {}, token),
+
+  getSchoolReviews: (token: string, schoolId: string) =>
+    request<{ reviews: SchoolReview[] }>(
+      `/v1/schools/${schoolId}/reviews`,
+      {},
+      token
+    ),
+
+  submitSchoolReview: (
+    token: string,
+    schoolId: string,
+    body: { rating: number; reviewBody?: string }
+  ) =>
+    request<{ ok: boolean }>(`/v1/schools/${schoolId}/reviews`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }, token),
+
+  getSchoolFees: (token: string, schoolId: string, year?: string) => {
+    const qs = year ? `?year=${encodeURIComponent(year)}` : "";
+    return request<{
+      current: {
+        min: number;
+        max: number;
+        reportedCount: number;
+        latestReportedAt: string | null;
+        academicYear: string;
+      } | null;
+      history: Array<Record<string, unknown>>;
+    }>(`/v1/schools/${schoolId}/fees${qs}`, {}, token);
+  },
+
+  askSchoolQuestion: (token: string, schoolId: string, body: string) =>
+    request<{ id: string; createdAt: string }>(
+      `/v1/schools/${schoolId}/questions`,
+      { method: "POST", body: JSON.stringify({ body }) },
+      token
+    ),
+
+  getTopicsCatalog: (token: string) =>
+    request<{ categories: Record<string, TopicCatalogItem[]> }>(
+      "/v1/topics",
+      {},
+      token
+    ),
+
+  getTopicFeed: (
+    token: string,
+    slug: string,
+    params?: { cursor?: string }
+  ) => {
+    const qs = new URLSearchParams();
+    if (params?.cursor) qs.set("cursor", params.cursor);
+    const q = qs.toString();
+    return request<{ posts: CirclePost[]; nextCursor: string | null }>(
+      `/v1/topics/${slug}/feed${q ? `?${q}` : ""}`,
+      {},
+      token
+    );
+  },
+
+  followTopic: (token: string, slug: string) =>
+    request<{ ok: boolean }>(`/v1/topics/${slug}/follow`, { method: "POST" }, token),
+
+  unfollowTopic: (token: string, slug: string) =>
+    request<{ ok: boolean }>(`/v1/topics/${slug}/follow`, { method: "DELETE" }, token),
+
+  getFollowedTopics: (token: string) =>
+    request<TopicCatalogItem[]>("/v1/me/topics", {}, token),
+
+  getUpcomingSchoolEvents: (token: string) =>
+    request<SchoolEvent[]>("/v1/me/school-events/upcoming", {}, token),
+
+  getSchoolEvents: (
+    token: string,
+    schoolId: string,
+    params?: { from?: string; to?: string }
+  ) => {
+    const qs = new URLSearchParams();
+    if (params?.from) qs.set("from", params.from);
+    if (params?.to) qs.set("to", params.to);
+    const q = qs.toString();
+    return request<SchoolEvent[]>(
+      `/v1/schools/${schoolId}/events${q ? `?${q}` : ""}`,
+      {},
+      token
+    );
+  },
+
+  reportSchoolEvent: (
+    token: string,
+    schoolId: string,
+    body: {
+      title: string;
+      eventType: string;
+      startsAt: string;
+      description?: string;
+    }
+  ) =>
+    request<{ id: string }>(`/v1/schools/${schoolId}/events`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }, token),
+
+  flagSchoolEvent: (
+    token: string,
+    eventId: string,
+    body: { flag: "confirm" | "dispute"; note?: string }
+  ) =>
+    request<{ ok: boolean }>(`/v1/school-events/${eventId}/flag`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }, token),
+
+  remindSchoolEvent: (token: string, eventId: string, fireAt: string) =>
+    request<Reminder>(`/v1/school-events/${eventId}/remind`, {
+      method: "POST",
+      body: JSON.stringify({ fireAt }),
+    }, token),
+
+  discoverPractitioners: (
+    token: string,
+    params?: { category?: string; pin?: string }
+  ) => {
+    const qs = new URLSearchParams();
+    if (params?.category) qs.set("category", params.category);
+    if (params?.pin) qs.set("pin", params.pin);
+    const q = qs.toString();
+    return request<Practitioner[]>(
+      `/v1/practitioners${q ? `?${q}` : ""}`,
+      {},
+      token
+    );
+  },
+
+  getPractitioner: (token: string, id: string) =>
+    request<
+      Practitioner & {
+        disclaimer: string;
+        recommendations: Array<{
+          id: string;
+          note: string | null;
+          waitTimeBand: string | null;
+          feeBand: string | null;
+          author: { anonymousHandle: string; contextLabel: string };
+        }>;
+      }
+    >(`/v1/practitioners/${id}`, {}, token),
+
+  recommendPractitioner: (
+    token: string,
+    id: string,
+    body: { note?: string; waitTimeBand?: string; feeBand?: string }
+  ) =>
+    request<{ ok: boolean }>(`/v1/practitioners/${id}/recommend`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }, token),
+
+  getExpertSessions: (token: string) =>
+    request<ExpertSession[]>("/v1/expert-sessions", {}, token),
+
+  getExpertSession: (token: string, id: string) =>
+    request<
+      ExpertSession & {
+        expert: ExpertSession["expert"] & { bio?: string | null };
+        questions: Array<{
+          id: string;
+          body: string;
+          upvoteCount: number;
+          answerBody: string | null;
+          askerHandle: string;
+        }>;
+      }
+    >(`/v1/expert-sessions/${id}`, {}, token),
+
+  askExpertQuestion: (token: string, sessionId: string, body: string) =>
+    request<{ id: string }>(`/v1/expert-sessions/${sessionId}/questions`, {
+      method: "POST",
+      body: JSON.stringify({ body }),
+    }, token),
+
+  upvoteExpertQuestion: (token: string, questionId: string) =>
+    request<{ ok: boolean }>(
+      `/v1/expert-sessions/questions/${questionId}/upvote`,
+      { method: "POST" },
+      token
+    ),
+
+  getPlaydateMatches: (token: string) =>
+    request<{
+      available: boolean;
+      reason?: string;
+      count?: number;
+      ageBand?: string;
+      matches?: PlaydateMatch[];
+    }>("/v1/playdates/matches", {}, token),
+
+  optInPlaydate: (
+    token: string,
+    body: { childId: string; ageBand: string; scope: "community" | "pin" }
+  ) =>
+    request<{ ok: boolean }>("/v1/playdates/optin", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }, token),
+
+  connectPlaydate: (token: string, peerUserId: string) =>
+    request<{ conversationId: string; peer: { userId: string; anonymousHandle: string } }>(
+      "/v1/playdates/connect",
+      { method: "POST", body: JSON.stringify({ peerUserId }) },
+      token
+    ),
+
+  getCarpoolMatches: (token: string) =>
+    request<CarpoolOffer[]>("/v1/carpool/matches", {}, token),
+
+  createCarpoolOffer: (
+    token: string,
+    body: {
+      role: string;
+      direction: string;
+      daysOfWeek: number[];
+      departureTime: string;
+      seats?: number;
+      notes?: string;
+    }
+  ) =>
+    request<{ id: string }>("/v1/carpool/offers", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }, token),
+
+  createCarpoolArrangement: (
+    token: string,
+    body: {
+      daysOfWeek: number[];
+      departureTime: string;
+      offerIds?: string[];
+    }
+  ) =>
+    request<{ id: string }>("/v1/carpool/arrangements", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }, token),
+
+  joinCarpoolArrangement: (
+    token: string,
+    arrangementId: string,
+    role?: string
+  ) =>
+    request<{ ok: boolean }>(
+      `/v1/carpool/arrangements/${arrangementId}/join`,
+      { method: "POST", body: JSON.stringify({ role }) },
+      token
+    ),
+
+  getCarpoolArrangement: (token: string, arrangementId: string) =>
+    request<CarpoolArrangement>(
+      `/v1/carpool/arrangements/${arrangementId}`,
+      {},
+      token
+    ),
+
+  confirmCarpoolDisclosure: (token: string, arrangementId: string) =>
+    request<{ ok: boolean }>(
+      `/v1/carpool/arrangements/${arrangementId}/confirm-disclosure`,
+      { method: "POST" },
+      token
+    ),
+
+  activateCarpool: (token: string, arrangementId: string) =>
+    request<{ ok: boolean }>(
+      `/v1/carpool/arrangements/${arrangementId}/activate`,
+      { method: "POST" },
+      token
+    ),
+
+  leaveCarpool: (token: string, arrangementId: string) =>
+    request<{ ok: boolean }>(
+      `/v1/carpool/arrangements/${arrangementId}/leave`,
+      { method: "POST" },
+      token
+    ),
 };
+
+export function peerDisplayName(peer: PeerView): string {
+  if (peer.disclosureLevel >= 2 && peer.firstName) {
+    const flat = peer.blockOrFlat ? ` · ${peer.blockOrFlat}` : "";
+    return `${peer.firstName}${flat}`;
+  }
+  return peer.anonymousHandle;
+}

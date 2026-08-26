@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { SignOutButton } from "@/components/SignOutButton";
+import { FEATURE_FLAGS } from "@/constants/features";
 import { colors } from "@/constants/theme";
 import {
   api,
@@ -85,6 +86,66 @@ export default function ProfileScreen() {
         <Text style={styles.linkText}>Location & community</Text>
       </Pressable>
 
+      {FEATURE_FLAGS.showDoctors ? (
+        <Pressable
+          style={styles.linkRow}
+          onPress={() => router.push("/(app)/practitioners")}
+        >
+          <Text style={styles.linkText}>Local doctor recommendations</Text>
+        </Pressable>
+      ) : null}
+      <Pressable
+        style={styles.linkRow}
+        onPress={() => router.push("/(app)/experts")}
+      >
+        <Text style={styles.linkText}>Expert Q&A sessions</Text>
+      </Pressable>
+      {FEATURE_FLAGS.showPlaydates ? (
+        <Pressable
+          style={styles.linkRow}
+          onPress={() => router.push("/(app)/playdates")}
+        >
+          <Text style={styles.linkText}>Playdates (opt-in)</Text>
+        </Pressable>
+      ) : null}
+      {FEATURE_FLAGS.showCarpool ? (
+        <Pressable
+          style={styles.linkRow}
+          onPress={() => router.push("/(app)/carpool")}
+        >
+          <Text style={styles.linkText}>School carpool</Text>
+        </Pressable>
+      ) : null}
+      <Pressable
+        style={styles.linkRow}
+        onPress={() => router.push("/(app)/schools")}
+      >
+        <Text style={styles.linkText}>Browse schools</Text>
+      </Pressable>
+      <Pressable
+        style={styles.linkRow}
+        onPress={() => router.push("/(app)/topics")}
+      >
+        <Text style={styles.linkText}>Interest topics</Text>
+      </Pressable>
+      <Pressable
+        style={styles.linkRow}
+        onPress={() => router.push("/(app)/calendar")}
+      >
+        <Text style={styles.linkText}>School calendar</Text>
+      </Pressable>
+      <Pressable
+        style={styles.linkRow}
+        onPress={() => router.push("/(app)/contact-details")}
+      >
+        <Text style={styles.linkText}>Contact details for handover</Text>
+      </Pressable>
+      <Pressable
+        style={styles.linkRow}
+        onPress={() => router.push("/(app)/saved")}
+      >
+        <Text style={styles.linkText}>Saved posts</Text>
+      </Pressable>
       <Pressable
         style={styles.linkRow}
         onPress={() => router.push("/(app)/reminders")}

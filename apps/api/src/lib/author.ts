@@ -10,6 +10,7 @@ type CircleRow = {
   id: string;
   circle_type: string;
   key: string;
+  display_name?: string;
   metadata: Record<string, unknown>;
 };
 
@@ -53,10 +54,19 @@ export async function getAuthorContextForCircle(
     return `${match.curriculum_name} · ${match.grade_label}`;
   }
 
-  if (circle.circle_type === "class") {
+  if (circle.circle_type === "class" || circle.circle_type === "school_class") {
+    const curriculumId = circle.metadata?.curriculum_id as string | undefined;
     const gradeId = circle.metadata?.grade_id as string | undefined;
     const gradeCode = circle.metadata?.grade_code as string | undefined;
+    const code = circle.metadata?.code as string | undefined;
     const match =
+      children.find(
+        (c) =>
+          c.curriculum_id === curriculumId && c.grade_id === gradeId
+      ) ??
+      children.find(
+        (c) => c.curriculum_code === code && c.grade_code === gradeCode
+      ) ??
       children.find((c) => c.grade_id === gradeId) ??
       children.find((c) => c.grade_code === gradeCode) ??
       children[0];
@@ -81,13 +91,82 @@ export async function buildAuthorView(
   };
 }
 
+export async function buildReviewAuthorView(
+  client: PoolClient,
+  userId: string,
+  anonymousHandle: string
+): Promise<AuthorView> {
+  const { rows } = await client.query(
+    `SELECT cur.name AS curriculum_name, g.label AS grade_label
+     FROM children ch
+     JOIN curricula cur ON cur.id = ch.curriculum_id
+     JOIN curriculum_grades g ON g.id = ch.grade_id
+     WHERE ch.user_id = $1
+     ORDER BY ch.created_at
+     LIMIT 1`,
+    [userId]
+  );
+
+  const contextLabel =
+    rows.length > 0
+      ? `${rows[0].curriculum_name} · ${rows[0].grade_label}`
+      : "";
+
+  return {
+    userId,
+    anonymousHandle,
+    contextLabel,
+  };
+}
+
+const CIRCLE_TYPE_RANK: Record<string, number> = {
+  school_class: 6,
+  class: 5,
+  school: 4,
+  community: 3,
+  locality: 2,
+  curriculum: 1,
+};
+
+export async function buildAuthorViewForPost(
+  client: PoolClient,
+  readerId: string,
+  authorId: string,
+  postId: string,
+  anonymousHandle: string
+): Promise<AuthorView> {
+  const { rows } = await client.query(
+    `SELECT c.id, c.circle_type, c.key, c.display_name, c.metadata
+     FROM circle_post_targets pct
+     JOIN circle_members reader_cm
+       ON reader_cm.circle_id = pct.circle_id AND reader_cm.user_id = $1
+     JOIN circle_members author_cm
+       ON author_cm.circle_id = pct.circle_id AND author_cm.user_id = $2
+     JOIN circles c ON c.id = pct.circle_id
+     WHERE pct.post_id = $3`,
+    [readerId, authorId, postId]
+  );
+
+  if (rows.length === 0) {
+    return { userId: authorId, anonymousHandle, contextLabel: "" };
+  }
+
+  const best = (rows as CircleRow[]).reduce((a, b) =>
+    (CIRCLE_TYPE_RANK[a.circle_type] ?? 0) >= (CIRCLE_TYPE_RANK[b.circle_type] ?? 0)
+      ? a
+      : b
+  );
+
+  return buildAuthorView(client, authorId, anonymousHandle, best);
+}
+
 export async function assertCircleMember(
   client: PoolClient,
   circleId: string,
   userId: string
 ): Promise<CircleRow | null> {
   const { rows } = await client.query(
-    `SELECT c.id, c.circle_type, c.key, c.metadata
+    `SELECT c.id, c.circle_type, c.key, c.display_name, c.metadata
      FROM circles c
      JOIN circle_members cm ON cm.circle_id = c.id
      WHERE c.id = $1 AND cm.user_id = $2`,

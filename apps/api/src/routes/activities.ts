@@ -399,6 +399,8 @@ export function createActivitiesRoutes() {
     const pin = c.req.query("pin");
     const curriculumId = c.req.query("curriculum");
     const search = c.req.query("q");
+    const verifiedOnly = c.req.query("verifiedOnly") === "true";
+    const sort = c.req.query("sort") ?? "recent";
 
     const client = await pool.connect();
     try {
@@ -416,7 +418,8 @@ export function createActivitiesRoutes() {
 
       let query = `
         SELECT DISTINCT a.*,
-               p.org_name, p.provider_type, p.verified
+               p.org_name, p.provider_type, p.verified,
+               p.rating_avg, p.rating_count, p.fee_min, p.fee_max
         FROM activities a
         JOIN providers p ON p.user_id = a.provider_id
         JOIN activity_pin_codes apc ON apc.activity_id = a.id
@@ -424,6 +427,10 @@ export function createActivitiesRoutes() {
           AND apc.pin_code = $1`;
       const params: unknown[] = [userPin];
       let idx = 2;
+
+      if (verifiedOnly) {
+        query += ` AND p.verified = true`;
+      }
 
       if (curriculumId) {
         query += `
@@ -456,7 +463,14 @@ export function createActivitiesRoutes() {
         idx++;
       }
 
-      query += ` ORDER BY a.starts_at NULLS LAST, a.created_at DESC LIMIT 50`;
+      if (sort === "rating") {
+        query += ` ORDER BY p.rating_avg DESC NULLS LAST, a.created_at DESC`;
+      } else if (sort === "fee_low") {
+        query += ` ORDER BY a.fee_amount ASC NULLS LAST, a.created_at DESC`;
+      } else {
+        query += ` ORDER BY a.starts_at NULLS LAST, a.created_at DESC`;
+      }
+      query += ` LIMIT 50`;
 
       const { rows } = await client.query(query, params);
 
@@ -471,6 +485,13 @@ export function createActivitiesRoutes() {
               orgName: row.org_name,
               providerType: row.provider_type,
               verified: row.verified,
+              ratingAvg:
+                row.rating_count >= 3 && row.rating_avg != null
+                  ? Number(row.rating_avg)
+                  : null,
+              ratingCount: row.rating_count ?? 0,
+              feeMin: row.fee_min != null ? Number(row.fee_min) : null,
+              feeMax: row.fee_max != null ? Number(row.fee_max) : null,
             }
           );
         })
@@ -485,10 +506,14 @@ export function createActivitiesRoutes() {
   app.get("/:id", authMiddleware, async (c) => {
     const userId = c.get("user").sub;
     const activityId = c.req.param("id");
+    if (!activityId) {
+      return c.json({ error: "Activity not found" }, 404);
+    }
     const client = await pool.connect();
     try {
       const { rows } = await client.query(
-        `SELECT a.*, p.org_name, p.provider_type, p.verified
+        `SELECT a.*, p.org_name, p.provider_type, p.verified,
+                p.rating_avg, p.rating_count, p.fee_min, p.fee_max
          FROM activities a
          JOIN providers p ON p.user_id = a.provider_id
          WHERE a.id = $1 AND a.status = 'published'`,
@@ -514,6 +539,13 @@ export function createActivitiesRoutes() {
           orgName: rows[0].org_name,
           providerType: rows[0].provider_type,
           verified: rows[0].verified,
+          ratingAvg:
+            rows[0].rating_count >= 3 && rows[0].rating_avg != null
+              ? Number(rows[0].rating_avg)
+              : null,
+          ratingCount: rows[0].rating_count ?? 0,
+          feeMin: rows[0].fee_min != null ? Number(rows[0].fee_min) : null,
+          feeMax: rows[0].fee_max != null ? Number(rows[0].fee_max) : null,
         })
       );
     } finally {

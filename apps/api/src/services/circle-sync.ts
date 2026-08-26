@@ -10,6 +10,7 @@ type DesiredCircle = {
     | "locality"
     | "class"
     | "school"
+    | "school_class"
     | "community";
   key: string;
   displayName: string;
@@ -99,6 +100,31 @@ export async function syncCircleMembership(
           metadata: {
             school_id: child.school_id,
             normalized_key: child.school_normalized_key,
+          },
+        });
+      }
+
+      const schoolClassKey =
+        `SCHOOL_CLASS_${child.school_normalized_key}` +
+        `_${child.curriculum_code}_${child.grade_code}`;
+      if (!seenKeys.has(schoolClassKey)) {
+        seenKeys.add(schoolClassKey);
+        desired.push({
+          circleType: "school_class",
+          key: schoolClassKey,
+          displayName:
+            `${formatSchoolLabel(
+              child.school_name,
+              child.school_branch,
+              child.school_city
+            )} · ${child.curriculum_name} · ${child.grade_label}`,
+          metadata: {
+            school_id: child.school_id,
+            normalized_key: child.school_normalized_key,
+            curriculum_id: child.curriculum_id,
+            grade_id: child.grade_id,
+            code: child.curriculum_code,
+            grade_code: child.grade_code,
           },
         });
       }

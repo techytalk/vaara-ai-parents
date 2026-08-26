@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import {
   FlatList,
   KeyboardAvoidingView,
@@ -10,11 +10,13 @@ import {
   View,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import {
   AuthorRow,
   cardShadow,
   formatPostTime,
+  PollCard,
   PostMediaGallery,
   PostTagBadge,
   ScreenLoader,
@@ -54,8 +56,10 @@ export default function PostThreadScreen() {
     postId: string;
   }>();
   const router = useRouter();
+  const navigation = useNavigation();
   const [post, setPost] = useState<CirclePost | null>(null);
   const [replies, setReplies] = useState<Reply[]>([]);
+  const [saved, setSaved] = useState(false);
   const [replyText, setReplyText] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -65,9 +69,13 @@ export default function PostThreadScreen() {
     getToken().then(async (token) => {
       if (!token) return;
       try {
-        const data = await api.getPost(token, circleId, postId);
+        const [data, savedData] = await Promise.all([
+          api.getPost(token, circleId, postId),
+          api.getSaved(token),
+        ]);
         setPost(data.post);
         setReplies(data.replies);
+        setSaved(savedData.posts.some((item) => item.id === postId));
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load");
       } finally {
@@ -75,6 +83,36 @@ export default function PostThreadScreen() {
       }
     });
   }, [circleId, postId]);
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <Pressable onPress={toggleSave} hitSlop={8} style={styles.headerSave}>
+          <Ionicons
+            name={saved ? "bookmark" : "bookmark-outline"}
+            size={22}
+            color={theme.primary}
+          />
+        </Pressable>
+      ),
+    });
+  }, [navigation, saved]);
+
+  async function toggleSave() {
+    const token = await getToken();
+    if (!token) return;
+    try {
+      if (saved) {
+        await api.unsaveItem(token, "post", postId);
+        setSaved(false);
+      } else {
+        await api.saveItem(token, { itemType: "post", itemId: postId });
+        setSaved(true);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not update save");
+    }
+  }
 
   async function onReply() {
     const text = replyText.trim();
@@ -116,6 +154,17 @@ export default function PostThreadScreen() {
     }
   }
 
+  async function onPollVote(optionId: string) {
+    const token = await getToken();
+    if (!token || !post) return;
+    try {
+      const { poll } = await api.votePoll(token, circleId, postId, optionId);
+      if (poll) setPost({ ...post, poll });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not vote");
+    }
+  }
+
   if (loading) {
     return <ScreenLoader />;
   }
@@ -154,6 +203,9 @@ export default function PostThreadScreen() {
                     <Text style={styles.postBody}>{post.body}</Text>
                   ) : null}
                 </View>
+                {post.poll ? (
+                  <PollCard poll={post.poll} onVote={onPollVote} />
+                ) : null}
                 <PostMediaGallery media={post.media ?? []} />
                 <Pressable style={styles.messageBtn} onPress={onMessageAuthor}>
                   <Ionicons
@@ -230,6 +282,7 @@ export default function PostThreadScreen() {
 }
 
 const styles = StyleSheet.create({
+  headerSave: { marginRight: 8 },
   container: { flex: 1, backgroundColor: theme.bg },
   centered: {
     flex: 1,

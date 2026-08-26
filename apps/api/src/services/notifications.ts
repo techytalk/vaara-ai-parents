@@ -11,7 +11,43 @@ type NotificationType =
   | "direct_message"
   | "activity_nearby"
   | "reminder"
-  | "provider_update";
+  | "provider_update"
+  | "topic_digest"
+  | "listing_interest"
+  | "disclosure_request"
+  | "disclosure_accepted"
+  | "carpool_update"
+  | "expert_session"
+  | "school_event"
+  | "playdate_interest";
+
+const CIRCLE_TYPE_RANK: Record<string, number> = {
+  school_class: 6,
+  class: 5,
+  school: 4,
+  community: 3,
+  locality: 2,
+  curriculum: 1,
+};
+
+type CircleTarget = {
+  id: string;
+  circle_type: string;
+  display_name: string;
+};
+
+async function enqueuePush(
+  client: PoolClient,
+  notificationId: string,
+  pushToken: string,
+  payload: { title: string; body: string; data: Record<string, unknown> }
+) {
+  await client.query(
+    `INSERT INTO notification_outbox (notification_id, push_token, payload)
+     VALUES ($1, $2, $3)`,
+    [notificationId, pushToken, JSON.stringify(payload)]
+  );
+}
 
 export async function createNotification(
   client: PoolClient,
@@ -50,7 +86,7 @@ export async function createNotification(
       : true);
 
   if (shouldPush && params.pushToken) {
-    await sendExpoPush(params.pushToken, {
+    await enqueuePush(client, notificationId, params.pushToken, {
       title: params.title,
       body: params.body ?? "",
       data: { ...params.data, notificationId, type: params.type },
@@ -60,56 +96,117 @@ export async function createNotification(
   return notificationId;
 }
 
-export async function notifyCirclePost(
+function pickBestCircleForMember(
+  targets: CircleTarget[],
+  memberCircleTypes: Set<string>
+): CircleTarget {
+  const matching = targets.filter((t) => memberCircleTypes.has(t.circle_type));
+  const pool = matching.length > 0 ? matching : targets;
+  return pool.reduce((best, current) =>
+    (CIRCLE_TYPE_RANK[current.circle_type] ?? 0) >
+    (CIRCLE_TYPE_RANK[best.circle_type] ?? 0)
+      ? current
+      : best
+  );
+}
+
+export async function notifyCirclePostMulti(
   client: PoolClient,
   params: {
-    circleId: string;
-    circleName: string;
+    targets: CircleTarget[];
     postId: string;
     authorId: string;
     postPreview: string;
   }
 ) {
-  const { rows: members } = await client.query(
-    `SELECT u.id, u.push_token, u.notification_prefs
-     FROM circle_members cm
-     JOIN users u ON u.id = cm.user_id
-     WHERE cm.circle_id = $1 AND cm.user_id != $2`,
-    [params.circleId, params.authorId]
-  );
+  if (params.targets.length === 0) return;
 
+  const circleIds = params.targets.map((t) => t.id);
   const preview =
     params.postPreview.length > 80
       ? `${params.postPreview.slice(0, 80)}…`
       : params.postPreview;
 
-  for (const member of members) {
-    if (!isPrefEnabled(member.notification_prefs, "circle_posts")) continue;
+  const { rows: recipients } = await client.query(
+    `SELECT DISTINCT u.id, u.push_token, u.notification_prefs,
+            array_agg(DISTINCT c.circle_type) AS circle_types
+     FROM circle_members cm
+     JOIN users u ON u.id = cm.user_id
+     JOIN circles c ON c.id = cm.circle_id
+     WHERE cm.circle_id = ANY($1::uuid[])
+       AND cm.user_id <> $2
+       AND NOT EXISTS (
+         SELECT 1 FROM notification_mutes nm
+         WHERE nm.user_id = u.id
+           AND nm.scope = 'circle'
+           AND nm.scope_id = cm.circle_id
+       )
+     GROUP BY u.id, u.push_token, u.notification_prefs`,
+    [circleIds, params.authorId]
+  );
 
-    const recent = await client.query(
-      `SELECT 1 FROM notifications
-       WHERE user_id = $1 AND type = 'circle_post'
-         AND data->>'circleId' = $2
-         AND created_at > now() - interval '1 hour'
-       LIMIT 1`,
-      [member.id, params.circleId]
+  for (const recipient of recipients) {
+    if (!isPrefEnabled(recipient.notification_prefs, "circle_posts")) continue;
+
+    const memberTypes = new Set<string>(
+      (recipient.circle_types as string[]) ?? []
     );
-    if (recent.rows.length > 0) continue;
+    const bestCircle = pickBestCircleForMember(params.targets, memberTypes);
 
     await createNotification(client, {
-      userId: member.id,
+      userId: recipient.id,
       type: "circle_post",
-      title: `New post in ${params.circleName}`,
+      title: `New post in ${bestCircle.display_name}`,
       body: preview,
       data: {
-        circleId: params.circleId,
+        circleId: bestCircle.id,
         postId: params.postId,
       },
-      pushToken: member.push_token,
-      notificationPrefs: member.notification_prefs,
+      pushToken: recipient.push_token,
+      notificationPrefs: recipient.notification_prefs,
       prefKey: "circle_posts",
     });
   }
+}
+
+export async function notifyCircleReply(
+  client: PoolClient,
+  params: {
+    postAuthorId: string;
+    postId: string;
+    circleId: string;
+    circleName: string;
+    replierId: string;
+    replyPreview: string;
+  }
+) {
+  if (params.postAuthorId === params.replierId) return;
+
+  const { rows } = await client.query(
+    `SELECT push_token, notification_prefs FROM users WHERE id = $1`,
+    [params.postAuthorId]
+  );
+  if (rows.length === 0) return;
+
+  const user = rows[0];
+  const preview =
+    params.replyPreview.length > 80
+      ? `${params.replyPreview.slice(0, 80)}…`
+      : params.replyPreview;
+
+  await createNotification(client, {
+    userId: params.postAuthorId,
+    type: "circle_reply",
+    title: `Reply in ${params.circleName}`,
+    body: preview,
+    data: {
+      circleId: params.circleId,
+      postId: params.postId,
+    },
+    pushToken: user.push_token,
+    notificationPrefs: user.notification_prefs,
+    prefKey: "circle_replies",
+  });
 }
 
 export async function notifyDirectMessage(
@@ -143,6 +240,50 @@ export async function notifyDirectMessage(
     notificationPrefs: user.notification_prefs,
     prefKey: "direct_messages",
   });
+}
+
+export async function processNotificationOutbox(
+  client: PoolClient
+): Promise<number> {
+  const { rows } = await client.query(
+    `SELECT id, push_token, payload, attempts
+     FROM notification_outbox
+     WHERE delivered_at IS NULL AND attempts < 5
+     ORDER BY created_at
+     LIMIT 50`
+  );
+
+  let delivered = 0;
+  for (const row of rows) {
+    const payload = row.payload as {
+      title: string;
+      body: string;
+      data: Record<string, unknown>;
+    };
+    try {
+      await sendExpoPush(row.push_token, {
+        title: payload.title,
+        body: payload.body,
+        data: payload.data,
+      });
+      await client.query(
+        `UPDATE notification_outbox
+         SET delivered_at = now(), last_error = NULL
+         WHERE id = $1`,
+        [row.id]
+      );
+      delivered++;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Push failed";
+      await client.query(
+        `UPDATE notification_outbox
+         SET attempts = attempts + 1, last_error = $2
+         WHERE id = $1`,
+        [row.id, message]
+      );
+    }
+  }
+  return delivered;
 }
 
 export async function processPendingReminders(client: PoolClient): Promise<number> {
@@ -187,4 +328,44 @@ export async function processPendingReminders(client: PoolClient): Promise<numbe
   }
 
   return sent;
+}
+
+async function processExpiredListings(client: PoolClient): Promise<number> {
+  const { rows } = await client.query(
+    `UPDATE listings
+     SET status = 'expired', updated_at = now()
+     WHERE status = 'active' AND expires_at <= now()
+     RETURNING id, seller_id, title`
+  );
+
+  for (const row of rows) {
+    const seller = await client.query(
+      "SELECT push_token, notification_prefs FROM users WHERE id = $1",
+      [row.seller_id]
+    );
+    if (seller.rows.length > 0) {
+      await createNotification(client, {
+        userId: row.seller_id,
+        type: "listing_interest",
+        title: "Listing expired",
+        body: `"${row.title}" — still available? Repost in one tap.`,
+        data: { listingId: row.id },
+        pushToken: seller.rows[0].push_token,
+        notificationPrefs: seller.rows[0].notification_prefs,
+      });
+    }
+  }
+
+  return rows.length;
+}
+
+export async function processBackgroundJobs(client: PoolClient): Promise<{
+  remindersSent: number;
+  pushesDelivered: number;
+  listingsExpired: number;
+}> {
+  const remindersSent = await processPendingReminders(client);
+  const pushesDelivered = await processNotificationOutbox(client);
+  const listingsExpired = await processExpiredListings(client);
+  return { remindersSent, pushesDelivered, listingsExpired };
 }

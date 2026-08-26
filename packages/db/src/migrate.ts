@@ -12,6 +12,19 @@ const MIGRATIONS = [
   { version: "004_class_school_circles", file: "004_class_school_circles.sql" },
   { version: "005_multi_circle_posts", file: "005_multi_circle_posts.sql" },
   { version: "006_post_media", file: "006_post_media.sql" },
+  { version: "007_enum_additions", file: "007_enum_additions.sql" },
+  { version: "008_post_polls", file: "008_post_polls.sql" },
+  { version: "009_reviews_and_notifications", file: "009_reviews_and_notifications.sql" },
+  { version: "010_disclosures", file: "010_disclosures.sql" },
+  { version: "011_marketplace", file: "011_marketplace.sql" },
+  { version: "012_post_saves", file: "012_post_saves.sql" },
+  { version: "013_school_reviews", file: "013_school_reviews.sql" },
+  { version: "014_topics", file: "014_topics.sql" },
+  { version: "015_school_calendar", file: "015_school_calendar.sql" },
+  { version: "016_local_recommendations", file: "016_local_recommendations.sql" },
+  { version: "017_expert_sessions", file: "017_expert_sessions.sql" },
+  { version: "018_playdates", file: "018_playdates.sql" },
+  { version: "019_carpool", file: "019_carpool.sql" },
 ];
 
 async function isMigrationApplied(

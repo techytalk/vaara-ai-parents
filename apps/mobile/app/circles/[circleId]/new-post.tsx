@@ -44,26 +44,49 @@ export default function NewPostScreen() {
   const [circles, setCircles] = useState<Circle[]>([]);
   const [additionalCircleIds, setAdditionalCircleIds] = useState<string[]>([]);
   const [media, setMedia] = useState<PendingMedia[]>([]);
+  const [pollEnabled, setPollEnabled] = useState(false);
+  const [pollQuestion, setPollQuestion] = useState("");
+  const [pollOptions, setPollOptions] = useState(["", ""]);
   const [mediaEnabled, setMediaEnabled] = useState<boolean | null>(null);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [topicOptions, setTopicOptions] = useState<
+    Array<{ slug: string; name: string }>
+  >([]);
+  const [selectedTopicSlugs, setSelectedTopicSlugs] = useState<string[]>([]);
 
   useEffect(() => {
     getToken().then(async (token) => {
       if (!token) return;
       try {
-        const [circleList, mediaStatus] = await Promise.all([
+        const [circleList, mediaStatus, catalog] = await Promise.all([
           api.getCircles(token),
           api.getMediaStatus(token).catch(() => ({ configured: false })),
+          api.getTopicsCatalog(token).catch(() => ({ categories: {} })),
         ]);
         setCircles(circleList);
         setMediaEnabled(mediaStatus.configured);
+        const flat = Object.values(catalog.categories).flat();
+        setTopicOptions(flat.map((t) => ({ slug: t.slug, name: t.name })));
       } catch {
         setError("Could not load your circles");
       }
     });
   }, []);
+
+  function toggleTopic(slug: string) {
+    setSelectedTopicSlugs((current) => {
+      if (current.includes(slug)) {
+        return current.filter((s) => s !== slug);
+      }
+      if (current.length >= 3) {
+        setError("Up to 3 topics per post");
+        return current;
+      }
+      return [...current, slug];
+    });
+  }
 
   function toggleAdditionalCircle(targetId: string) {
     setError(null);
@@ -174,9 +197,20 @@ export default function NewPostScreen() {
 
   async function onSubmit() {
     const text = body.trim();
-    if (!text && media.length === 0) {
-      setError("Write something or add a photo or video");
+    const options = pollOptions.map((o) => o.trim()).filter(Boolean);
+    if (!text && media.length === 0 && !pollEnabled) {
+      setError("Write something, add a poll, or add a photo or video");
       return;
+    }
+    if (pollEnabled) {
+      if (!pollQuestion.trim()) {
+        setError("Enter a poll question");
+        return;
+      }
+      if (options.length < 2) {
+        setError("Polls need at least 2 options");
+        return;
+      }
     }
     setLoading(true);
     setError(null);
@@ -190,6 +224,14 @@ export default function NewPostScreen() {
         tag,
         targetCircleIds: additionalCircleIds,
         media: uploadedMedia,
+        poll: pollEnabled
+          ? {
+              question: pollQuestion.trim(),
+              options,
+            }
+          : undefined,
+        topicSlugs:
+          selectedTopicSlugs.length > 0 ? selectedTopicSlugs : undefined,
       });
       router.back();
     } catch (e) {
@@ -344,6 +386,60 @@ export default function NewPostScreen() {
         </View>
       ) : null}
 
+      <Pressable
+        style={styles.pollToggle}
+        onPress={() => setPollEnabled((current) => !current)}
+      >
+        <Ionicons
+          name={pollEnabled ? "checkbox" : "square-outline"}
+          size={20}
+          color={theme.primary}
+        />
+        <Text style={styles.pollToggleText}>Add a poll</Text>
+      </Pressable>
+
+      {pollEnabled ? (
+        <View style={[styles.pollPanel, cardShadow()]}>
+          <Text style={styles.sectionLabel}>Poll question</Text>
+          <TextInput
+            style={styles.pollInput}
+            placeholder="e.g. How much are you paying for maths tuition?"
+            placeholderTextColor={theme.textMuted}
+            value={pollQuestion}
+            onChangeText={setPollQuestion}
+          />
+          <Text style={styles.sectionLabel}>Options</Text>
+          {pollOptions.map((option, index) => (
+            <TextInput
+              key={`poll-option-${index}`}
+              style={styles.pollInput}
+              placeholder={`Option ${index + 1}`}
+              placeholderTextColor={theme.textMuted}
+              value={option}
+              onChangeText={(value) =>
+                setPollOptions((current) =>
+                  current.map((item, itemIndex) =>
+                    itemIndex === index ? value : item
+                  )
+                )
+              }
+            />
+          ))}
+          {pollOptions.length < 6 ? (
+            <Pressable
+              style={styles.addPollOption}
+              onPress={() =>
+                setPollOptions((current) =>
+                  current.length < 6 ? [...current, ""] : current
+                )
+              }
+            >
+              <Text style={styles.addPollOptionText}>Add option</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+
       <View style={[styles.sharePanel, cardShadow()]}>
         <View style={styles.shareHeading}>
           <View>
@@ -395,6 +491,36 @@ export default function NewPostScreen() {
           })}
         </View>
       </View>
+
+      {topicOptions.length > 0 ? (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Topics (optional, max 3)</Text>
+          <View style={styles.circleTags}>
+            {topicOptions.slice(0, 24).map((topic) => {
+              const selected = selectedTopicSlugs.includes(topic.slug);
+              return (
+                <Pressable
+                  key={topic.slug}
+                  style={[
+                    styles.circleTag,
+                    selected && styles.circleTagSelected,
+                  ]}
+                  onPress={() => toggleTopic(topic.slug)}
+                >
+                  <Text
+                    style={[
+                      styles.circleTagText,
+                      selected && styles.circleTagSelectedText,
+                    ]}
+                  >
+                    {topic.name}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      ) : null}
 
       <PrimaryButton
         label={`Post to ${additionalCircleIds.length + 1} circle${
@@ -658,4 +784,43 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   error: { color: theme.error, fontSize: 14 },
+  pollToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
+  },
+  pollToggleText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: theme.primary,
+  },
+  pollPanel: {
+    backgroundColor: theme.card,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: theme.border,
+    padding: 14,
+    marginBottom: 16,
+    gap: 8,
+  },
+  pollInput: {
+    borderWidth: 1,
+    borderColor: theme.border,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: theme.text,
+    marginBottom: 8,
+  },
+  addPollOption: {
+    alignSelf: "flex-start",
+    paddingVertical: 6,
+  },
+  addPollOptionText: {
+    color: theme.primary,
+    fontWeight: "600",
+    fontSize: 13,
+  },
 });

@@ -90,16 +90,23 @@ export default function AppLayout() {
         }}
       />
       <Tabs.Screen
-        name="notifications"
+        name="market"
         options={{
-          title: "Alerts",
-          tabBarLabel: "Alerts",
+          title: "Market",
+          tabBarLabel: "Market",
           tabBarIcon: ({ focused, color, size }) =>
-            tabIcon(focused, "notifications", "notifications-outline")({
+            tabIcon(focused, "storefront", "storefront-outline")({
               color,
               size,
             }),
           headerShown: false,
+        }}
+      />
+      <Tabs.Screen
+        name="notifications"
+        options={{
+          href: null,
+          title: "Alerts",
         }}
       />
       <Tabs.Screen
@@ -118,6 +125,21 @@ export default function AppLayout() {
         name="reminders"
         options={{ href: null, title: "Reminders" }}
       />
+      <Tabs.Screen
+        name="saved"
+        options={{ href: null, title: "Saved posts" }}
+      />
+      <Tabs.Screen
+        name="contact-details"
+        options={{ href: null, title: "Contact details" }}
+      />
+      <Tabs.Screen name="schools" options={{ href: null, headerShown: false }} />
+      <Tabs.Screen name="topics" options={{ href: null, headerShown: false }} />
+      <Tabs.Screen name="calendar" options={{ href: null, headerShown: false }} />
+      <Tabs.Screen name="practitioners" options={{ href: null, headerShown: false }} />
+      <Tabs.Screen name="experts" options={{ href: null, headerShown: false }} />
+      <Tabs.Screen name="playdates" options={{ href: null, title: "Playdates" }} />
+      <Tabs.Screen name="carpool" options={{ href: null, headerShown: false }} />
     </Tabs>
   );
 }

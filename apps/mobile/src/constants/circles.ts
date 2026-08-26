@@ -7,6 +7,7 @@ export const CIRCLE_TYPE_LABELS: Record<Circle["circleType"], string> = {
   locality: "Pincode / Area",
   class: "Class",
   school: "School",
+  school_class: "School class",
   community: "Community",
 };
 

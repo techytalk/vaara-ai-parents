@@ -136,3 +136,69 @@ export async function verifyUploadedMedia(params: {
 
   return { sizeBytes, mimeType: storedMimeType };
 }
+
+export async function createListingMediaUpload(params: {
+  userId: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+}) {
+  if (!s3 || !bucket || !cdnBaseUrl) {
+    throw new Error("MEDIA_STORAGE_NOT_CONFIGURED");
+  }
+
+  const error = validateMediaRequest({
+    mediaType: "image",
+    mimeType: params.mimeType,
+    sizeBytes: params.sizeBytes,
+  });
+  if (error) throw new Error(error);
+
+  const extension = extensionFor(params.fileName, params.mimeType);
+  const storageKey = `listing-media/${params.userId}/${randomUUID()}.${extension}`;
+  const command = new PutObjectCommand({
+    Bucket: bucket,
+    Key: storageKey,
+    ContentType: params.mimeType,
+    ContentLength: params.sizeBytes,
+    Metadata: {
+      owner: params.userId,
+      mediaType: "image",
+    },
+  });
+
+  return {
+    storageKey,
+    uploadUrl: await getSignedUrl(s3, command, { expiresIn: 600 }),
+    publicUrl: mediaPublicUrl(storageKey),
+    expiresInSeconds: 600,
+  };
+}
+
+export async function verifyListingMedia(params: {
+  userId: string;
+  storageKey: string;
+  mimeType: string;
+}) {
+  if (!s3 || !bucket) throw new Error("MEDIA_STORAGE_NOT_CONFIGURED");
+  if (!params.storageKey.startsWith(`listing-media/${params.userId}/`)) {
+    throw new Error("INVALID_MEDIA_OWNER");
+  }
+
+  const result = await s3.send(
+    new HeadObjectCommand({ Bucket: bucket, Key: params.storageKey })
+  );
+  const sizeBytes = Number(result.ContentLength ?? 0);
+  const storedMimeType = result.ContentType ?? params.mimeType;
+  const error = validateMediaRequest({
+    mediaType: "image",
+    mimeType: storedMimeType,
+    sizeBytes,
+  });
+  if (error) throw new Error(error);
+  if (storedMimeType !== params.mimeType) {
+    throw new Error("MEDIA_MIME_MISMATCH");
+  }
+
+  return { sizeBytes, mimeType: storedMimeType };
+}

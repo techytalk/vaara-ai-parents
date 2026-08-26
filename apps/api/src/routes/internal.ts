@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { pool } from "@vaara/db";
-import { processPendingReminders } from "../services/notifications.js";
+import { processBackgroundJobs } from "../services/notifications.js";
 
 export function createInternalRoutes() {
   const app = new Hono();
@@ -15,8 +15,8 @@ export function createInternalRoutes() {
 
     const client = await pool.connect();
     try {
-      const sent = await processPendingReminders(client);
-      return c.json({ ok: true, remindersSent: sent });
+      const result = await processBackgroundJobs(client);
+      return c.json({ ok: true, ...result });
     } finally {
       client.release();
     }

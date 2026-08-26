@@ -17,6 +17,7 @@ export default function ParentActivitiesScreen() {
   const router = useRouter();
   const [activities, setActivities] = useState<Activity[]>([]);
   const [search, setSearch] = useState("");
+  const [verifiedOnly, setVerifiedOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,10 +27,11 @@ export default function ParentActivitiesScreen() {
     if (!token) return;
     const list = await api.discoverActivities(token, {
       q: search.trim() || undefined,
+      verifiedOnly,
     });
     setActivities(list);
     setError(null);
-  }, [search]);
+  }, [search, verifiedOnly]);
 
   useEffect(() => {
     load()
@@ -54,6 +56,20 @@ export default function ParentActivitiesScreen() {
         onChangeText={setSearch}
         onSubmitEditing={() => load()}
       />
+
+      <Pressable
+        style={[styles.filterChip, verifiedOnly && styles.filterChipActive]}
+        onPress={() => setVerifiedOnly((current) => !current)}
+      >
+        <Text
+          style={[
+            styles.filterChipText,
+            verifiedOnly && styles.filterChipTextActive,
+          ]}
+        >
+          Verified only
+        </Text>
+      </Pressable>
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -85,8 +101,17 @@ export default function ParentActivitiesScreen() {
               })
             }
           >
-            <Text style={styles.org}>{item.provider?.orgName}</Text>
+            <Text style={styles.org}>
+              {item.provider?.orgName}
+              {item.provider?.verified ? " · Verified" : ""}
+            </Text>
             <Text style={styles.title}>{item.title}</Text>
+            {item.provider?.ratingAvg != null ? (
+              <Text style={styles.rating}>
+                {item.provider.ratingAvg.toFixed(1)} ★ (
+                {item.provider.ratingCount} reviews)
+              </Text>
+            ) : null}
             {item.feeAmount != null && (
               <Text style={styles.fee}>
                 ₹{item.feeAmount} {item.feeCurrency}
@@ -108,6 +133,7 @@ const styles = StyleSheet.create({
   centered: { flex: 1, justifyContent: "center", alignItems: "center" },
   search: {
     margin: 12,
+    marginBottom: 8,
     backgroundColor: "#fff",
     borderWidth: 1,
     borderColor: "#e2e4ef",
@@ -115,6 +141,23 @@ const styles = StyleSheet.create({
     padding: 12,
     fontSize: 16,
   },
+  filterChip: {
+    alignSelf: "flex-start",
+    marginHorizontal: 12,
+    marginBottom: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#e2e4ef",
+    backgroundColor: "#fff",
+  },
+  filterChipActive: {
+    borderColor: "#4f46e5",
+    backgroundColor: "#eef2ff",
+  },
+  filterChipText: { fontSize: 13, color: "#5c5c7a", fontWeight: "600" },
+  filterChipTextActive: { color: "#4f46e5" },
   error: { color: "#dc2626", paddingHorizontal: 12 },
   empty: { textAlign: "center", color: "#5c5c7a", padding: 24, lineHeight: 22 },
   card: {
@@ -128,6 +171,7 @@ const styles = StyleSheet.create({
   },
   org: { fontSize: 13, color: "#4f46e5", fontWeight: "600" },
   title: { fontSize: 16, fontWeight: "600", color: "#1a1a2e", marginTop: 4 },
+  rating: { fontSize: 13, color: "#047857", marginTop: 4, fontWeight: "600" },
   fee: { fontSize: 14, color: "#1a1a2e", marginTop: 6 },
   meta: { fontSize: 13, color: "#5c5c7a", marginTop: 4 },
 });

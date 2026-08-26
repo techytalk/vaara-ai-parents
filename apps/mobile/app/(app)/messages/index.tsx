@@ -9,7 +9,7 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { api, type ConversationPreview } from "@/lib/api";
+import { api, peerDisplayName, type ConversationPreview } from "@/lib/api";
 import { getToken } from "@/lib/session";
 
 export default function MessagesInboxScreen() {
@@ -73,13 +73,13 @@ export default function MessagesInboxScreen() {
               pathname: "/(app)/messages/[conversationId]",
               params: {
                 conversationId: item.id,
-                peerHandle: item.peer.anonymousHandle,
+                peerHandle: peerDisplayName(item.peer),
               },
             })
           }
         >
           <View style={styles.rowMain}>
-            <Text style={styles.handle}>{item.peer.anonymousHandle}</Text>
+            <Text style={styles.handle}>{peerDisplayName(item.peer)}</Text>
             <Text style={styles.preview} numberOfLines={1}>
               {item.lastMessage?.body ?? "Start chatting"}
             </Text>

@@ -8,9 +8,31 @@ import {
   isBlocked,
 } from "../lib/author.js";
 import {
-  notifyCirclePost,
+  attachTopicsToPost,
+  loadTopicsForPosts,
+  notifyTopicFollowers,
+  resolveTopicSlugs,
+  type TopicSummary,
+} from "../lib/topics.js";
+import {
+  buildPeerView,
+  getDisclosureState,
+  offerDisclosure,
+  type DisclosureLevel,
+} from "../services/disclosure.js";
+import {
+  notifyCirclePostMulti,
+  notifyCircleReply,
   notifyDirectMessage,
 } from "../services/notifications.js";
+import {
+  castPollVote,
+  createPollForPost,
+  getPollForPost,
+  loadPostPolls,
+  validatePollInput,
+  type PollView,
+} from "../lib/polls.js";
 import { syncCircleMembership } from "../services/circle-sync.js";
 import { authMiddleware, type AuthVariables } from "../middleware/auth.js";
 import {
@@ -38,7 +60,9 @@ type PostMediaView = {
 function mapPost(
   row: Record<string, unknown>,
   author: { anonymousHandle: string; contextLabel: string; userId: string },
-  media: PostMediaView[] = []
+  media: PostMediaView[] = [],
+  poll?: PollView | null,
+  topics: TopicSummary[] = []
 ) {
   return {
     id: row.id,
@@ -47,6 +71,8 @@ function mapPost(
     replyCount: row.reply_count,
     createdAt: row.created_at,
     media,
+    poll: poll ?? null,
+    topics,
     author: {
       userId: author.userId,
       anonymousHandle: author.anonymousHandle,
@@ -109,9 +135,10 @@ export function createCirclesRoutes() {
            CASE c.circle_type
              WHEN 'curriculum' THEN 1
              WHEN 'locality' THEN 2
-             WHEN 'class' THEN 3
-             WHEN 'school' THEN 4
-             WHEN 'community' THEN 5
+             WHEN 'school_class' THEN 3
+             WHEN 'class' THEN 4
+             WHEN 'school' THEN 5
+             WHEN 'community' THEN 6
            END,
            c.display_name`,
         [userId]
@@ -231,6 +258,21 @@ export function createCirclesRoutes() {
         client,
         rows.map((row) => row.id)
       );
+      const memberCountResult = await client.query(
+        `SELECT COUNT(*)::int AS count FROM circle_members WHERE circle_id = $1`,
+        [circleId]
+      );
+      const memberCount = memberCountResult.rows[0]?.count ?? 0;
+      const pollsByPost = await loadPostPolls(
+        client,
+        rows.map((row) => row.id),
+        userId,
+        memberCount
+      );
+      const topicsByPost = await loadTopicsForPosts(
+        client,
+        rows.map((row) => row.id)
+      );
 
       const posts = await Promise.all(
         rows.map(async (row) => {
@@ -240,7 +282,13 @@ export function createCirclesRoutes() {
             row.anonymous_handle,
             circle
           );
-          return mapPost(row, author, mediaByPost.get(row.id) ?? []);
+          return mapPost(
+            row,
+            author,
+            mediaByPost.get(row.id) ?? [],
+            pollsByPost.get(row.id),
+            topicsByPost.get(row.id) ?? []
+          );
         })
       );
 
@@ -260,6 +308,12 @@ export function createCirclesRoutes() {
       body?: string;
       tag?: string;
       targetCircleIds?: string[];
+      poll?: {
+        question?: string;
+        options?: string[];
+        hideResultsUntilVote?: boolean;
+        closesAt?: string;
+      };
       media?: Array<{
         storageKey?: string;
         mediaType?: MediaType;
@@ -268,11 +322,24 @@ export function createCirclesRoutes() {
         height?: number;
         durationMs?: number;
       }>;
+      topicSlugs?: string[];
     }>();
 
     const text = body.body?.trim() ?? "";
-    if (!text && (!Array.isArray(body.media) || body.media.length === 0)) {
-      return c.json({ error: "A message or attachment is required" }, 400);
+    if (!text && (!Array.isArray(body.media) || body.media.length === 0) && !body.poll) {
+      return c.json({ error: "A message, poll, or attachment is required" }, 400);
+    }
+
+    if (body.poll) {
+      const pollError = validatePollInput({
+        question: body.poll.question ?? "",
+        options: body.poll.options ?? [],
+        hideResultsUntilVote: body.poll.hideResultsUntilVote,
+        closesAt: body.poll.closesAt,
+      });
+      if (pollError) {
+        return c.json({ error: pollError }, 400);
+      }
     }
 
     const tag = body.tag ?? "general";
@@ -435,6 +502,26 @@ export function createCirclesRoutes() {
         });
       }
 
+      if (body.poll) {
+        await createPollForPost(client, rows[0].id, {
+          question: body.poll.question ?? "",
+          options: body.poll.options ?? [],
+          hideResultsUntilVote: body.poll.hideResultsUntilVote,
+          closesAt: body.poll.closesAt,
+        });
+      }
+
+      let attachedTopics: TopicSummary[] = [];
+      if (Array.isArray(body.topicSlugs) && body.topicSlugs.length > 0) {
+        const resolved = await resolveTopicSlugs(client, body.topicSlugs);
+        if ("error" in resolved) {
+          await client.query("ROLLBACK");
+          return c.json({ error: resolved.error }, 400);
+        }
+        await attachTopicsToPost(client, rows[0].id, resolved.topicIds);
+        attachedTopics = resolved.topics;
+      }
+
       const userRow = await client.query(
         "SELECT anonymous_handle FROM users WHERE id = $1",
         [userId]
@@ -446,18 +533,47 @@ export function createCirclesRoutes() {
         primaryCircle
       );
 
-      for (const target of targetResult.rows) {
-        await notifyCirclePost(client, {
-          circleId: target.id,
-          circleName: target.display_name,
+      const memberCountResult = await client.query(
+        `SELECT COUNT(*)::int AS count FROM circle_members WHERE circle_id = $1`,
+        [circleId]
+      );
+      const memberCount = memberCountResult.rows[0]?.count ?? 0;
+      const pollsByPost = await loadPostPolls(
+        client,
+        [rows[0].id],
+        userId,
+        memberCount
+      );
+
+      await notifyCirclePostMulti(client, {
+        targets: targetResult.rows,
+        postId: rows[0].id,
+        authorId: userId,
+        postPreview:
+          text ||
+          (body.poll ? body.poll.question?.trim() || "Shared a poll" : "Shared a photo or video"),
+      });
+
+      if (attachedTopics.length > 0) {
+        const topicIds = (
+          await client.query(
+            `SELECT topic_id FROM post_topics WHERE post_id = $1`,
+            [rows[0].id]
+          )
+        ).rows.map((r) => r.topic_id);
+        await notifyTopicFollowers(client, {
           postId: rows[0].id,
           authorId: userId,
-          postPreview: text || "Shared a photo or video",
+          topicIds,
+          preview: text || "New post in a topic you follow",
         });
       }
 
       await client.query("COMMIT");
-      return c.json(mapPost(rows[0], author, mediaViews), 201);
+      return c.json(
+        mapPost(rows[0], author, mediaViews, pollsByPost.get(rows[0].id), attachedTopics),
+        201
+      );
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
@@ -497,6 +613,17 @@ export function createCirclesRoutes() {
 
       const postRow = postResult.rows[0];
       const mediaByPost = await loadPostMedia(client, [postId]);
+      const memberCountResult = await client.query(
+        `SELECT COUNT(*)::int AS count FROM circle_members WHERE circle_id = $1`,
+        [circleId]
+      );
+      const memberCount = memberCountResult.rows[0]?.count ?? 0;
+      const pollsByPost = await loadPostPolls(
+        client,
+        [postId],
+        userId,
+        memberCount
+      );
       const postAuthor = await buildAuthorView(
         client,
         postRow.author_id,
@@ -535,7 +662,12 @@ export function createCirclesRoutes() {
       );
 
       return c.json({
-        post: mapPost(postRow, postAuthor, mediaByPost.get(postId) ?? []),
+        post: mapPost(
+          postRow,
+          postAuthor,
+          mediaByPost.get(postId) ?? [],
+          pollsByPost.get(postId)
+        ),
         replies,
       });
     } finally {
@@ -562,7 +694,7 @@ export function createCirclesRoutes() {
       }
 
       const postCheck = await client.query(
-        `SELECT p.id
+        `SELECT p.id, p.author_id
          FROM circle_posts p
          WHERE p.id = $1
            AND EXISTS (
@@ -599,6 +731,15 @@ export function createCirclesRoutes() {
         circle
       );
 
+      await notifyCircleReply(client, {
+        postAuthorId: postCheck.rows[0].author_id,
+        postId,
+        circleId,
+        circleName: circle.display_name ?? "your circle",
+        replierId: userId,
+        replyPreview: text,
+      });
+
       return c.json(
         {
           id: rows[0].id,
@@ -612,6 +753,102 @@ export function createCirclesRoutes() {
         },
         201
       );
+    } finally {
+      client.release();
+    }
+  });
+
+  app.post("/:circleId/posts/:postId/vote", async (c) => {
+    const userId = c.get("user").sub;
+    const circleId = c.req.param("circleId");
+    const postId = c.req.param("postId");
+    const body = await c.req.json<{ optionId?: string }>();
+
+    if (!body.optionId) {
+      return c.json({ error: "optionId is required" }, 400);
+    }
+
+    const client = await pool.connect();
+    try {
+      const circle = await assertCircleMember(client, circleId, userId);
+      if (!circle) {
+        return c.json({ error: "Circle not found" }, 404);
+      }
+
+      const postCheck = await client.query(
+        `SELECT 1 FROM circle_post_targets
+         WHERE post_id = $1 AND circle_id = $2`,
+        [postId, circleId]
+      );
+      if (postCheck.rows.length === 0) {
+        return c.json({ error: "Post not found" }, 404);
+      }
+
+      const poll = await getPollForPost(client, postId);
+      if (!poll) {
+        return c.json({ error: "This post has no poll" }, 404);
+      }
+
+      const voteError = await castPollVote(client, {
+        pollId: poll.id,
+        optionId: body.optionId,
+        userId,
+      });
+      if (voteError) {
+        return c.json({ error: voteError }, 400);
+      }
+
+      const memberCountResult = await client.query(
+        `SELECT COUNT(*)::int AS count FROM circle_members WHERE circle_id = $1`,
+        [circleId]
+      );
+      const pollsByPost = await loadPostPolls(
+        client,
+        [postId],
+        userId,
+        memberCountResult.rows[0]?.count ?? 0
+      );
+
+      return c.json({ poll: pollsByPost.get(postId) ?? null });
+    } finally {
+      client.release();
+    }
+  });
+
+  app.delete("/:circleId/posts/:postId/vote", async (c) => {
+    const userId = c.get("user").sub;
+    const circleId = c.req.param("circleId");
+    const postId = c.req.param("postId");
+
+    const client = await pool.connect();
+    try {
+      const circle = await assertCircleMember(client, circleId, userId);
+      if (!circle) {
+        return c.json({ error: "Circle not found" }, 404);
+      }
+
+      const poll = await getPollForPost(client, postId);
+      if (!poll) {
+        return c.json({ error: "This post has no poll" }, 404);
+      }
+
+      await client.query(
+        `DELETE FROM poll_votes WHERE poll_id = $1 AND user_id = $2`,
+        [poll.id, userId]
+      );
+
+      const memberCountResult = await client.query(
+        `SELECT COUNT(*)::int AS count FROM circle_members WHERE circle_id = $1`,
+        [circleId]
+      );
+      const pollsByPost = await loadPostPolls(
+        client,
+        [postId],
+        userId,
+        memberCountResult.rows[0]?.count ?? 0
+      );
+
+      return c.json({ poll: pollsByPost.get(postId) ?? null });
     } finally {
       client.release();
     }
@@ -655,23 +892,31 @@ export function createConversationsRoutes() {
         [userId]
       );
 
-      const conversations = rows.map((row) => {
-        const unread =
-          row.last_message_created &&
-          (!row.last_read_at ||
-            new Date(row.last_message_created) > new Date(row.last_read_at));
-        return {
-          id: row.id,
-          peer: {
-            userId: row.peer_id,
-            anonymousHandle: row.peer_handle,
-          },
-          lastMessage: row.last_body
-            ? { body: row.last_body, createdAt: row.last_message_created }
-            : null,
-          unread: Boolean(unread),
-        };
-      });
+      const conversations = await Promise.all(
+        rows.map(async (row) => {
+          const unread =
+            row.last_message_created &&
+            (!row.last_read_at ||
+              new Date(row.last_message_created) > new Date(row.last_read_at));
+          const peer = await buildPeerView(client, {
+            conversationId: row.id,
+            viewerId: userId,
+          });
+          return {
+            id: row.id,
+            peer: peer ?? {
+              userId: row.peer_id,
+              anonymousHandle: row.peer_handle,
+              contextLabel: "",
+              disclosureLevel: 0 as DisclosureLevel,
+            },
+            lastMessage: row.last_body
+              ? { body: row.last_body, createdAt: row.last_message_created }
+              : null,
+            unread: Boolean(unread),
+          };
+        })
+      );
 
       return c.json(conversations);
     } finally {
@@ -685,6 +930,7 @@ export function createConversationsRoutes() {
       peerUserId?: string;
       circleId?: string;
       postId?: string;
+      listingId?: string;
     }>();
 
     const peerUserId = body.peerUserId;
@@ -699,7 +945,19 @@ export function createConversationsRoutes() {
       }
 
       const shared = await assertSharedCircle(client, userId, peerUserId);
-      if (!shared) {
+      if (body.listingId) {
+        const listing = await client.query(
+          `SELECT id, seller_id, status FROM listings WHERE id = $1`,
+          [body.listingId]
+        );
+        if (
+          listing.rows.length === 0 ||
+          listing.rows[0].seller_id !== peerUserId ||
+          listing.rows[0].status !== "active"
+        ) {
+          return c.json({ error: "Invalid listing for this conversation" }, 400);
+        }
+      } else if (!shared) {
         return c.json({ error: "You must share a circle to message" }, 403);
       }
 
@@ -747,9 +1005,14 @@ export function createConversationsRoutes() {
 
       return c.json({
         id: convId,
-        peer: {
+        peer: (await buildPeerView(client, {
+          conversationId: convId,
+          viewerId: userId,
+        })) ?? {
           userId: peerUserId,
           anonymousHandle: peerExists.rows[0].anonymous_handle,
+          contextLabel: "",
+          disclosureLevel: 0,
         },
       });
     } finally {
@@ -791,24 +1054,16 @@ export function createConversationsRoutes() {
 
       const { rows } = await client.query(query, params);
 
-      const conv = await client.query(
-        `SELECT user_a_id, user_b_id FROM conversations WHERE id = $1`,
-        [conversationId]
-      );
-      const peerId =
-        conv.rows[0].user_a_id === userId
-          ? conv.rows[0].user_b_id
-          : conv.rows[0].user_a_id;
-      const peerRow = await client.query(
-        "SELECT anonymous_handle FROM users WHERE id = $1",
-        [peerId]
-      );
+      const peer = await buildPeerView(client, {
+        conversationId,
+        viewerId: userId,
+      });
+      if (!peer) {
+        return c.json({ error: "Conversation not found" }, 404);
+      }
 
       return c.json({
-        peer: {
-          userId: peerId,
-          anonymousHandle: peerRow.rows[0].anonymous_handle,
-        },
+        peer,
         messages: rows.map((row) => ({
           id: row.id,
           body: row.body,
@@ -907,6 +1162,67 @@ export function createConversationsRoutes() {
         return c.json({ error: "Conversation not found" }, 404);
       }
       return c.json({ ok: true });
+    } finally {
+      client.release();
+    }
+  });
+
+  app.get("/:conversationId/disclosure", async (c) => {
+    const userId = c.get("user").sub;
+    const conversationId = c.req.param("conversationId");
+    const client = await pool.connect();
+    try {
+      const state = await getDisclosureState(client, conversationId, userId);
+      if (!state) {
+        return c.json({ error: "Conversation not found" }, 404);
+      }
+      const peer = await buildPeerView(client, {
+        conversationId,
+        viewerId: userId,
+      });
+      return c.json({
+        effectiveLevel: state.effectiveLevel,
+        ownOffer: state.ownOffer,
+        peerOffer: state.peerOffer,
+        peer,
+      });
+    } finally {
+      client.release();
+    }
+  });
+
+  app.post("/:conversationId/disclosure", async (c) => {
+    const userId = c.get("user").sub;
+    const conversationId = c.req.param("conversationId");
+    const body = await c.req.json<{ level?: number; purpose?: string }>();
+
+    const level = body.level;
+    if (level == null || level < 0 || level > 3) {
+      return c.json({ error: "Invalid disclosure level" }, 400);
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await offerDisclosure(client, {
+        conversationId,
+        userId,
+        level: level as DisclosureLevel,
+        purpose: body.purpose ?? "marketplace",
+      });
+      if ("error" in result) {
+        await client.query("ROLLBACK");
+        return c.json({ error: result.error }, 400);
+      }
+      const peer = await buildPeerView(client, {
+        conversationId,
+        viewerId: userId,
+      });
+      await client.query("COMMIT");
+      return c.json({ ...result, peer });
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
     } finally {
       client.release();
     }

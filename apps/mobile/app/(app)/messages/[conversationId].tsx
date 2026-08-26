@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -10,8 +11,16 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { useLocalSearchParams } from "expo-router";
-import { api, type DirectMessage } from "@/lib/api";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useNavigation } from "@react-navigation/native";
+import { DisclosurePrompt } from "@/components/DisclosurePrompt";
+import {
+  api,
+  peerDisplayName,
+  type DirectMessage,
+  type DisclosureState,
+  type PeerView,
+} from "@/lib/api";
 import { getToken } from "@/lib/session";
 
 export default function ChatScreen() {
@@ -19,18 +28,28 @@ export default function ChatScreen() {
     conversationId: string;
     peerHandle?: string;
   }>();
+  const router = useRouter();
+  const navigation = useNavigation();
   const [messages, setMessages] = useState<DirectMessage[]>([]);
+  const [peer, setPeer] = useState<PeerView | null>(null);
+  const [disclosure, setDisclosure] = useState<DisclosureState | null>(null);
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [disclosing, setDisclosing] = useState(false);
+  const [promptLevel, setPromptLevel] = useState<2 | 3 | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const listRef = useRef<FlatList>(null);
 
   const load = useCallback(async () => {
     const token = await getToken();
     if (!token) return;
-    const data = await api.getMessages(token, conversationId);
-    setMessages(data.messages);
+    const [messageData, disclosureData] = await Promise.all([
+      api.getMessages(token, conversationId),
+      api.getDisclosure(token, conversationId),
+    ]);
+    setMessages(messageData.messages);
+    setPeer(messageData.peer);
+    setDisclosure(disclosureData);
     await api.markConversationRead(token, conversationId);
   }, [conversationId]);
 
@@ -39,6 +58,46 @@ export default function ChatScreen() {
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
       .finally(() => setLoading(false));
   }, [load]);
+
+  useLayoutEffect(() => {
+    const name = peer ? peerDisplayName(peer) : peerHandle ?? "Parent";
+    navigation.setOptions({ title: name });
+  }, [navigation, peer, peerHandle]);
+
+  async function confirmDisclosure(level: 2 | 3) {
+    setDisclosing(true);
+    setError(null);
+    try {
+      const token = await getToken();
+      if (!token) return;
+      const result = await api.offerDisclosure(token, conversationId, {
+        level,
+        purpose: level === 3 ? "carpool" : "marketplace",
+      });
+      setDisclosure(result);
+      if (result.peer) setPeer(result.peer);
+      setPromptLevel(null);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Could not share identity";
+      if (message.includes("first name")) {
+        Alert.alert(
+          "Contact details needed",
+          message,
+          [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Add details",
+              onPress: () => router.push("/(app)/contact-details"),
+            },
+          ]
+        );
+      } else {
+        setError(message);
+      }
+    } finally {
+      setDisclosing(false);
+    }
+  }
 
   async function onSend() {
     const body = text.trim();
@@ -51,7 +110,6 @@ export default function ChatScreen() {
       const msg = await api.sendMessage(token, conversationId, body);
       setMessages((prev) => [...prev, msg]);
       setText("");
-      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to send");
     } finally {
@@ -67,24 +125,68 @@ export default function ChatScreen() {
     );
   }
 
+  const needsAccept =
+    disclosure &&
+    disclosure.peerOffer > disclosure.ownOffer &&
+    disclosure.peerOffer >= 2;
+  const canOfferHandover =
+    disclosure &&
+    disclosure.effectiveLevel < 2 &&
+    disclosure.ownOffer < 2;
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       keyboardVerticalOffset={90}
     >
-      <Text style={styles.headerHint}>
-        Chatting with {peerHandle ?? "parent"} — identities stay anonymous
-      </Text>
+      {peer ? (
+        <View style={styles.peerCard}>
+          <Text style={styles.peerName}>{peerDisplayName(peer)}</Text>
+          {peer.contextLabel ? (
+            <Text style={styles.peerContext}>{peer.contextLabel}</Text>
+          ) : null}
+          {peer.disclosureLevel >= 2 && peer.blockOrFlat ? (
+            <Text style={styles.peerDetail}>Flat: {peer.blockOrFlat}</Text>
+          ) : null}
+          {peer.disclosureLevel >= 3 && peer.contactPhone ? (
+            <Text style={styles.peerDetail}>Phone: {peer.contactPhone}</Text>
+          ) : null}
+          {peer.disclosureLevel >= 3 && peer.vehicleDescription ? (
+            <Text style={styles.peerDetail}>
+              Vehicle: {peer.vehicleDescription}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+
+      {needsAccept ? (
+        <Pressable
+          style={styles.banner}
+          onPress={() => setPromptLevel(disclosure!.peerOffer as 2 | 3)}
+        >
+          <Text style={styles.bannerTitle}>Identity sharing requested</Text>
+          <Text style={styles.bannerBody}>
+            Tap to review and share your first name and flat number.
+          </Text>
+        </Pressable>
+      ) : null}
+
+      {canOfferHandover ? (
+        <Pressable
+          style={styles.bannerSecondary}
+          onPress={() => setPromptLevel(2)}
+        >
+          <Text style={styles.bannerSecondaryText}>
+            Arranging handover? Share first name and flat number
+          </Text>
+        </Pressable>
+      ) : null}
 
       <FlatList
-        ref={listRef}
         data={messages}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
-        onContentSizeChange={() =>
-          listRef.current?.scrollToEnd({ animated: false })
-        }
         renderItem={({ item }) => (
           <View
             style={[
@@ -124,6 +226,14 @@ export default function ChatScreen() {
           )}
         </Pressable>
       </View>
+
+      <DisclosurePrompt
+        visible={promptLevel != null}
+        level={promptLevel ?? 2}
+        onConfirm={() => promptLevel && confirmDisclosure(promptLevel)}
+        onCancel={() => setPromptLevel(null)}
+        loading={disclosing}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -131,12 +241,40 @@ export default function ChatScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f8f9fc" },
   centered: { flex: 1, justifyContent: "center", alignItems: "center" },
-  headerHint: {
-    fontSize: 12,
-    color: "#5c5c7a",
+  peerCard: {
+    backgroundColor: "#fff",
+    marginHorizontal: 12,
+    marginTop: 8,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e2e4ef",
+  },
+  peerName: { fontSize: 16, fontWeight: "700", color: "#1a1a2e" },
+  peerContext: { fontSize: 13, color: "#5c5c7a", marginTop: 4 },
+  peerDetail: { fontSize: 14, color: "#1a1a2e", marginTop: 6 },
+  banner: {
+    marginHorizontal: 12,
+    marginTop: 8,
+    backgroundColor: "#eef2ff",
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#c7d2fe",
+  },
+  bannerTitle: { fontWeight: "700", color: "#312e81", fontSize: 14 },
+  bannerBody: { color: "#4338ca", fontSize: 13, marginTop: 4, lineHeight: 18 },
+  bannerSecondary: {
+    marginHorizontal: 12,
+    marginTop: 8,
+    padding: 10,
+    alignItems: "center",
+  },
+  bannerSecondaryText: {
+    color: "#4f46e5",
+    fontWeight: "600",
+    fontSize: 13,
     textAlign: "center",
-    paddingVertical: 8,
-    paddingHorizontal: 16,
   },
   list: { padding: 12, paddingBottom: 8 },
   bubble: {

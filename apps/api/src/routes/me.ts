@@ -675,6 +675,224 @@ export function createMeRoutes() {
     }
   });
 
+  app.get("/contact-details", async (c) => {
+    const userId = c.get("user").sub;
+    const client = await pool.connect();
+    try {
+      const { rows } = await client.query(
+        `SELECT first_name, block_or_flat, contact_phone, vehicle_description, updated_at
+         FROM user_contact_details WHERE user_id = $1`,
+        [userId]
+      );
+      if (rows.length === 0) return c.json(null);
+      return c.json({
+        firstName: rows[0].first_name,
+        blockOrFlat: rows[0].block_or_flat,
+        contactPhone: rows[0].contact_phone,
+        vehicleDescription: rows[0].vehicle_description,
+        updatedAt: rows[0].updated_at,
+      });
+    } finally {
+      client.release();
+    }
+  });
+
+  app.put("/contact-details", async (c) => {
+    const userId = c.get("user").sub;
+    const body = await c.req.json<{
+      firstName?: string;
+      blockOrFlat?: string;
+      contactPhone?: string;
+      vehicleDescription?: string;
+    }>();
+
+    const client = await pool.connect();
+    try {
+      await client.query(
+        `INSERT INTO user_contact_details
+           (user_id, first_name, block_or_flat, contact_phone, vehicle_description, updated_at)
+         VALUES ($1, $2, $3, $4, $5, now())
+         ON CONFLICT (user_id) DO UPDATE SET
+           first_name = EXCLUDED.first_name,
+           block_or_flat = EXCLUDED.block_or_flat,
+           contact_phone = EXCLUDED.contact_phone,
+           vehicle_description = EXCLUDED.vehicle_description,
+           updated_at = now()`,
+        [
+          userId,
+          body.firstName?.trim() || null,
+          body.blockOrFlat?.trim() || null,
+          body.contactPhone?.trim() || null,
+          body.vehicleDescription?.trim() || null,
+        ]
+      );
+      return c.json({ ok: true });
+    } finally {
+      client.release();
+    }
+  });
+
+  app.get("/topics", async (c) => {
+    const userId = c.get("user").sub;
+    const client = await pool.connect();
+    try {
+      const { rows } = await client.query(
+        `SELECT t.slug, t.name, t.category, t.post_count
+         FROM topic_follows tf
+         JOIN topics t ON t.id = tf.topic_id
+         WHERE tf.user_id = $1 AND t.active = true
+         ORDER BY t.name`,
+        [userId]
+      );
+      return c.json(
+        rows.map((row) => ({
+          slug: row.slug,
+          name: row.name,
+          category: row.category,
+          postCount: row.post_count,
+        }))
+      );
+    } finally {
+      client.release();
+    }
+  });
+
+  app.get("/school-events/upcoming", async (c) => {
+    const userId = c.get("user").sub;
+    const client = await pool.connect();
+    try {
+      const { rows } = await client.query(
+        `SELECT e.id, e.school_id, e.title, e.event_type, e.starts_at,
+                e.source, e.confirmed_count, e.disputed_count,
+                s.name AS school_name
+         FROM school_events e
+         JOIN schools s ON s.id = e.school_id
+         JOIN children ch ON ch.school_id = e.school_id AND ch.user_id = $1
+         WHERE e.hidden = false
+           AND e.starts_at >= now()
+           AND e.starts_at <= now() + interval '7 days'
+           AND (e.grade_id IS NULL OR e.grade_id = ch.grade_id)
+         ORDER BY e.starts_at ASC
+         LIMIT 10`,
+        [userId]
+      );
+      return c.json(
+        rows.map((row) => ({
+          id: row.id,
+          schoolId: row.school_id,
+          schoolName: row.school_name,
+          title: row.title,
+          eventType: row.event_type,
+          startsAt: row.starts_at,
+          unconfirmed:
+            row.source === "parent_reported" && row.confirmed_count < 3,
+        }))
+      );
+    } finally {
+      client.release();
+    }
+  });
+
+  app.get("/saved", async (c) => {
+    const userId = c.get("user").sub;
+    const client = await pool.connect();
+    try {
+      const { rows } = await client.query(
+        `SELECT item_type, item_id, created_at
+         FROM saved_items
+         WHERE user_id = $1
+         ORDER BY created_at DESC`,
+        [userId]
+      );
+
+      const posts: Array<Record<string, unknown>> = [];
+
+      for (const row of rows) {
+        if (row.item_type !== "post") continue;
+        const post = await client.query(
+          `SELECT p.id, p.body, p.tag, p.created_at, u.anonymous_handle,
+                  EXISTS (
+                    SELECT 1 FROM circle_post_targets pct
+                    JOIN circle_members cm ON cm.circle_id = pct.circle_id
+                    WHERE pct.post_id = p.id AND cm.user_id = $2
+                  ) AS can_view,
+                  (
+                    SELECT pct.circle_id FROM circle_post_targets pct
+                    JOIN circle_members cm ON cm.circle_id = pct.circle_id
+                    WHERE pct.post_id = p.id AND cm.user_id = $2
+                    LIMIT 1
+                  ) AS circle_id
+           FROM circle_posts p
+           JOIN users u ON u.id = p.author_id
+           WHERE p.id = $1`,
+          [row.item_id, userId]
+        );
+        if (post.rows.length === 0) {
+          posts.push({
+            id: row.item_id,
+            unavailable: true,
+            savedAt: row.created_at,
+          });
+        } else if (post.rows[0].can_view) {
+          posts.push({
+            id: post.rows[0].id,
+            circleId: post.rows[0].circle_id,
+            body: post.rows[0].body,
+            tag: post.rows[0].tag,
+            createdAt: post.rows[0].created_at,
+            authorHandle: post.rows[0].anonymous_handle,
+            savedAt: row.created_at,
+          });
+        }
+      }
+
+      return c.json({ posts, activities: [], listings: [] });
+    } finally {
+      client.release();
+    }
+  });
+
+  app.post("/saved", async (c) => {
+    const userId = c.get("user").sub;
+    const body = await c.req.json<{ itemType?: string; itemId?: string }>();
+    if (!body.itemType || !body.itemId) {
+      return c.json({ error: "itemType and itemId are required" }, 400);
+    }
+    if (!["post", "activity", "listing"].includes(body.itemType)) {
+      return c.json({ error: "Invalid item type" }, 400);
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query(
+        `INSERT INTO saved_items (user_id, item_type, item_id)
+         VALUES ($1, $2, $3)
+         ON CONFLICT DO NOTHING`,
+        [userId, body.itemType, body.itemId]
+      );
+      return c.json({ ok: true }, 201);
+    } finally {
+      client.release();
+    }
+  });
+
+  app.delete("/saved/:itemType/:itemId", async (c) => {
+    const userId = c.get("user").sub;
+    const itemType = c.req.param("itemType");
+    const itemId = c.req.param("itemId");
+    const client = await pool.connect();
+    try {
+      await client.query(
+        `DELETE FROM saved_items
+         WHERE user_id = $1 AND item_type = $2 AND item_id = $3`,
+        [userId, itemType, itemId]
+      );
+      return c.json({ ok: true });
+    } finally {
+      client.release();
+    }
+  });
+
   app.post("/blocks/:userId", async (c) => {
     const userId = c.get("user").sub;
     const blockedId = c.req.param("userId");
