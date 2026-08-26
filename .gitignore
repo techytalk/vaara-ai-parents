@@ -1,0 +1,23 @@
+# Environment (secrets)
+.env
+.env.local
+.env.*.local
+
+# Dependencies
+node_modules/
+
+# OS
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+
+# Expo / React Native
+.expo/
+dist/
+web-build/
+
+# IDE
+.idea/
+.vscode/

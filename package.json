@@ -1,0 +1,15 @@
+{
+  "name": "vaara-parents",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "db:migrate": "npm run migrate -w @vaara/db",
+    "db:seed": "npm run seed -w @vaara/db",
+    "dev:api": "npm run dev -w @vaara/api",
+    "dev:mobile": "npm run start -w @vaara/mobile",
+    "build:api": "npm run build -w @vaara/api"
+  }
+}

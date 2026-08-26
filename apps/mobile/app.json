@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "Vaara Parents",
+    "slug": "vaara-parents",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "vaara-parents",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.vaara.parents"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#1a1a2e"
+      },
+      "package": "com.vaara.parents"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-notifications",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Vaara Parents to select photos and videos for circle posts."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "iosStoreUrl": "https://apps.apple.com/app/vaara-parents",
+      "androidStoreUrl": "https://play.google.com/store/apps/details?id=com.vaara.parents"
+    }
+  }
+}
