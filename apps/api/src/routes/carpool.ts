@@ -404,6 +404,8 @@ export function createCarpoolRoutes() {
           data: { arrangementId },
           pushToken: row.push_token,
           notificationPrefs: row.notification_prefs,
+          prefKey: "carpool",
+          delivery: "immediate",
         });
       }
 

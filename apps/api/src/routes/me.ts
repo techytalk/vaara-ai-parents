@@ -500,6 +500,68 @@ export function createMeRoutes() {
     }
   });
 
+  app.get("/notification-mutes", async (c) => {
+    const userId = c.get("user").sub;
+    const client = await pool.connect();
+    try {
+      const { rows } = await client.query(
+        `SELECT scope, scope_id AS "scopeId", created_at AS "createdAt"
+         FROM notification_mutes
+         WHERE user_id = $1
+         ORDER BY created_at DESC`,
+        [userId]
+      );
+      return c.json({ mutes: rows });
+    } finally {
+      client.release();
+    }
+  });
+
+  app.post("/notification-mutes", async (c) => {
+    const userId = c.get("user").sub;
+    const body = await c.req.json<{ scope?: string; scopeId?: string }>();
+    const scope = body.scope?.trim();
+    const scopeId = body.scopeId?.trim();
+
+    if (!scope || !scopeId) {
+      return c.json({ error: "scope and scopeId are required" }, 400);
+    }
+    if (!["circle", "topic", "listing"].includes(scope)) {
+      return c.json({ error: "Invalid mute scope" }, 400);
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query(
+        `INSERT INTO notification_mutes (user_id, scope, scope_id)
+         VALUES ($1, $2, $3)
+         ON CONFLICT DO NOTHING`,
+        [userId, scope, scopeId]
+      );
+      return c.json({ ok: true }, 201);
+    } finally {
+      client.release();
+    }
+  });
+
+  app.delete("/notification-mutes/:scope/:scopeId", async (c) => {
+    const userId = c.get("user").sub;
+    const scope = c.req.param("scope");
+    const scopeId = c.req.param("scopeId");
+
+    const client = await pool.connect();
+    try {
+      await client.query(
+        `DELETE FROM notification_mutes
+         WHERE user_id = $1 AND scope = $2 AND scope_id = $3`,
+        [userId, scope, scopeId]
+      );
+      return c.json({ ok: true });
+    } finally {
+      client.release();
+    }
+  });
+
   app.get("/reminders", async (c) => {
     const userId = c.get("user").sub;
     const client = await pool.connect();

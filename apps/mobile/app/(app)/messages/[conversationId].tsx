@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useState } from "react";
+import { useCallback, useLayoutEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -13,7 +13,9 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useNavigation } from "@react-navigation/native";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DisclosurePrompt } from "@/components/DisclosurePrompt";
+import { useRealtimeChannel } from "@/hooks/useRealtimeChannel";
 import {
   api,
   peerDisplayName,
@@ -30,34 +32,49 @@ export default function ChatScreen() {
   }>();
   const router = useRouter();
   const navigation = useNavigation();
-  const [messages, setMessages] = useState<DirectMessage[]>([]);
-  const [peer, setPeer] = useState<PeerView | null>(null);
-  const [disclosure, setDisclosure] = useState<DisclosureState | null>(null);
+  const queryClient = useQueryClient();
   const [text, setText] = useState("");
-  const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [disclosing, setDisclosing] = useState(false);
   const [promptLevel, setPromptLevel] = useState<2 | 3 | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    const token = await getToken();
-    if (!token) return;
-    const [messageData, disclosureData] = await Promise.all([
-      api.getMessages(token, conversationId),
-      api.getDisclosure(token, conversationId),
-    ]);
-    setMessages(messageData.messages);
-    setPeer(messageData.peer);
-    setDisclosure(disclosureData);
-    await api.markConversationRead(token, conversationId);
-  }, [conversationId]);
+  const chatQuery = useQuery({
+    queryKey: ["conversation", conversationId],
+    queryFn: async () => {
+      const token = await getToken();
+      if (!token) throw new Error("Not signed in");
+      const [messageData, disclosureData] = await Promise.all([
+        api.getMessages(token, conversationId),
+        api.getDisclosure(token, conversationId),
+      ]);
+      await api.markConversationRead(token, conversationId);
+      return {
+        messages: messageData.messages,
+        peer: messageData.peer,
+        disclosure: disclosureData,
+      };
+    },
+  });
 
-  useEffect(() => {
-    load()
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
-      .finally(() => setLoading(false));
-  }, [load]);
+  const refreshChat = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["conversation", conversationId] });
+  }, [conversationId, queryClient]);
+
+  useRealtimeChannel({
+    channel: conversationId ? `conversation:${conversationId}` : null,
+    onEvent: (event) => {
+      if (event.type === "message.new") {
+        refreshChat();
+      }
+    },
+    onPollFallback: refreshChat,
+  });
+
+  const messages = chatQuery.data?.messages ?? [];
+  const peer = chatQuery.data?.peer ?? null;
+  const disclosure = chatQuery.data?.disclosure ?? null;
+  const loading = chatQuery.isLoading;
 
   useLayoutEffect(() => {
     const name = peer ? peerDisplayName(peer) : peerHandle ?? "Parent";
@@ -74,8 +91,19 @@ export default function ChatScreen() {
         level,
         purpose: level === 3 ? "carpool" : "marketplace",
       });
-      setDisclosure(result);
-      if (result.peer) setPeer(result.peer);
+      queryClient.setQueryData(["conversation", conversationId], (current: {
+        messages: DirectMessage[];
+        peer: PeerView | null;
+        disclosure: DisclosureState;
+      } | undefined) =>
+        current
+          ? {
+              ...current,
+              disclosure: result,
+              peer: result.peer ?? current.peer,
+            }
+          : current
+      );
       setPromptLevel(null);
     } catch (e) {
       const message = e instanceof Error ? e.message : "Could not share identity";
@@ -108,7 +136,15 @@ export default function ChatScreen() {
       const token = await getToken();
       if (!token) return;
       const msg = await api.sendMessage(token, conversationId, body);
-      setMessages((prev) => [...prev, msg]);
+      queryClient.setQueryData(["conversation", conversationId], (current: {
+        messages: DirectMessage[];
+        peer: PeerView | null;
+        disclosure: DisclosureState | null;
+      } | undefined) =>
+        current
+          ? { ...current, messages: [...current.messages, msg] }
+          : current
+      );
       setText("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to send");

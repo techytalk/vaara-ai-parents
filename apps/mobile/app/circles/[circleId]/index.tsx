@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useState } from "react";
+import { useCallback, useLayoutEffect, useState } from "react";
 import {
   FlatList,
   Pressable,
@@ -7,6 +7,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import {
@@ -20,6 +21,7 @@ import {
   ScreenLoader,
   theme,
 } from "@/components/circles/ui";
+import { useRealtimeChannel } from "@/hooks/useRealtimeChannel";
 import { api, type CirclePost } from "@/lib/api";
 import { getToken } from "@/lib/session";
 
@@ -98,10 +100,9 @@ export default function CircleFeedScreen() {
   }>();
   const router = useRouter();
   const navigation = useNavigation();
-  const [posts, setPosts] = useState<CirclePost[]>([]);
+  const queryClient = useQueryClient();
   const [savedPostIds, setSavedPostIds] = useState<Set<string>>(new Set());
-  const [memberCount, setMemberCount] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [muted, setMuted] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   useLayoutEffect(() => {
@@ -110,29 +111,65 @@ export default function CircleFeedScreen() {
     });
   }, [navigation, title]);
 
-  const load = useCallback(async () => {
+  const feedQuery = useQuery({
+    queryKey: ["circleFeed", circleId],
+    queryFn: async () => {
+      const token = await getToken();
+      if (!token) throw new Error("Not signed in");
+      const [feed, members, saved, mutes] = await Promise.all([
+        api.getCircleFeed(token, circleId, { scope: "local" }),
+        api.getCircleMembers(token, circleId),
+        api.getSaved(token),
+        api.getNotificationMutes(token),
+      ]);
+      setSavedPostIds(new Set(saved.posts.map((post) => post.id)));
+      setMuted(
+        mutes.mutes.some(
+          (mute) => mute.scope === "circle" && mute.scopeId === circleId
+        )
+      );
+      return { posts: feed.posts, memberCount: members.length };
+    },
+  });
+
+  const refreshFeed = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["circleFeed", circleId] });
+  }, [circleId, queryClient]);
+
+  useRealtimeChannel({
+    channel: circleId ? `circle:${circleId}` : null,
+    onEvent: (event) => {
+      if (event.type === "post.new") {
+        refreshFeed();
+      }
+    },
+    onPollFallback: refreshFeed,
+  });
+
+  const posts = feedQuery.data?.posts ?? [];
+  const memberCount = feedQuery.data?.memberCount ?? 0;
+  const loading = feedQuery.isLoading;
+
+  async function toggleMute() {
     const token = await getToken();
     if (!token) return;
-    const [feed, members, saved] = await Promise.all([
-      api.getCircleFeed(token, circleId, { scope: "local" }),
-      api.getCircleMembers(token, circleId),
-      api.getSaved(token),
-    ]);
-    setPosts(feed.posts);
-    setMemberCount(members.length);
-    setSavedPostIds(new Set(saved.posts.map((post) => post.id)));
-  }, [circleId]);
-
-  useEffect(() => {
-    load()
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [load]);
+    try {
+      if (muted) {
+        await api.unmuteNotifications(token, "circle", circleId);
+        setMuted(false);
+      } else {
+        await api.muteNotifications(token, { scope: "circle", scopeId: circleId });
+        setMuted(true);
+      }
+    } catch {
+      // ignore mute errors
+    }
+  }
 
   async function onRefresh() {
     setRefreshing(true);
     try {
-      await load();
+      await feedQuery.refetch();
     } finally {
       setRefreshing(false);
     }
@@ -158,8 +195,17 @@ export default function CircleFeedScreen() {
     try {
       const { poll } = await api.votePoll(token, circleId, postId, optionId);
       if (!poll) return;
-      setPosts((current) =>
-        current.map((post) => (post.id === postId ? { ...post, poll } : post))
+      queryClient.setQueryData(
+        ["circleFeed", circleId],
+        (current: { posts: CirclePost[]; memberCount: number } | undefined) =>
+          current
+            ? {
+                ...current,
+                posts: current.posts.map((post) =>
+                  post.id === postId ? { ...post, poll } : post
+                ),
+              }
+            : current
       );
     } catch {
       // ignore vote errors in feed
@@ -211,6 +257,14 @@ export default function CircleFeedScreen() {
               {memberCount} member{memberCount !== 1 ? "s" : ""}
             </Text>
             <Ionicons name="chevron-forward" size={14} color={theme.textMuted} />
+          </Pressable>
+          <Pressable style={styles.statChip} onPress={toggleMute}>
+            <Ionicons
+              name={muted ? "notifications-off-outline" : "notifications-outline"}
+              size={14}
+              color={muted ? theme.textMuted : theme.primary}
+            />
+            <Text style={styles.statText}>{muted ? "Muted" : "Notify"}</Text>
           </Pressable>
         </View>
       </View>

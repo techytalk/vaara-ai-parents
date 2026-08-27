@@ -25,6 +25,8 @@ const MIGRATIONS = [
   { version: "017_expert_sessions", file: "017_expert_sessions.sql" },
   { version: "018_playdates", file: "018_playdates.sql" },
   { version: "019_carpool", file: "019_carpool.sql" },
+  { version: "020_notification_digest", file: "020_notification_digest.sql" },
+  { version: "021_google_auth", file: "021_google_auth.sql" },
 ];
 
 async function isMigrationApplied(

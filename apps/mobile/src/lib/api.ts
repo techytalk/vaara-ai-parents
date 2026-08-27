@@ -377,6 +377,24 @@ export type NotificationPrefs = {
   direct_messages?: boolean;
   reminders?: boolean;
   activity_nearby?: boolean;
+  topics?: boolean;
+  listings?: boolean;
+  disclosures?: boolean;
+  carpool?: boolean;
+  school_events?: boolean;
+  expert_sessions?: boolean;
+  quiet_hours?: {
+    enabled?: boolean;
+    start?: string;
+    end?: string;
+    timezone?: string;
+  };
+};
+
+export type NotificationMute = {
+  scope: "circle" | "topic" | "listing";
+  scopeId: string;
+  createdAt: string;
 };
 
 async function request<T>(
@@ -415,6 +433,16 @@ export const api = {
 
   login: (body: { email: string; password: string }) =>
     request<AuthResponse>("/v1/auth/login", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  loginWithGoogle: (body: {
+    idToken: string;
+    role?: "parent" | "provider";
+    displayName?: string;
+  }) =>
+    request<AuthResponse>("/v1/auth/google", {
       method: "POST",
       body: JSON.stringify(body),
     }),
@@ -840,6 +868,29 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(prefs),
     }, token),
+
+  getNotificationMutes: (token: string) =>
+    request<{ mutes: NotificationMute[] }>("/v1/me/notification-mutes", {}, token),
+
+  muteNotifications: (
+    token: string,
+    body: { scope: NotificationMute["scope"]; scopeId: string }
+  ) =>
+    request<{ ok: boolean }>("/v1/me/notification-mutes", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }, token),
+
+  unmuteNotifications: (
+    token: string,
+    scope: NotificationMute["scope"],
+    scopeId: string
+  ) =>
+    request<{ ok: boolean }>(
+      `/v1/me/notification-mutes/${scope}/${scopeId}`,
+      { method: "DELETE" },
+      token
+    ),
 
   getReminders: (token: string) =>
     request<Reminder[]>("/v1/me/reminders", {}, token),

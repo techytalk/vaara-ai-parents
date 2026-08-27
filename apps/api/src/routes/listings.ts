@@ -9,6 +9,7 @@ import {
 import { buildPeerView } from "../services/disclosure.js";
 import { authMiddleware, type AuthVariables } from "../middleware/auth.js";
 import { createNotification } from "../services/notifications.js";
+import { dispatchListingCreated } from "../lib/async-events.js";
 
 const LISTING_KINDS = ["for_sale", "free", "wanted"] as const;
 const LISTING_STATUSES = ["active", "reserved", "completed", "expired", "removed"] as const;
@@ -343,6 +344,14 @@ export function createListingRoutes() {
 
       await client.query("COMMIT");
 
+      await dispatchListingCreated({
+        listingId,
+        sellerId: userId,
+        title,
+        communityKey: loc.rows[0].community_key,
+        pinCode: loc.rows[0].pin_code,
+      });
+
       const media = await loadListingMedia(client, listingId);
       return c.json(mapListing({ ...rows[0], is_mine: true }, media), 201);
     } catch (err) {
@@ -508,6 +517,8 @@ export function createListingRoutes() {
           data: { listingId, conversationId: convId },
           pushToken: seller.rows[0].push_token,
           notificationPrefs: seller.rows[0].notification_prefs,
+          prefKey: "listings",
+          delivery: "immediate",
         });
       }
 

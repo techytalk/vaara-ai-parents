@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useState } from "react";
+import { useCallback, useLayoutEffect, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -8,50 +8,66 @@ import {
   Text,
   View,
 } from "react-native";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams, useNavigation } from "expo-router";
 import { AuthorRow, formatPostTime, theme } from "@/components/circles/ui";
+import { useRealtimeChannel } from "@/hooks/useRealtimeChannel";
 import { api, type CirclePost } from "@/lib/api";
 import { getToken } from "@/lib/session";
 
 export default function TopicFeedScreen() {
   const { slug, title } = useLocalSearchParams<{ slug: string; title?: string }>();
   const navigation = useNavigation();
-  const [posts, setPosts] = useState<CirclePost[]>([]);
-  const [following, setFollowing] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
 
   useLayoutEffect(() => {
     navigation.setOptions({ title: title ?? slug });
   }, [navigation, slug, title]);
 
-  const load = useCallback(async () => {
-    const token = await getToken();
-    if (!token) return;
-    const [feed, followed] = await Promise.all([
-      api.getTopicFeed(token, slug),
-      api.getFollowedTopics(token),
-    ]);
-    setPosts(feed.posts);
-    setFollowing(followed.some((t) => t.slug === slug));
-  }, [slug]);
+  const feedQuery = useQuery({
+    queryKey: ["topicFeed", slug],
+    queryFn: async () => {
+      const token = await getToken();
+      if (!token) throw new Error("Not signed in");
+      const [feed, followed] = await Promise.all([
+        api.getTopicFeed(token, slug),
+        api.getFollowedTopics(token),
+      ]);
+      return {
+        posts: feed.posts,
+        following: followed.some((topic) => topic.slug === slug),
+      };
+    },
+  });
 
-  useEffect(() => {
-    load()
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [load]);
+  const refreshFeed = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["topicFeed", slug] });
+  }, [queryClient, slug]);
+
+  useRealtimeChannel({
+    channel: slug ? `topic:${slug}` : null,
+    onEvent: (event) => {
+      if (event.type === "post.new") {
+        refreshFeed();
+      }
+    },
+    onPollFallback: refreshFeed,
+  });
+
+  const posts = feedQuery.data?.posts ?? [];
+  const following = feedQuery.data?.following ?? false;
+  const loading = feedQuery.isLoading;
 
   async function toggleFollow() {
     const token = await getToken();
     if (!token) return;
     if (following) {
       await api.unfollowTopic(token, slug);
-      setFollowing(false);
     } else {
       await api.followTopic(token, slug);
-      setFollowing(true);
     }
+    refreshFeed();
   }
 
   if (loading) {
@@ -77,7 +93,7 @@ export default function TopicFeedScreen() {
             refreshing={refreshing}
             onRefresh={async () => {
               setRefreshing(true);
-              await load();
+              await feedQuery.refetch();
               setRefreshing(false);
             }}
           />

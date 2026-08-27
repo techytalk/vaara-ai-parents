@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -8,7 +8,10 @@ import {
   View,
 } from "react-native";
 import { Link, useRouter } from "expo-router";
+import { AuthDivider, GoogleSignInButton } from "@/components/GoogleSignInButton";
+import { useGoogleAuth } from "@/hooks/useGoogleAuth";
 import { api } from "@/lib/api";
+import { routeAfterAuth } from "@/lib/auth-navigation";
 import { saveSession } from "@/lib/session";
 
 export default function LoginScreen() {
@@ -18,19 +21,22 @@ export default function LoginScreen() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const completeAuth = useCallback(
+    async (result: Awaited<ReturnType<typeof api.login>>) => {
+      await saveSession(result.token, result.user);
+      routeAfterAuth(router, result.user);
+    },
+    [router]
+  );
+
+  const google = useGoogleAuth({ onSuccess: completeAuth });
+
   async function onLogin() {
     setError(null);
     setLoading(true);
     try {
-      const { token, user } = await api.login({ email, password });
-      await saveSession(token, user);
-      if (user.onboardingComplete) {
-        router.replace(user.role === "provider" ? "/(provider)" : "/(app)");
-      } else if (user.role === "provider") {
-        router.replace("/onboarding/provider");
-      } else {
-        router.replace("/onboarding/children");
-      }
+      const result = await api.login({ email, password });
+      await completeAuth(result);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Login failed");
     } finally {
@@ -38,10 +44,19 @@ export default function LoginScreen() {
     }
   }
 
+  const displayError = error ?? google.error;
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Welcome back</Text>
       <Text style={styles.subtitle}>Connect with parents in your community</Text>
+
+      <GoogleSignInButton
+        onPress={google.signInWithGoogle}
+        loading={google.loading}
+      />
+
+      <AuthDivider />
 
       <TextInput
         style={styles.input}
@@ -59,13 +74,17 @@ export default function LoginScreen() {
         onChangeText={setPassword}
       />
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {displayError ? <Text style={styles.error}>{displayError}</Text> : null}
 
-      <Pressable style={styles.button} onPress={onLogin} disabled={loading}>
+      <Pressable
+        style={styles.button}
+        onPress={onLogin}
+        disabled={loading || google.loading}
+      >
         {loading ? (
           <ActivityIndicator color="#fff" />
         ) : (
-          <Text style={styles.buttonText}>Sign in</Text>
+          <Text style={styles.buttonText}>Sign in with email</Text>
         )}
       </Pressable>
 
@@ -92,7 +111,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: "#5c5c7a",
     marginTop: 8,
-    marginBottom: 32,
+    marginBottom: 24,
   },
   input: {
     backgroundColor: "#fff",

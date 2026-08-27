@@ -1,5 +1,11 @@
 import { Hono } from "hono";
 import { pool } from "@vaara/db";
+import {
+  feedCacheKey,
+  getCachedJson,
+  isRedisEnabled,
+  setCachedJson,
+} from "@vaara/redis";
 import type { PoolClient } from "pg";
 import {
   assertCircleMember,
@@ -21,9 +27,7 @@ import {
   type DisclosureLevel,
 } from "../services/disclosure.js";
 import {
-  notifyCirclePostMulti,
   notifyCircleReply,
-  notifyDirectMessage,
 } from "../services/notifications.js";
 import {
   castPollVote,
@@ -34,6 +38,9 @@ import {
   type PollView,
 } from "../lib/polls.js";
 import { syncCircleMembership } from "../services/circle-sync.js";
+import { loadCircleFeed } from "../services/feed.js";
+import { dispatchPostCreated, dispatchMessageCreated } from "../lib/async-events.js";
+import { rateLimitMiddleware } from "../middleware/rate-limit.js";
 import { authMiddleware, type AuthVariables } from "../middleware/auth.js";
 import {
   MAX_POST_MEDIA,
@@ -116,6 +123,12 @@ async function loadPostMedia(
 export function createCirclesRoutes() {
   const app = new Hono<{ Variables: AuthVariables }>();
   app.use("*", authMiddleware);
+
+  const postRateLimit = rateLimitMiddleware({
+    prefix: "circle-post",
+    limit: 10,
+    windowSeconds: 3600,
+  });
 
   app.get("/", async (c) => {
     const userId = c.get("user").sub;
@@ -211,97 +224,37 @@ export function createCirclesRoutes() {
     const scope = c.req.query("scope") ?? "local";
     const limit = Math.min(Number(c.req.query("limit") ?? 20), 50);
 
-    const client = await pool.connect();
-    try {
-      const circle = await assertCircleMember(client, circleId, userId);
-      if (!circle) {
-        return c.json({ error: "Circle not found" }, 404);
+    if (!cursor && isRedisEnabled()) {
+      const cacheKey = feedCacheKey({ circleId, userId, scope, cursor });
+      const cached = await getCachedJson<{ posts: unknown[]; nextCursor: string | null }>(
+        cacheKey
+      );
+      if (cached) {
+        return c.json(cached);
       }
-
-      const localFilter =
-        circle.circle_type === "curriculum" && scope === "local";
-
-      let query = `
-        SELECT p.id, p.body, p.tag, p.reply_count, p.created_at, p.author_id,
-               u.anonymous_handle
-        FROM circle_posts p
-        JOIN circle_post_targets pct ON pct.post_id = p.id
-        JOIN users u ON u.id = p.author_id
-        WHERE pct.circle_id = $1`;
-
-      const params: unknown[] = [circleId];
-      let paramIdx = 2;
-
-      if (localFilter) {
-        query += `
-          AND EXISTS (
-            SELECT 1 FROM user_locations viewer_loc
-            JOIN user_locations author_loc ON author_loc.pin_code = viewer_loc.pin_code
-            WHERE viewer_loc.user_id = $${paramIdx}
-              AND author_loc.user_id = p.author_id
-          )`;
-        params.push(userId);
-        paramIdx++;
-      }
-
-      if (cursor) {
-        query += ` AND p.created_at < $${paramIdx}::timestamptz`;
-        params.push(cursor);
-        paramIdx++;
-      }
-
-      query += ` ORDER BY p.created_at DESC LIMIT $${paramIdx}`;
-      params.push(limit);
-
-      const { rows } = await client.query(query, params);
-      const mediaByPost = await loadPostMedia(
-        client,
-        rows.map((row) => row.id)
-      );
-      const memberCountResult = await client.query(
-        `SELECT COUNT(*)::int AS count FROM circle_members WHERE circle_id = $1`,
-        [circleId]
-      );
-      const memberCount = memberCountResult.rows[0]?.count ?? 0;
-      const pollsByPost = await loadPostPolls(
-        client,
-        rows.map((row) => row.id),
-        userId,
-        memberCount
-      );
-      const topicsByPost = await loadTopicsForPosts(
-        client,
-        rows.map((row) => row.id)
-      );
-
-      const posts = await Promise.all(
-        rows.map(async (row) => {
-          const author = await buildAuthorView(
-            client,
-            row.author_id,
-            row.anonymous_handle,
-            circle
-          );
-          return mapPost(
-            row,
-            author,
-            mediaByPost.get(row.id) ?? [],
-            pollsByPost.get(row.id),
-            topicsByPost.get(row.id) ?? []
-          );
-        })
-      );
-
-      const nextCursor =
-        rows.length === limit ? rows[rows.length - 1].created_at : null;
-
-      return c.json({ posts, nextCursor });
-    } finally {
-      client.release();
     }
+
+    const result = await loadCircleFeed({
+      userId,
+      circleId,
+      scope,
+      cursor,
+      limit,
+    });
+
+    if ("error" in result) {
+      return c.json({ error: "Circle not found" }, 404);
+    }
+
+    if (!cursor && isRedisEnabled()) {
+      const cacheKey = feedCacheKey({ circleId, userId, scope, cursor });
+      await setCachedJson(cacheKey, result);
+    }
+
+    return c.json(result);
   });
 
-  app.post("/:circleId/posts", async (c) => {
+  app.post("/:circleId/posts", postRateLimit, async (c) => {
     const userId = c.get("user").sub;
     const circleId = c.req.param("circleId");
     const body = await c.req.json<{
@@ -545,31 +498,35 @@ export function createCirclesRoutes() {
         memberCount
       );
 
-      await notifyCirclePostMulti(client, {
-        targets: targetResult.rows,
-        postId: rows[0].id,
+      await client.query("COMMIT");
+
+      const topicIds =
+        attachedTopics.length > 0
+          ? (
+              await client.query(
+                `SELECT topic_id FROM post_topics WHERE post_id = $1`,
+                [rows[0].id]
+              )
+            ).rows.map((r) => r.topic_id)
+          : [];
+
+      await dispatchPostCreated({
+        postId: String(rows[0].id),
         authorId: userId,
         postPreview:
           text ||
-          (body.poll ? body.poll.question?.trim() || "Shared a poll" : "Shared a photo or video"),
+          (body.poll
+            ? body.poll.question?.trim() || "Shared a poll"
+            : "Shared a photo or video"),
+        targets: targetResult.rows,
+        topicIds: topicIds.map((id) => String(id)),
+        topicPreview: text || "New post in a topic you follow",
+        topicSlugs: attachedTopics
+          .map((topic) => topic.slug)
+          .filter((slug): slug is string => Boolean(slug)),
+        circleIds: targetCircleIds.map((id) => String(id)),
       });
 
-      if (attachedTopics.length > 0) {
-        const topicIds = (
-          await client.query(
-            `SELECT topic_id FROM post_topics WHERE post_id = $1`,
-            [rows[0].id]
-          )
-        ).rows.map((r) => r.topic_id);
-        await notifyTopicFollowers(client, {
-          postId: rows[0].id,
-          authorId: userId,
-          topicIds,
-          preview: text || "New post in a topic you follow",
-        });
-      }
-
-      await client.query("COMMIT");
       return c.json(
         mapPost(rows[0], author, mediaViews, pollsByPost.get(rows[0].id), attachedTopics),
         201
@@ -861,6 +818,12 @@ export function createConversationsRoutes() {
   const app = new Hono<{ Variables: AuthVariables }>();
   app.use("*", authMiddleware);
 
+  const messageRateLimit = rateLimitMiddleware({
+    prefix: "direct-message",
+    limit: 50,
+    windowSeconds: 3600,
+  });
+
   app.get("/", async (c) => {
     const userId = c.get("user").sub;
     const client = await pool.connect();
@@ -1077,7 +1040,7 @@ export function createConversationsRoutes() {
     }
   });
 
-  app.post("/:conversationId/messages", async (c) => {
+  app.post("/:conversationId/messages", messageRateLimit, async (c) => {
     const userId = c.get("user").sub;
     const conversationId = c.req.param("conversationId");
     const body = await c.req.json<{ body?: string }>();
@@ -1126,10 +1089,12 @@ export function createConversationsRoutes() {
         [userId]
       );
 
-      await notifyDirectMessage(client, {
-        recipientId: peerId,
-        senderHandle: handleRow.rows[0].anonymous_handle,
-        conversationId,
+      await dispatchMessageCreated({
+        conversationId: String(conversationId),
+        messageId: String(rows[0].id),
+        senderId: userId,
+        recipientId: String(peerId),
+        senderHandle: String(handleRow.rows[0]?.anonymous_handle ?? "A parent"),
         messagePreview: text,
       });
 

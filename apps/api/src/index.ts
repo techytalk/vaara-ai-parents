@@ -28,19 +28,18 @@ import { createPractitionerRoutes } from "./routes/practitioners.js";
 import { createExpertSessionRoutes } from "./routes/expert-sessions.js";
 import { createPlaydateRoutes } from "./routes/playdates.js";
 import { createCarpoolRoutes } from "./routes/carpool.js";
-import { pool } from "@vaara/db";
-import {
-  notifyCirclePostMulti,
-  notifyCircleReply,
-  notifyDirectMessage,
-  processBackgroundJobs,
-} from "./services/notifications.js";
+import { isRedisEnabled } from "@vaara/redis";
 
 const app = new Hono();
 
 app.use("*", cors());
 
-app.get("/health", (c) => c.json({ status: "ok" }));
+app.get("/health", (c) =>
+  c.json({
+    status: "ok",
+    redis: isRedisEnabled(),
+  })
+);
 
 app.route("/v1/auth", createAuthRoutes());
 app.route("/v1/me", createMeRoutes());
@@ -65,25 +64,10 @@ app.route("/internal", createInternalRoutes());
 
 const port = Number(process.env.PORT ?? 3000);
 console.log(`API listening on http://localhost:${port}`);
-
-if (process.env.CRON_SECRET) {
-  const intervalMs = Number(process.env.CRON_INTERVAL_MS ?? 60000);
-  setInterval(async () => {
-    const client = await pool.connect();
-    try {
-      const result = await processBackgroundJobs(client);
-      if (result.remindersSent > 0 || result.pushesDelivered > 0) {
-        console.log(
-          `Cron: ${result.remindersSent} reminder(s), ${result.pushesDelivered} push(es)`
-        );
-      }
-    } catch (err) {
-      console.error("Cron reminder processing failed:", err);
-    } finally {
-      client.release();
-    }
-  }, intervalMs);
-  console.log(`Reminder cron running every ${intervalMs}ms`);
+if (!isRedisEnabled()) {
+  console.warn(
+    "REDIS_URL not set — running without cache, queues, or realtime pub/sub"
+  );
 }
 
 serve({ fetch: app.fetch, port });

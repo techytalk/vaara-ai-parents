@@ -285,6 +285,8 @@ export async function offerDisclosure(
             [params.userId]
           )
         ).rows[0]?.notification_prefs,
+        prefKey: "disclosures",
+        delivery: "immediate",
       });
       await createNotification(client, {
         userId: peerId,
@@ -294,6 +296,8 @@ export async function offerDisclosure(
         data: { conversationId: params.conversationId },
         pushToken: peerUser.rows[0].push_token,
         notificationPrefs: peerUser.rows[0].notification_prefs,
+        prefKey: "disclosures",
+        delivery: "immediate",
       });
     } else if (ownOffer > peerOffer) {
       await createNotification(client, {
@@ -304,6 +308,8 @@ export async function offerDisclosure(
         data: { conversationId: params.conversationId, level: ownOffer },
         pushToken: peerUser.rows[0].push_token,
         notificationPrefs: peerUser.rows[0].notification_prefs,
+        prefKey: "disclosures",
+        delivery: "immediate",
       });
     }
   }

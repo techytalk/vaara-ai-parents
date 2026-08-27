@@ -1,9 +1,12 @@
 import type { PoolClient } from "pg";
-import { sendExpoPush } from "../lib/expo-push.js";
+import { sendExpoPushBatch } from "../lib/expo-push.js";
 import {
   isPrefEnabled,
+  PREF_KEY_BY_NOTIFICATION_TYPE,
+  type NotificationPrefKey,
   type NotificationPrefs,
 } from "../lib/notification-prefs.js";
+import { isInQuietHours, nextAllowedPushTime } from "../lib/quiet-hours.js";
 
 type NotificationType =
   | "circle_post"
@@ -21,6 +24,20 @@ type NotificationType =
   | "school_event"
   | "playdate_interest";
 
+export type NotificationDelivery = "immediate" | "digest";
+
+const DIGEST_NOTIFICATION_TYPES = new Set<NotificationType>([
+  "circle_post",
+  "topic_digest",
+  "school_event",
+  "activity_nearby",
+  "listing_interest",
+]);
+
+const DIGEST_MIN_AGE_MS = Number(
+  process.env.NOTIFICATION_DIGEST_MIN_AGE_MS ?? 30 * 60 * 1000
+);
+
 const CIRCLE_TYPE_RANK: Record<string, number> = {
   school_class: 6,
   class: 5,
@@ -36,17 +53,116 @@ type CircleTarget = {
   display_name: string;
 };
 
-async function enqueuePush(
+type NotificationInsert = {
+  userId: string;
+  title: string;
+  body: string;
+  data: Record<string, unknown>;
+  pushToken?: string | null;
+  notificationPrefs?: NotificationPrefs | null;
+};
+
+function defaultDelivery(type: NotificationType): NotificationDelivery {
+  return DIGEST_NOTIFICATION_TYPES.has(type) ? "digest" : "immediate";
+}
+
+function prefKeyForType(
+  type: NotificationType,
+  explicit?: NotificationPrefKey
+): NotificationPrefKey | undefined {
+  return explicit ?? PREF_KEY_BY_NOTIFICATION_TYPE[type];
+}
+
+export async function batchCreateNotifications(
   client: PoolClient,
-  notificationId: string,
-  pushToken: string,
-  payload: { title: string; body: string; data: Record<string, unknown> }
-) {
-  await client.query(
-    `INSERT INTO notification_outbox (notification_id, push_token, payload)
-     VALUES ($1, $2, $3)`,
-    [notificationId, pushToken, JSON.stringify(payload)]
+  type: NotificationType,
+  items: NotificationInsert[],
+  options?: {
+    delivery?: NotificationDelivery;
+    prefKey?: NotificationPrefKey;
+  }
+): Promise<string[]> {
+  const delivery = options?.delivery ?? defaultDelivery(type);
+  const prefKey = prefKeyForType(type, options?.prefKey);
+
+  const eligible = items.filter((item) => {
+    if (!prefKey) return true;
+    return isPrefEnabled(item.notificationPrefs, prefKey);
+  });
+  if (eligible.length === 0) return [];
+
+  const userIds = eligible.map((item) => item.userId);
+  const types = eligible.map(() => type);
+  const titles = eligible.map((item) => item.title);
+  const bodies = eligible.map((item) => item.body);
+  const dataJson = eligible.map((item) =>
+    JSON.stringify({ ...item.data, type })
   );
+
+  const { rows } = await client.query(
+    `INSERT INTO notifications (user_id, type, title, body, data)
+     SELECT user_id, notification_type::notification_type, title, body, data
+     FROM unnest($1::uuid[], $2::text[], $3::text[], $4::text[], $5::jsonb[])
+       AS input(user_id, notification_type, title, body, data)
+     RETURNING id, user_id`,
+    [userIds, types, titles, bodies, dataJson]
+  );
+
+  const notificationIds = rows.map((row) => row.id as string);
+
+  if (delivery === "immediate") {
+    const outboxItems: Array<{
+      notificationId: string;
+      pushToken: string;
+      payload: { title: string; body: string; data: Record<string, unknown> };
+      notificationPrefs?: NotificationPrefs | null;
+    }> = [];
+
+    for (let i = 0; i < eligible.length; i++) {
+      const item = eligible[i];
+      if (!item.pushToken) continue;
+      outboxItems.push({
+        notificationId: notificationIds[i],
+        pushToken: item.pushToken,
+        payload: {
+          title: item.title,
+          body: item.body,
+          data: {
+            ...item.data,
+            notificationId: notificationIds[i],
+            type,
+          },
+        },
+        notificationPrefs: item.notificationPrefs,
+      });
+    }
+
+    if (outboxItems.length > 0) {
+      await client.query(
+        `INSERT INTO notification_outbox (notification_id, push_token, payload, send_after)
+         SELECT notification_id, push_token, payload, send_after
+         FROM unnest($1::uuid[], $2::text[], $3::jsonb[], $4::timestamptz[])
+           AS input(notification_id, push_token, payload, send_after)`,
+        [
+          outboxItems.map((item) => item.notificationId),
+          outboxItems.map((item) => item.pushToken),
+          outboxItems.map((item) => JSON.stringify(item.payload)),
+          outboxItems.map((item) =>
+            nextAllowedPushTime(item.notificationPrefs ?? undefined).toISOString()
+          ),
+        ]
+      );
+
+      await client.query(
+        `UPDATE notifications
+         SET push_sent_at = now()
+         WHERE id = ANY($1::uuid[])`,
+        [outboxItems.map((item) => item.notificationId)]
+      );
+    }
+  }
+
+  return notificationIds;
 }
 
 export async function createNotification(
@@ -59,41 +175,41 @@ export async function createNotification(
     data?: Record<string, unknown>;
     pushToken?: string | null;
     notificationPrefs?: NotificationPrefs | null;
-    prefKey?: keyof NotificationPrefs;
+    prefKey?: NotificationPrefKey;
+    delivery?: NotificationDelivery;
     sendPush?: boolean;
   }
 ): Promise<string | null> {
-  const { rows } = await client.query(
-    `INSERT INTO notifications (user_id, type, title, body, data)
-     VALUES ($1, $2, $3, $4, $5)
-     RETURNING id`,
-    [
-      params.userId,
-      params.type,
-      params.title,
-      params.body ?? null,
-      JSON.stringify(params.data ?? {}),
-    ]
-  );
-
-  const notificationId = rows[0].id as string;
-
-  const shouldPush =
-    params.sendPush !== false &&
-    params.pushToken &&
-    (params.prefKey
-      ? isPrefEnabled(params.notificationPrefs, params.prefKey)
-      : true);
-
-  if (shouldPush && params.pushToken) {
-    await enqueuePush(client, notificationId, params.pushToken, {
-      title: params.title,
-      body: params.body ?? "",
-      data: { ...params.data, notificationId, type: params.type },
-    });
+  const prefKey = prefKeyForType(params.type, params.prefKey);
+  if (prefKey && !isPrefEnabled(params.notificationPrefs, prefKey)) {
+    return null;
   }
 
-  return notificationId;
+  const delivery = params.delivery ?? defaultDelivery(params.type);
+  const body = params.body ?? "";
+  const shouldPush =
+    params.sendPush !== false && delivery === "immediate" && params.pushToken;
+
+  const [notificationId] = await batchCreateNotifications(
+    client,
+    params.type,
+    [
+      {
+        userId: params.userId,
+        title: params.title,
+        body,
+        data: params.data ?? {},
+        pushToken: shouldPush ? params.pushToken : null,
+        notificationPrefs: params.notificationPrefs,
+      },
+    ],
+    {
+      delivery: shouldPush ? "immediate" : delivery,
+      prefKey,
+    }
+  );
+
+  return notificationId ?? null;
 }
 
 function pickBestCircleForMember(
@@ -145,17 +261,14 @@ export async function notifyCirclePostMulti(
     [circleIds, params.authorId]
   );
 
-  for (const recipient of recipients) {
-    if (!isPrefEnabled(recipient.notification_prefs, "circle_posts")) continue;
-
+  const items: NotificationInsert[] = recipients.map((recipient) => {
     const memberTypes = new Set<string>(
       (recipient.circle_types as string[]) ?? []
     );
     const bestCircle = pickBestCircleForMember(params.targets, memberTypes);
 
-    await createNotification(client, {
+    return {
       userId: recipient.id,
-      type: "circle_post",
       title: `New post in ${bestCircle.display_name}`,
       body: preview,
       data: {
@@ -164,9 +277,13 @@ export async function notifyCirclePostMulti(
       },
       pushToken: recipient.push_token,
       notificationPrefs: recipient.notification_prefs,
-      prefKey: "circle_posts",
-    });
-  }
+    };
+  });
+
+  await batchCreateNotifications(client, "circle_post", items, {
+    delivery: "digest",
+    prefKey: "circle_posts",
+  });
 }
 
 export async function notifyCircleReply(
@@ -206,6 +323,7 @@ export async function notifyCircleReply(
     pushToken: user.push_token,
     notificationPrefs: user.notification_prefs,
     prefKey: "circle_replies",
+    delivery: "immediate",
   });
 }
 
@@ -239,6 +357,7 @@ export async function notifyDirectMessage(
     pushToken: user.push_token,
     notificationPrefs: user.notification_prefs,
     prefKey: "direct_messages",
+    delivery: "immediate",
   });
 }
 
@@ -246,26 +365,55 @@ export async function processNotificationOutbox(
   client: PoolClient
 ): Promise<number> {
   const { rows } = await client.query(
-    `SELECT id, push_token, payload, attempts
-     FROM notification_outbox
-     WHERE delivered_at IS NULL AND attempts < 5
-     ORDER BY created_at
-     LIMIT 50`
+    `SELECT o.id, o.push_token, o.payload, o.attempts, u.notification_prefs
+     FROM notification_outbox o
+     JOIN notifications n ON n.id = o.notification_id
+     JOIN users u ON u.id = n.user_id
+     WHERE o.delivered_at IS NULL
+       AND o.attempts < 5
+       AND o.send_after <= now()
+     ORDER BY o.created_at
+     LIMIT 100`
+  );
+
+  if (rows.length === 0) return 0;
+
+  const deliverable = rows.filter(
+    (row) => !isInQuietHours(row.notification_prefs)
+  );
+
+  const deferred = rows.filter((row) =>
+    isInQuietHours(row.notification_prefs)
+  );
+
+  for (const row of deferred) {
+    const sendAfter = nextAllowedPushTime(row.notification_prefs);
+    await client.query(
+      `UPDATE notification_outbox
+       SET send_after = GREATEST(send_after, $2)
+       WHERE id = $1`,
+      [row.id, sendAfter.toISOString()]
+    );
+  }
+
+  if (deliverable.length === 0) return 0;
+
+  const results = await sendExpoPushBatch(
+    deliverable.map((row) => ({
+      pushToken: row.push_token,
+      payload: row.payload as {
+        title: string;
+        body: string;
+        data: Record<string, unknown>;
+      },
+    }))
   );
 
   let delivered = 0;
-  for (const row of rows) {
-    const payload = row.payload as {
-      title: string;
-      body: string;
-      data: Record<string, unknown>;
-    };
-    try {
-      await sendExpoPush(row.push_token, {
-        title: payload.title,
-        body: payload.body,
-        data: payload.data,
-      });
+  for (let i = 0; i < deliverable.length; i++) {
+    const row = deliverable[i];
+    const result = results[i];
+    if (result.ok) {
       await client.query(
         `UPDATE notification_outbox
          SET delivered_at = now(), last_error = NULL
@@ -273,17 +421,134 @@ export async function processNotificationOutbox(
         [row.id]
       );
       delivered++;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Push failed";
+    } else {
       await client.query(
         `UPDATE notification_outbox
          SET attempts = attempts + 1, last_error = $2
          WHERE id = $1`,
-        [row.id, message]
+        [row.id, result.error ?? "Push failed"]
       );
     }
   }
+
   return delivered;
+}
+
+export async function processNotificationDigests(
+  client: PoolClient
+): Promise<number> {
+  const minAge = new Date(Date.now() - DIGEST_MIN_AGE_MS).toISOString();
+  const digestTypes = [...DIGEST_NOTIFICATION_TYPES];
+
+  const { rows } = await client.query(
+    `SELECT n.id, n.user_id, n.type, n.title, n.body,
+            u.push_token, u.notification_prefs
+     FROM notifications n
+     JOIN users u ON u.id = n.user_id
+     WHERE n.push_sent_at IS NULL
+       AND n.type = ANY($1::text[])
+       AND n.created_at <= $2
+     ORDER BY n.user_id, n.created_at`,
+    [digestTypes, minAge]
+  );
+
+  if (rows.length === 0) return 0;
+
+  const byUser = new Map<
+    string,
+    {
+      pushToken: string | null;
+      notificationPrefs: NotificationPrefs;
+      notifications: typeof rows;
+    }
+  >();
+
+  for (const row of rows) {
+    const prefKey = PREF_KEY_BY_NOTIFICATION_TYPE[row.type as NotificationType];
+    if (prefKey && !isPrefEnabled(row.notification_prefs, prefKey)) {
+      continue;
+    }
+
+    const existing = byUser.get(row.user_id);
+    if (existing) {
+      existing.notifications.push(row);
+    } else {
+      byUser.set(row.user_id, {
+        pushToken: row.push_token,
+        notificationPrefs: row.notification_prefs,
+        notifications: [row],
+      });
+    }
+  }
+
+  let digestsSent = 0;
+
+  for (const [userId, group] of byUser) {
+    const ids = group.notifications.map((row) => row.id);
+    const count = group.notifications.length;
+    const latest = group.notifications[group.notifications.length - 1];
+
+    if (!group.pushToken) {
+      await client.query(
+        `UPDATE notifications SET push_sent_at = now() WHERE id = ANY($1::uuid[])`,
+        [ids]
+      );
+      continue;
+    }
+
+    if (isInQuietHours(group.notificationPrefs)) {
+      continue;
+    }
+
+    const title =
+      count === 1 ? latest.title : `${count} updates in Vaara`;
+    const body =
+      count === 1
+        ? latest.body ?? "Open Vaara to read more"
+        : "New posts and activity since you last checked";
+
+    const sendAfter = nextAllowedPushTime(group.notificationPrefs);
+    await client.query(
+      `INSERT INTO notification_outbox (notification_id, push_token, payload, send_after)
+       VALUES ($1, $2, $3, $4)`,
+      [
+        latest.id,
+        group.pushToken,
+        JSON.stringify({
+          title,
+          body,
+          data: {
+            type: "digest",
+            notificationIds: ids,
+            userId,
+          },
+        }),
+        sendAfter.toISOString(),
+      ]
+    );
+
+    await client.query(
+      `UPDATE notifications SET push_sent_at = now() WHERE id = ANY($1::uuid[])`,
+      [ids]
+    );
+    digestsSent++;
+  }
+
+  const skippedIds = rows
+    .filter((row) => {
+      const prefKey = PREF_KEY_BY_NOTIFICATION_TYPE[row.type as NotificationType];
+      return prefKey && !isPrefEnabled(row.notification_prefs, prefKey);
+    })
+    .map((row) => row.id);
+
+  if (skippedIds.length > 0) {
+    await client.query(
+      `UPDATE notifications SET push_sent_at = now() WHERE id = ANY($1::uuid[])`,
+      [skippedIds]
+    );
+  }
+
+  return digestsSent;
 }
 
 export async function processPendingReminders(client: PoolClient): Promise<number> {
@@ -319,6 +584,7 @@ export async function processPendingReminders(client: PoolClient): Promise<numbe
       pushToken: reminder.push_token,
       notificationPrefs: reminder.notification_prefs,
       prefKey: "reminders",
+      delivery: "immediate",
     });
 
     await client.query("UPDATE reminders SET sent = true WHERE id = $1", [
@@ -352,6 +618,8 @@ async function processExpiredListings(client: PoolClient): Promise<number> {
         data: { listingId: row.id },
         pushToken: seller.rows[0].push_token,
         notificationPrefs: seller.rows[0].notification_prefs,
+        prefKey: "listings",
+        delivery: "digest",
       });
     }
   }
@@ -359,13 +627,50 @@ async function processExpiredListings(client: PoolClient): Promise<number> {
   return rows.length;
 }
 
+export async function notifyCommunityNewListing(
+  client: PoolClient,
+  params: {
+    listingId: string;
+    sellerId: string;
+    title: string;
+    communityKey: string | null;
+  }
+) {
+  if (!params.communityKey) return;
+
+  const { rows } = await client.query(
+    `SELECT DISTINCT u.id, u.push_token, u.notification_prefs
+     FROM user_locations ul
+     JOIN users u ON u.id = ul.user_id
+     WHERE ul.community_key = $1
+       AND ul.user_id <> $2`,
+    [params.communityKey, params.sellerId]
+  );
+
+  await batchCreateNotifications(
+    client,
+    "listing_interest",
+    rows.map((row) => ({
+      userId: row.id,
+      title: "New listing in your community",
+      body: params.title,
+      data: { listingId: params.listingId },
+      pushToken: row.push_token,
+      notificationPrefs: row.notification_prefs,
+    })),
+    { delivery: "digest", prefKey: "listings" }
+  );
+}
+
 export async function processBackgroundJobs(client: PoolClient): Promise<{
   remindersSent: number;
   pushesDelivered: number;
+  digestsSent: number;
   listingsExpired: number;
 }> {
   const remindersSent = await processPendingReminders(client);
+  const digestsSent = await processNotificationDigests(client);
   const pushesDelivered = await processNotificationOutbox(client);
   const listingsExpired = await processExpiredListings(client);
-  return { remindersSent, pushesDelivered, listingsExpired };
+  return { remindersSent, pushesDelivered, digestsSent, listingsExpired };
 }

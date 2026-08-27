@@ -1,4 +1,5 @@
 import type { PoolClient } from "pg";
+import { batchCreateNotifications } from "../services/notifications.js";
 
 const MAX_TOPICS_PER_POST = 3;
 
@@ -120,11 +121,19 @@ export async function notifyTopicFollowers(
   if (params.topicIds.length === 0) return;
 
   const { rows: followers } = await client.query(
-    `SELECT DISTINCT u.id, u.notification_prefs
+    `SELECT u.id, u.push_token, u.notification_prefs, MIN(t.name) AS topic_name
      FROM topic_follows tf
      JOIN users u ON u.id = tf.user_id
+     JOIN topics t ON t.id = tf.topic_id
      WHERE tf.topic_id = ANY($1::uuid[])
-       AND tf.user_id <> $2`,
+       AND tf.user_id <> $2
+       AND NOT EXISTS (
+         SELECT 1 FROM notification_mutes nm
+         WHERE nm.user_id = tf.user_id
+           AND nm.scope = 'topic'
+           AND nm.scope_id = tf.topic_id
+       )
+     GROUP BY u.id, u.push_token, u.notification_prefs`,
     [params.topicIds, params.authorId]
   );
 
@@ -133,16 +142,20 @@ export async function notifyTopicFollowers(
       ? `${params.preview.slice(0, 80)}…`
       : params.preview;
 
-  for (const follower of followers) {
-    await client.query(
-      `INSERT INTO notifications (user_id, type, title, body, data)
-       VALUES ($1, 'topic_digest', $2, $3, $4)`,
-      [
-        follower.id,
-        "New posts in topics you follow",
-        preview,
-        JSON.stringify({ postId: params.postId }),
-      ]
-    );
-  }
+  await batchCreateNotifications(
+    client,
+    "topic_digest",
+    followers.map((follower) => ({
+      userId: follower.id,
+      title: `New post in ${follower.topic_name}`,
+      body: preview,
+      data: { postId: params.postId },
+      pushToken: follower.push_token,
+      notificationPrefs: follower.notification_prefs,
+    })),
+    {
+      delivery: "digest",
+      prefKey: "topics",
+    }
+  );
 }

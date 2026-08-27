@@ -19,6 +19,22 @@ import {
 } from "@/lib/api";
 import { getToken } from "@/lib/session";
 
+type BooleanPrefKey = Exclude<keyof NotificationPrefs, "quiet_hours">;
+
+const PREF_LABELS: Record<BooleanPrefKey, string> = {
+  circle_posts: "Circle posts",
+  circle_replies: "Replies to your posts",
+  direct_messages: "Direct messages",
+  reminders: "Reminders",
+  activity_nearby: "Nearby activities",
+  topics: "Topic digests",
+  listings: "Marketplace",
+  disclosures: "Identity sharing",
+  carpool: "Carpool updates",
+  school_events: "School calendar",
+  expert_sessions: "Expert sessions",
+};
+
 export default function ProfileScreen() {
   const router = useRouter();
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -41,10 +57,28 @@ export default function ProfileScreen() {
     });
   }, []);
 
-  async function togglePref(key: keyof NotificationPrefs, value: boolean) {
+  async function togglePref(key: BooleanPrefKey, value: boolean) {
     const token = await getToken();
     if (!token || !prefs) return;
     const updated = { ...prefs, [key]: value };
+    setPrefs(updated);
+    try {
+      await api.updateNotificationPrefs(token, updated);
+    } catch {
+      setPrefs(prefs);
+    }
+  }
+
+  async function toggleQuietHours(value: boolean) {
+    const token = await getToken();
+    if (!token || !prefs) return;
+    const updated = {
+      ...prefs,
+      quiet_hours: {
+        ...prefs.quiet_hours,
+        enabled: value,
+      },
+    };
     setPrefs(updated);
     try {
       await api.updateNotificationPrefs(token, updated);
@@ -154,28 +188,31 @@ export default function ProfileScreen() {
       </Pressable>
 
       <Text style={styles.sectionTitle}>Notification preferences</Text>
+      <Text style={styles.sectionHint}>
+        Circle and topic activity arrives as a digest. Replies and messages are immediate.
+      </Text>
 
       {prefs && (
         <>
+          {(Object.keys(PREF_LABELS) as BooleanPrefKey[]).map((key) => (
+            <View key={key} style={styles.prefRow}>
+              <Text style={styles.prefLabel}>{PREF_LABELS[key]}</Text>
+              <Switch
+                value={prefs[key] !== false}
+                onValueChange={(value) => togglePref(key, value)}
+              />
+            </View>
+          ))}
           <View style={styles.prefRow}>
-            <Text style={styles.prefLabel}>Circle posts</Text>
+            <View style={styles.prefCopy}>
+              <Text style={styles.prefLabel}>Quiet hours</Text>
+              <Text style={styles.prefHint}>
+                {prefs.quiet_hours?.start ?? "22:00"} – {prefs.quiet_hours?.end ?? "07:00"}
+              </Text>
+            </View>
             <Switch
-              value={prefs.circle_posts !== false}
-              onValueChange={(v) => togglePref("circle_posts", v)}
-            />
-          </View>
-          <View style={styles.prefRow}>
-            <Text style={styles.prefLabel}>Direct messages</Text>
-            <Switch
-              value={prefs.direct_messages !== false}
-              onValueChange={(v) => togglePref("direct_messages", v)}
-            />
-          </View>
-          <View style={styles.prefRow}>
-            <Text style={styles.prefLabel}>Reminders</Text>
-            <Switch
-              value={prefs.reminders !== false}
-              onValueChange={(v) => togglePref("reminders", v)}
+              value={prefs.quiet_hours?.enabled !== false}
+              onValueChange={toggleQuietHours}
             />
           </View>
         </>
@@ -231,6 +268,12 @@ const styles = StyleSheet.create({
     marginTop: 24,
     marginBottom: 8,
   },
+  sectionHint: {
+    fontSize: 13,
+    color: colors.textMuted,
+    marginBottom: 8,
+    lineHeight: 18,
+  },
   prefRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -242,5 +285,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#e2e4ef",
   },
+  prefCopy: {
+    flex: 1,
+    paddingRight: 12,
+  },
   prefLabel: { fontSize: 15, color: colors.text },
+  prefHint: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
 });

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -8,7 +8,10 @@ import {
   View,
 } from "react-native";
 import { Link, useRouter } from "expo-router";
+import { AuthDivider, GoogleSignInButton } from "@/components/GoogleSignInButton";
+import { useGoogleAuth } from "@/hooks/useGoogleAuth";
 import { api } from "@/lib/api";
+import { routeAfterAuth } from "@/lib/auth-navigation";
 import { saveSession } from "@/lib/session";
 
 export default function RegisterScreen() {
@@ -20,30 +23,39 @@ export default function RegisterScreen() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const completeAuth = useCallback(
+    async (result: Awaited<ReturnType<typeof api.register>>) => {
+      await saveSession(result.token, result.user);
+      routeAfterAuth(router, result.user);
+    },
+    [router]
+  );
+
+  const google = useGoogleAuth({
+    role,
+    displayName,
+    onSuccess: completeAuth,
+  });
+
   async function onRegister() {
     setError(null);
     setLoading(true);
     try {
-      const { token, user } = await api.register({
+      const result = await api.register({
         email,
         password,
         role,
         displayName: displayName.trim() || undefined,
       });
-      await saveSession(token, user);
-      if (user.onboardingComplete) {
-        router.replace(user.role === "provider" ? "/(provider)" : "/(app)");
-      } else if (user.role === "provider") {
-        router.replace("/onboarding/provider");
-      } else {
-        router.replace("/onboarding/children");
-      }
+      await completeAuth(result);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Registration failed");
     } finally {
       setLoading(false);
     }
   }
+
+  const displayError = error ?? google.error;
 
   return (
     <View style={styles.container}>
@@ -84,6 +96,14 @@ export default function RegisterScreen() {
         </Pressable>
       </View>
 
+      <GoogleSignInButton
+        onPress={google.signInWithGoogle}
+        loading={google.loading}
+        label="Sign up with Google"
+      />
+
+      <AuthDivider />
+
       <TextInput
         style={styles.input}
         placeholder="Your name (private)"
@@ -106,13 +126,17 @@ export default function RegisterScreen() {
         onChangeText={setPassword}
       />
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {displayError ? <Text style={styles.error}>{displayError}</Text> : null}
 
-      <Pressable style={styles.button} onPress={onRegister} disabled={loading}>
+      <Pressable
+        style={styles.button}
+        onPress={onRegister}
+        disabled={loading || google.loading}
+      >
         {loading ? (
           <ActivityIndicator color="#fff" />
         ) : (
-          <Text style={styles.buttonText}>Create account</Text>
+          <Text style={styles.buttonText}>Create account with email</Text>
         )}
       </Pressable>
 
@@ -139,7 +163,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: "#5c5c7a",
     marginTop: 8,
-    marginBottom: 32,
+    marginBottom: 24,
   },
   input: {
     backgroundColor: "#fff",

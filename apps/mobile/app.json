@@ -33,7 +33,10 @@
     },
     "extra": {
       "iosStoreUrl": "https://apps.apple.com/app/vaara-parents",
-      "androidStoreUrl": "https://play.google.com/store/apps/details?id=com.vaara.parents"
+      "androidStoreUrl": "https://play.google.com/store/apps/details?id=com.vaara.parents",
+      "googleWebClientId": "",
+      "googleIosClientId": "",
+      "googleAndroidClientId": ""
     }
   }
 }
