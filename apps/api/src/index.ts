@@ -62,12 +62,17 @@ app.route("/v1/provider/reviews", createProviderReviewReplyRoutes());
 app.route("/v1/app", createAppRoutes());
 app.route("/internal", createInternalRoutes());
 
-const port = Number(process.env.PORT ?? 3000);
-console.log(`API listening on http://localhost:${port}`);
-if (!isRedisEnabled()) {
-  console.warn(
-    "REDIS_URL not set — running without cache, queues, or realtime pub/sub"
-  );
-}
+export default app;
 
-serve({ fetch: app.fetch, port });
+const isVercel = Boolean(process.env.VERCEL);
+
+if (!isVercel) {
+  const port = Number(process.env.PORT ?? 3000);
+  console.log(`API listening on http://localhost:${port}`);
+  if (!isRedisEnabled()) {
+    console.warn(
+      "REDIS_URL not set — running without cache, queues, or realtime pub/sub"
+    );
+  }
+  serve({ fetch: app.fetch, port });
+}
