@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
+import Constants from "expo-constants";
 import * as Google from "expo-auth-session/providers/google";
 import * as WebBrowser from "expo-web-browser";
 import { api } from "@/lib/api";
 import {
   GOOGLE_ANDROID_CLIENT_ID,
   GOOGLE_IOS_CLIENT_ID,
+  GOOGLE_REDIRECT_URI,
   GOOGLE_WEB_CLIENT_ID,
   isGoogleSignInConfigured,
 } from "@/constants/google-auth";
@@ -26,11 +28,20 @@ export function useGoogleAuth({
   const [error, setError] = useState<string | null>(null);
 
   const configured = isGoogleSignInConfigured();
-  const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
-    clientId: GOOGLE_WEB_CLIENT_ID || undefined,
-    iosClientId: GOOGLE_IOS_CLIENT_ID || undefined,
-    androidClientId: GOOGLE_ANDROID_CLIENT_ID || undefined,
-  });
+  const projectNameForProxy =
+    Constants.expoConfig?.owner && Constants.expoConfig?.slug
+      ? `@${Constants.expoConfig.owner}/${Constants.expoConfig.slug}`
+      : "@raj-techy1/vaara-parents";
+
+  const [request, response, promptAsync] = Google.useIdTokenAuthRequest(
+    {
+      clientId: GOOGLE_WEB_CLIENT_ID || undefined,
+      iosClientId: GOOGLE_IOS_CLIENT_ID || undefined,
+      androidClientId: GOOGLE_ANDROID_CLIENT_ID || undefined,
+      redirectUri: GOOGLE_REDIRECT_URI || undefined,
+    },
+    { projectNameForProxy }
+  );
 
   const onSuccessRef = useRef(onSuccess);
   onSuccessRef.current = onSuccess;
@@ -45,7 +56,12 @@ export function useGoogleAuth({
 
     if (response.type !== "success") {
       if (response.type === "error") {
-        setError("Google sign-in was cancelled or failed");
+        const message =
+          response.error?.message ??
+          (typeof response.params?.error === "string"
+            ? response.params.error
+            : "Google sign-in was cancelled or failed");
+        setError(message);
         setLoading(false);
       }
       return;
