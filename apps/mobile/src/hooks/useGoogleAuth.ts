@@ -31,7 +31,7 @@ export function useGoogleAuth({
   const projectNameForProxy =
     Constants.expoConfig?.owner && Constants.expoConfig?.slug
       ? `@${Constants.expoConfig.owner}/${Constants.expoConfig.slug}`
-      : "@raj-techy1/vaara-parents";
+      : "@raj-techy1s-team/vaara-parents";
 
   const [request, response, promptAsync] = Google.useIdTokenAuthRequest(
     {
