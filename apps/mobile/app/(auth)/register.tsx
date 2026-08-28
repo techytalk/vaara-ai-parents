@@ -8,8 +8,8 @@ import {
   View,
 } from "react-native";
 import { Link, useRouter } from "expo-router";
-import { AuthDivider, GoogleSignInButton } from "@/components/GoogleSignInButton";
-import { useGoogleAuth } from "@/hooks/useGoogleAuth";
+import { GoogleAuthSection } from "@/components/GoogleAuthSection";
+import { isGoogleSignInConfigured } from "@/constants/google-auth";
 import { api } from "@/lib/api";
 import { routeAfterAuth } from "@/lib/auth-navigation";
 import { saveSession } from "@/lib/session";
@@ -21,6 +21,7 @@ export default function RegisterScreen() {
   const [role, setRole] = useState<"parent" | "provider">("parent");
   const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [googleError, setGoogleError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const completeAuth = useCallback(
@@ -30,12 +31,6 @@ export default function RegisterScreen() {
     },
     [router]
   );
-
-  const google = useGoogleAuth({
-    role,
-    displayName,
-    onSuccess: completeAuth,
-  });
 
   async function onRegister() {
     setError(null);
@@ -55,7 +50,7 @@ export default function RegisterScreen() {
     }
   }
 
-  const displayError = error ?? google.error;
+  const displayError = error ?? googleError;
 
   return (
     <View style={styles.container}>
@@ -96,13 +91,15 @@ export default function RegisterScreen() {
         </Pressable>
       </View>
 
-      <GoogleSignInButton
-        onPress={google.signInWithGoogle}
-        loading={google.loading}
-        label="Sign up with Google"
-      />
-
-      <AuthDivider />
+      {isGoogleSignInConfigured() ? (
+        <GoogleAuthSection
+          onSuccess={completeAuth}
+          onError={setGoogleError}
+          role={role}
+          displayName={displayName}
+          label="Sign up with Google"
+        />
+      ) : null}
 
       <TextInput
         style={styles.input}
@@ -131,7 +128,7 @@ export default function RegisterScreen() {
       <Pressable
         style={styles.button}
         onPress={onRegister}
-        disabled={loading || google.loading}
+        disabled={loading}
       >
         {loading ? (
           <ActivityIndicator color="#fff" />

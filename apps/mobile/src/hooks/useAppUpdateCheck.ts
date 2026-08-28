@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState, Linking, Platform } from "react-native";
-import * as Application from "expo-application";
 import Constants from "expo-constants";
 import { api } from "@/lib/api";
 import { isVersionLessThan } from "@/lib/version";
@@ -14,11 +13,7 @@ type UpdateState = {
 };
 
 function getCurrentVersion(): string {
-  return (
-    Application.nativeApplicationVersion ??
-    Constants.expoConfig?.version ??
-    "0.0.0"
-  );
+  return Constants.expoConfig?.version ?? "0.0.0";
 }
 
 function getFallbackStoreUrl(): string | null {

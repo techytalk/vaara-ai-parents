@@ -15,7 +15,9 @@ module.exports = {
       eas: {
         projectId: "0cc4bc43-2bbe-410b-8cba-68ab1bc2bc21",
       },
-      apiUrl: process.env.EXPO_PUBLIC_API_URL?.trim(),
+      apiUrl:
+        process.env.EXPO_PUBLIC_API_URL?.trim() ||
+        "https://vaara-ai-parents.vercel.app",
       googleWebClientId:
         process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim() ?? "",
       googleIosClientId:

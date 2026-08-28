@@ -8,8 +8,8 @@ import {
   View,
 } from "react-native";
 import { Link, useRouter } from "expo-router";
-import { AuthDivider, GoogleSignInButton } from "@/components/GoogleSignInButton";
-import { useGoogleAuth } from "@/hooks/useGoogleAuth";
+import { GoogleAuthSection } from "@/components/GoogleAuthSection";
+import { isGoogleSignInConfigured } from "@/constants/google-auth";
 import { api } from "@/lib/api";
 import { routeAfterAuth } from "@/lib/auth-navigation";
 import { saveSession } from "@/lib/session";
@@ -19,6 +19,7 @@ export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [googleError, setGoogleError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const completeAuth = useCallback(
@@ -28,8 +29,6 @@ export default function LoginScreen() {
     },
     [router]
   );
-
-  const google = useGoogleAuth({ onSuccess: completeAuth });
 
   async function onLogin() {
     setError(null);
@@ -44,19 +43,19 @@ export default function LoginScreen() {
     }
   }
 
-  const displayError = error ?? google.error;
+  const displayError = error ?? googleError;
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Welcome back</Text>
       <Text style={styles.subtitle}>Connect with parents in your community</Text>
 
-      <GoogleSignInButton
-        onPress={google.signInWithGoogle}
-        loading={google.loading}
-      />
-
-      <AuthDivider />
+      {isGoogleSignInConfigured() ? (
+        <GoogleAuthSection
+          onSuccess={completeAuth}
+          onError={setGoogleError}
+        />
+      ) : null}
 
       <TextInput
         style={styles.input}
@@ -79,7 +78,7 @@ export default function LoginScreen() {
       <Pressable
         style={styles.button}
         onPress={onLogin}
-        disabled={loading || google.loading}
+        disabled={loading}
       >
         {loading ? (
           <ActivityIndicator color="#fff" />
