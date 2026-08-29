@@ -446,7 +446,7 @@ export async function processNotificationDigests(
      FROM notifications n
      JOIN users u ON u.id = n.user_id
      WHERE n.push_sent_at IS NULL
-       AND n.type = ANY($1::text[])
+       AND n.type::text = ANY($1::text[])
        AND n.created_at <= $2
      ORDER BY n.user_id, n.created_at`,
     [digestTypes, minAge]
