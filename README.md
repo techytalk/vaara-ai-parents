@@ -8,6 +8,7 @@ A React Native community app for parents—connect by **curriculum** (IBDP, CBSE
 - **API:** Node.js (Hono) BFF
 - **Database:** Neon (PostgreSQL)
 - **Cache / queues / realtime:** Upstash Redis (managed)
+- **Media:** S3 `vaara-parents-connect` + CloudFront (`media.vaara.ai`)
 - **Push:** Expo Notifications
 
 ## Documentation
@@ -21,6 +22,7 @@ A React Native community app for parents—connect by **curriculum** (IBDP, CBSE
 | [Feature implementation plan](./docs/FEATURE_IMPLEMENTATION_PLAN.md) | Schema, API, mobile and notification changes for the features above |
 | [Redis setup](./docs/REDIS.md) | Upstash provisioning, Vercel env |
 | [Deploy realtime](./docs/DEPLOY_REALTIME.md) | Fly.io (Mumbai), Render, DigitalOcean |
+| [S3 media setup](./docs/S3_MEDIA_SETUP.md) | Bucket, IAM, CloudFront, Vercel env |
 
 ## Circles (core concept)
 
