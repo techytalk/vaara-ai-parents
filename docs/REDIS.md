@@ -37,7 +37,7 @@ In the [Vercel project](https://vercel.com) for `vaara-ai-parents`:
 Redeploy, then verify:
 
 ```bash
-curl https://vaara-ai-parents.vercel.app/health
+curl https://api.vaara.ai/health
 # {"status":"ok","redis":true}
 ```
 

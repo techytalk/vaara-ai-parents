@@ -17,7 +17,7 @@ module.exports = {
       },
       apiUrl:
         process.env.EXPO_PUBLIC_API_URL?.trim() ||
-        "https://vaara-ai-parents.vercel.app",
+        "https://api.vaara.ai",
       googleWebClientId:
         process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim() ||
         appJson.expo.extra.googleWebClientId ||

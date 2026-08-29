@@ -14,7 +14,7 @@
     "preview": {
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://vaara-ai-parents.vercel.app",
+        "EXPO_PUBLIC_API_URL": "https://api.vaara.ai",
         "EXPO_PUBLIC_REALTIME_URL": "wss://vaara-realtime.fly.dev/ws",
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "375946640576-8eiut23u8r6kgpd460m19c5lh42ai9am.apps.googleusercontent.com"
       },
@@ -25,7 +25,7 @@
     },
     "production": {
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://vaara-ai-parents.vercel.app",
+        "EXPO_PUBLIC_API_URL": "https://api.vaara.ai",
         "EXPO_PUBLIC_REALTIME_URL": "wss://vaara-realtime.fly.dev/ws",
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "375946640576-8eiut23u8r6kgpd460m19c5lh42ai9am.apps.googleusercontent.com"
       },
