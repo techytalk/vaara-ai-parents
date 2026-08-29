@@ -26,6 +26,12 @@
         {
           "photosPermission": "Allow Vaara Parents to select photos and videos for circle posts."
         }
+      ],
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.375946640576-8eiut23u8r6kgpd460m19c5lh42ai9am"
+        }
       ]
     ],
     "experiments": {
@@ -34,9 +40,7 @@
     "extra": {
       "iosStoreUrl": "https://apps.apple.com/app/vaara-parents",
       "androidStoreUrl": "https://play.google.com/store/apps/details?id=com.vaara.parents",
-      "googleWebClientId": "",
-      "googleIosClientId": "",
-      "googleAndroidClientId": ""
+      "googleWebClientId": "375946640576-8eiut23u8r6kgpd460m19c5lh42ai9am.apps.googleusercontent.com"
     }
   }
 }

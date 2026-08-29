@@ -7,6 +7,7 @@ A React Native community app for parents—connect by **curriculum** (IBDP, CBSE
 - **Mobile:** React Native (Expo)
 - **API:** Node.js (Hono) BFF
 - **Database:** Neon (PostgreSQL)
+- **Cache / queues / realtime:** Upstash Redis (managed)
 - **Push:** Expo Notifications
 
 ## Documentation
@@ -18,6 +19,8 @@ A React Native community app for parents—connect by **curriculum** (IBDP, CBSE
 | [Implementation plan](./docs/IMPLEMENTATION_PLAN.md) | 8-week phased delivery, monorepo layout, milestones |
 | [Business functionality](./docs/BUSINESS_FUNCTIONALITY.md) | Parent behaviour, Tier 1 & Tier 2 features, trust model, simulated examples |
 | [Feature implementation plan](./docs/FEATURE_IMPLEMENTATION_PLAN.md) | Schema, API, mobile and notification changes for the features above |
+| [Redis setup](./docs/REDIS.md) | Upstash provisioning, Vercel env |
+| [Deploy realtime](./docs/DEPLOY_REALTIME.md) | Fly.io (Mumbai), Render, DigitalOcean |
 
 ## Circles (core concept)
 
@@ -60,5 +63,7 @@ npm run dev:api
 npm run dev:mobile
 ```
 
-Copy `.env.example` to `.env.local` and set `DATABASE_URL` and `JWT_SECRET`.
+Copy `.env.example` to `.env.local` and set `DATABASE_URL`, `JWT_SECRET`, and `REDIS_URL` (Upstash TCP URL).
+
+See [docs/REDIS.md](./docs/REDIS.md) to provision Upstash and enable Redis on Vercel.
 

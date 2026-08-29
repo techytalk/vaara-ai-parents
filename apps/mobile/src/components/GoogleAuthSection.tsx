@@ -3,6 +3,7 @@ import { Text, StyleSheet } from "react-native";
 import { AuthDivider, GoogleSignInButton } from "@/components/GoogleSignInButton";
 import { useGoogleAuth } from "@/hooks/useGoogleAuth";
 import { api } from "@/lib/api";
+import { isGoogleSignInConfigured } from "@/constants/google-auth";
 
 type GoogleAuthSectionProps = {
   onSuccess: (result: Awaited<ReturnType<typeof api.loginWithGoogle>>) => void;
@@ -12,10 +13,6 @@ type GoogleAuthSectionProps = {
   label?: string;
 };
 
-/**
- * Mounts Google auth hooks only when the platform is fully configured.
- * Avoids crashing standalone Android builds before androidClientId exists.
- */
 export function GoogleAuthSection({
   onSuccess,
   onError,
@@ -28,6 +25,10 @@ export function GoogleAuthSection({
   useEffect(() => {
     onError?.(google.error);
   }, [google.error, onError]);
+
+  if (!isGoogleSignInConfigured()) {
+    return null;
+  }
 
   return (
     <>

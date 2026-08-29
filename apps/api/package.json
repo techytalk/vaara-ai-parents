@@ -3,11 +3,29 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts",
-    "./notifications": "./src/services/notifications.ts",
-    "./topics": "./src/lib/topics.ts",
-    "./auth": "./src/lib/jwt.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./notifications": {
+      "types": "./dist/services/notifications.d.ts",
+      "import": "./dist/services/notifications.js",
+      "default": "./dist/services/notifications.js"
+    },
+    "./topics": {
+      "types": "./dist/lib/topics.d.ts",
+      "import": "./dist/lib/topics.js",
+      "default": "./dist/lib/topics.js"
+    },
+    "./auth": {
+      "types": "./dist/lib/jwt.d.ts",
+      "import": "./dist/lib/jwt.js",
+      "default": "./dist/lib/jwt.js"
+    }
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",

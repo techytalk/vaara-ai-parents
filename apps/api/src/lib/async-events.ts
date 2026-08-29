@@ -24,18 +24,26 @@ export async function dispatchPostCreated(params: {
   topicSlugs: string[];
   circleIds: string[];
 }) {
+  let queued = false;
   if (isRedisEnabled()) {
-    await enqueuePostCreated({
-      postId: params.postId,
-      authorId: params.authorId,
-      postPreview: params.postPreview,
-      targets: params.targets,
-      topicIds: params.topicIds,
-      topicPreview: params.topicPreview,
-      circleIds: params.circleIds,
-      topicSlugs: params.topicSlugs,
-    });
-  } else {
+    try {
+      await enqueuePostCreated({
+        postId: params.postId,
+        authorId: params.authorId,
+        postPreview: params.postPreview,
+        targets: params.targets,
+        topicIds: params.topicIds,
+        topicPreview: params.topicPreview,
+        circleIds: params.circleIds,
+        topicSlugs: params.topicSlugs,
+      });
+      queued = true;
+    } catch (error) {
+      console.error("[queue] post.created enqueue failed", error);
+    }
+  }
+
+  if (!queued) {
     const client = await pool.connect();
     try {
       await notifyCirclePostMulti(client, {
@@ -91,8 +99,12 @@ export async function dispatchMessageCreated(params: {
   });
 
   if (isRedisEnabled()) {
-    await enqueueMessageCreated(params);
-    return;
+    try {
+      await enqueueMessageCreated(params);
+      return;
+    } catch (error) {
+      console.error("[queue] message.created enqueue failed", error);
+    }
   }
 
   const client = await pool.connect();

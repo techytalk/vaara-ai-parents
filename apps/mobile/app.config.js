@@ -19,13 +19,9 @@ module.exports = {
         process.env.EXPO_PUBLIC_API_URL?.trim() ||
         "https://vaara-ai-parents.vercel.app",
       googleWebClientId:
-        process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim() ?? "",
-      googleIosClientId:
-        process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID?.trim() ?? "",
-      googleAndroidClientId:
-        process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID?.trim() ?? "",
-      googleRedirectUri:
-        process.env.EXPO_PUBLIC_GOOGLE_REDIRECT_URI?.trim() ?? "",
+        process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim() ||
+        appJson.expo.extra.googleWebClientId ||
+        "",
     },
   },
 };

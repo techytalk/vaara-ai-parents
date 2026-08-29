@@ -28,18 +28,28 @@ import { createPractitionerRoutes } from "./routes/practitioners.js";
 import { createExpertSessionRoutes } from "./routes/expert-sessions.js";
 import { createPlaydateRoutes } from "./routes/playdates.js";
 import { createCarpoolRoutes } from "./routes/carpool.js";
-import { isRedisEnabled } from "@vaara/redis";
+import { getRedis, isRedisEnabled } from "@vaara/redis";
 
 const app = new Hono();
 
 app.use("*", cors());
 
-app.get("/health", (c) =>
-  c.json({
+app.get("/health", async (c) => {
+  let redis = false;
+  if (isRedisEnabled()) {
+    try {
+      await getRedis().ping();
+      redis = true;
+    } catch {
+      redis = false;
+    }
+  }
+
+  return c.json({
     status: "ok",
-    redis: isRedisEnabled(),
-  })
-);
+    redis,
+  });
+});
 
 app.route("/v1/auth", createAuthRoutes());
 app.route("/v1/me", createMeRoutes());

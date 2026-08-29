@@ -15,7 +15,8 @@
       "distribution": "internal",
       "env": {
         "EXPO_PUBLIC_API_URL": "https://vaara-ai-parents.vercel.app",
-        "EXPO_PUBLIC_GOOGLE_REDIRECT_URI": "https://auth.expo.io/@raj-techy1s-team/vaara-parents"
+        "EXPO_PUBLIC_REALTIME_URL": "wss://vaara-realtime.fly.dev/ws",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "375946640576-8eiut23u8r6kgpd460m19c5lh42ai9am.apps.googleusercontent.com"
       },
       "android": {
         "buildType": "apk"
@@ -23,6 +24,11 @@
       "prebuildCommand": "npx expo prebuild --platform android --clean"
     },
     "production": {
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://vaara-ai-parents.vercel.app",
+        "EXPO_PUBLIC_REALTIME_URL": "wss://vaara-realtime.fly.dev/ws",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "375946640576-8eiut23u8r6kgpd460m19c5lh42ai9am.apps.googleusercontent.com"
+      },
       "android": {
         "buildType": "app-bundle"
       },

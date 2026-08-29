@@ -105,11 +105,12 @@ export function useRealtimeChannel({
       appStateSub.remove();
       if (reconnectTimer) clearTimeout(reconnectTimer);
       if (pollTimer) clearInterval(pollTimer);
-      if (socketRef.current) {
-        socketRef.current.send(
-          JSON.stringify({ type: "unsubscribe", channel })
-        );
-        socketRef.current.close();
+      const socket = socketRef.current;
+      if (socket) {
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({ type: "unsubscribe", channel }));
+        }
+        socket.close();
         socketRef.current = null;
       }
     };

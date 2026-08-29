@@ -9,7 +9,6 @@ import {
 } from "react-native";
 import { Link, useRouter } from "expo-router";
 import { GoogleAuthSection } from "@/components/GoogleAuthSection";
-import { isGoogleSignInConfigured } from "@/constants/google-auth";
 import { api } from "@/lib/api";
 import { routeAfterAuth } from "@/lib/auth-navigation";
 import { saveSession } from "@/lib/session";
@@ -91,15 +90,13 @@ export default function RegisterScreen() {
         </Pressable>
       </View>
 
-      {isGoogleSignInConfigured() ? (
-        <GoogleAuthSection
-          onSuccess={completeAuth}
-          onError={setGoogleError}
-          role={role}
-          displayName={displayName}
-          label="Sign up with Google"
-        />
-      ) : null}
+      <GoogleAuthSection
+        onSuccess={completeAuth}
+        onError={setGoogleError}
+        role={role}
+        displayName={displayName}
+        label="Sign up with Google"
+      />
 
       <TextInput
         style={styles.input}

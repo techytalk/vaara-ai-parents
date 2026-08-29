@@ -1,0 +1,40 @@
+# Render Blueprint — deploy realtime (and optionally worker) without Railway.
+# https://dashboard.render.com → New → Blueprint → connect this repo
+#
+# Singapore (sgp) is the closest Render region to India.
+
+services:
+  - type: web
+    name: vaara-realtime
+    runtime: node
+    plan: starter
+    region: singapore
+    buildCommand: npm install && npm run build:realtime
+    startCommand: node apps/realtime/dist/index.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+
+  - type: worker
+    name: vaara-worker
+    runtime: node
+    plan: starter
+    region: singapore
+    buildCommand: npm install && npm run build:worker
+    startCommand: node apps/worker/dist/index.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false

@@ -25,7 +25,13 @@ export type RealtimeEvent =
 
 async function publish(channel: string, event: RealtimeEvent): Promise<void> {
   if (!isRedisEnabled()) return;
-  await getRedis().publish(channel, JSON.stringify(event));
+  try {
+    await getRedis().publish(channel, JSON.stringify(event));
+  } catch (error) {
+    // The write already succeeded; losing the live nudge only means clients
+    // fall back to polling.
+    console.error("[redis:pubsub]", (error as Error).message);
+  }
 }
 
 export async function publishCircleEvent(

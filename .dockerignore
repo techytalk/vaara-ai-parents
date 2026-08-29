@@ -1,0 +1,10 @@
+**/node_modules
+.git
+.expo
+**/.env.local
+**/dist
+
+# The mobile app is never built in these images, but npm ci needs its
+# package.json to match package-lock.json's workspace list.
+apps/mobile/**
+!apps/mobile/package.json

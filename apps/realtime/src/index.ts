@@ -13,6 +13,7 @@ if (!isRedisEnabled()) {
 type ClientState = {
   userId: string;
   subscriptions: Set<string>;
+  alive: boolean;
 };
 
 const clients = new Map<WebSocket, ClientState>();
@@ -92,7 +93,7 @@ async function canSubscribe(
   }
 }
 
-const port = Number(process.env.REALTIME_PORT ?? 3002);
+const port = Number(process.env.PORT ?? process.env.REALTIME_PORT ?? 3002);
 const server = createServer((req, res) => {
   if (req.url === "/health") {
     res.writeHead(200, { "Content-Type": "application/json" });
@@ -104,6 +105,20 @@ const server = createServer((req, res) => {
 });
 
 const wss = new WebSocketServer({ server, path: "/ws" });
+
+// Phones on mobile networks disappear without a close frame. Without this the
+// server keeps feeding events to sockets nobody is listening on.
+const HEARTBEAT_MS = 30_000;
+setInterval(() => {
+  for (const [socket, state] of clients) {
+    if (!state.alive) {
+      socket.terminate();
+      continue;
+    }
+    state.alive = false;
+    socket.ping();
+  }
+}, HEARTBEAT_MS).unref();
 
 wss.on("connection", async (socket, req) => {
   const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
@@ -123,8 +138,12 @@ wss.on("connection", async (socket, req) => {
     return;
   }
 
-  const state: ClientState = { userId, subscriptions: new Set() };
+  const state: ClientState = { userId, subscriptions: new Set(), alive: true };
   clients.set(socket, state);
+
+  socket.on("pong", () => {
+    state.alive = true;
+  });
 
   socket.send(JSON.stringify({ type: "connected", userId }));
 
@@ -185,5 +204,5 @@ wss.on("connection", async (socket, req) => {
 });
 
 server.listen(port, () => {
-  console.log(`Realtime gateway on ws://localhost:${port}/ws`);
+  console.log(`Realtime gateway listening on port ${port} (path /ws)`);
 });

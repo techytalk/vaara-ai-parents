@@ -13,7 +13,7 @@
     "dev:realtime": "npm run dev -w @vaara/realtime",
     "dev:mobile": "npm run start -w @vaara/mobile",
     "build:api": "npm run build -w @vaara/db && npm run build -w @vaara/redis && npm run build -w @vaara/api",
-    "build:worker": "npm run build -w @vaara/db && npm run build -w @vaara/redis && npm run build -w @vaara/worker",
-    "build:realtime": "npm run build -w @vaara/db && npm run build -w @vaara/redis && npm run build -w @vaara/realtime"
+    "build:worker": "npm run build -w @vaara/db && npm run build -w @vaara/redis && npm run build -w @vaara/api && npm run build -w @vaara/worker",
+    "build:realtime": "npm run build -w @vaara/db && npm run build -w @vaara/redis && npm run build -w @vaara/api && npm run build -w @vaara/realtime"
   }
 }
