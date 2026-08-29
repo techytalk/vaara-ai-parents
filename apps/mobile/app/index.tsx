@@ -3,6 +3,8 @@ import { ActivityIndicator, View } from "react-native";
 import { Redirect } from "expo-router";
 import { api } from "@/lib/api";
 import { getToken, saveSession } from "@/lib/session";
+import { hasCompletedIntro } from "@/lib/intro";
+import { colors } from "@/constants/theme";
 
 export default function Index() {
   const [loading, setLoading] = useState(true);
@@ -12,7 +14,8 @@ export default function Index() {
     (async () => {
       const token = await getToken();
       if (!token) {
-        setTarget("/(auth)/login");
+        const introComplete = await hasCompletedIntro();
+        setTarget(introComplete ? "/(auth)/login" : "/(intro)");
         setLoading(false);
         return;
       }
@@ -42,8 +45,15 @@ export default function Index() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-        <ActivityIndicator size="large" />
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: colors.bg,
+        }}
+      >
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }

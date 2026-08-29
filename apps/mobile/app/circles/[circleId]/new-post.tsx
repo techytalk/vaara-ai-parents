@@ -537,6 +537,13 @@ export default function NewPostScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.bg },
   content: { padding: 20, paddingBottom: 40 },
+  section: { marginBottom: 16 },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: theme.text,
+    marginBottom: 10,
+  },
   sharePanel: {
     backgroundColor: theme.card,
     padding: 14,

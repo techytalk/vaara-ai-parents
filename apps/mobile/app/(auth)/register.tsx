@@ -1,14 +1,20 @@
 import { useCallback, useState } from "react";
 import {
-  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Link, useRouter } from "expo-router";
 import { GoogleAuthSection } from "@/components/GoogleAuthSection";
+import { VaaraLogo } from "@/components/VaaraLogo";
+import { Button, InlineError } from "@/components/ui";
+import { colors, radii, spacing, typography } from "@/constants/theme";
 import { api } from "@/lib/api";
 import { routeAfterAuth } from "@/lib/auth-navigation";
 import { saveSession } from "@/lib/session";
@@ -52,156 +58,178 @@ export default function RegisterScreen() {
   const displayError = error ?? googleError;
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Join Vaara Parents</Text>
-      <Text style={styles.subtitle}>
-        {role === "parent"
-          ? "Your name stays private — you'll get an anonymous handle in circles"
-          : "Share classes and workshops with parents in your service areas"}
-      </Text>
-
-      <Text style={styles.label}>I am a</Text>
-      <View style={styles.roleRow}>
-        <Pressable
-          style={[styles.roleChip, role === "parent" && styles.roleChipActive]}
-          onPress={() => setRole("parent")}
-        >
-          <Text
-            style={[
-              styles.roleChipText,
-              role === "parent" && styles.roleChipTextActive,
-            ]}
-          >
-            Parent
-          </Text>
-        </Pressable>
-        <Pressable
-          style={[styles.roleChip, role === "provider" && styles.roleChipActive]}
-          onPress={() => setRole("provider")}
-        >
-          <Text
-            style={[
-              styles.roleChipText,
-              role === "provider" && styles.roleChipTextActive,
-            ]}
-          >
-            Teacher / Institution
-          </Text>
-        </Pressable>
-      </View>
-
-      <GoogleAuthSection
-        onSuccess={completeAuth}
-        onError={setGoogleError}
-        role={role}
-        displayName={displayName}
-        label="Sign up with Google"
-      />
-
-      <TextInput
-        style={styles.input}
-        placeholder="Your name (private)"
-        value={displayName}
-        onChangeText={setDisplayName}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        autoCapitalize="none"
-        keyboardType="email-address"
-        value={email}
-        onChangeText={setEmail}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Password (min 8 characters)"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-      />
-
-      {displayError ? <Text style={styles.error}>{displayError}</Text> : null}
-
-      <Pressable
-        style={styles.button}
-        onPress={onRegister}
-        disabled={loading}
+    <SafeAreaView style={styles.safe}>
+      <KeyboardAvoidingView
+        style={styles.safe}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
-        {loading ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.buttonText}>Create account with email</Text>
-        )}
-      </Pressable>
+        <ScrollView
+          contentContainerStyle={styles.container}
+          keyboardShouldPersistTaps="handled"
+        >
+          <VaaraLogo compact />
+          <View style={styles.heading}>
+            <Text style={styles.title}>Join Vaara</Text>
+            <Text style={styles.subtitle}>
+              {role === "parent"
+                ? "Your real name stays private. Parents see only your anonymous handle."
+                : "Share classes and workshops with parents in the areas you serve."}
+            </Text>
+          </View>
 
-      <Link href="/(auth)/login" style={styles.link}>
-        Already have an account? Sign in
-      </Link>
-    </View>
+          <Text style={styles.label}>I am joining as</Text>
+          <View style={styles.roleRow}>
+            {(["parent", "provider"] as const).map((value) => {
+              const selected = role === value;
+              return (
+                <Pressable
+                  key={value}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  style={[
+                    styles.roleChip,
+                    selected && styles.roleChipActive,
+                  ]}
+                  onPress={() => setRole(value)}
+                >
+                  <Text
+                    style={[
+                      styles.roleChipText,
+                      selected && styles.roleChipTextActive,
+                    ]}
+                  >
+                    {value === "parent" ? "Parent" : "Teacher / Institution"}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <GoogleAuthSection
+            onSuccess={completeAuth}
+            onError={setGoogleError}
+            role={role}
+            displayName={displayName}
+            label="Sign up with Google"
+          />
+
+          <Text style={styles.label}>Your name (kept private)</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Your name"
+            placeholderTextColor={colors.textSubtle}
+            value={displayName}
+            onChangeText={setDisplayName}
+          />
+          <Text style={styles.label}>Email address</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="you@example.com"
+            placeholderTextColor={colors.textSubtle}
+            autoCapitalize="none"
+            autoComplete="email"
+            keyboardType="email-address"
+            value={email}
+            onChangeText={setEmail}
+          />
+          <Text style={styles.label}>Password</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="At least 8 characters"
+            placeholderTextColor={colors.textSubtle}
+            autoComplete="new-password"
+            secureTextEntry
+            value={password}
+            onChangeText={setPassword}
+          />
+
+          {displayError ? <InlineError message={displayError} /> : null}
+
+          <Button
+            label="Create account"
+            onPress={onRegister}
+            loading={loading}
+            disabled={!email.trim() || password.length < 8}
+            style={styles.button}
+          />
+
+          <Link href="/(auth)/login" style={styles.link}>
+            Already have an account? Sign in
+          </Link>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: colors.bg },
   container: {
-    flex: 1,
-    padding: 24,
-    backgroundColor: "#f8f9fc",
+    flexGrow: 1,
+    padding: spacing.xl,
+    paddingTop: spacing.lg,
   },
+  heading: { marginTop: spacing.xl, marginBottom: spacing.lg },
   title: {
-    fontSize: 28,
-    fontWeight: "700",
-    color: "#1a1a2e",
-    marginTop: 24,
+    ...typography.display,
+    fontFamily: typography.bold,
+    color: colors.text,
+    letterSpacing: -1,
   },
   subtitle: {
-    fontSize: 15,
-    color: "#5c5c7a",
-    marginTop: 8,
-    marginBottom: 24,
+    ...typography.body,
+    color: colors.textMuted,
+    fontFamily: typography.regular,
+    marginTop: spacing.xs,
   },
   input: {
-    backgroundColor: "#fff",
+    minHeight: 50,
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: "#e2e4ef",
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 12,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.md,
     fontSize: 16,
+    color: colors.text,
+    fontFamily: typography.regular,
   },
-  button: {
-    backgroundColor: "#4f46e5",
-    borderRadius: 12,
-    padding: 16,
-    alignItems: "center",
-    marginTop: 8,
-  },
-  buttonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  error: {
-    color: "#dc2626",
-    marginBottom: 8,
-  },
+  button: { marginTop: spacing.md },
   link: {
-    marginTop: 20,
+    marginTop: spacing.lg,
     textAlign: "center",
-    color: "#4f46e5",
+    color: colors.primaryDark,
     fontSize: 15,
+    fontFamily: typography.semibold,
+    marginBottom: spacing.lg,
   },
-  label: { fontSize: 13, color: "#5c5c7a", marginBottom: 8 },
+  label: {
+    ...typography.supporting,
+    color: colors.text,
+    fontFamily: typography.semibold,
+    marginBottom: 6,
+  },
   roleRow: { flexDirection: "row", gap: 8, marginBottom: 16 },
   roleChip: {
     flex: 1,
-    paddingVertical: 12,
-    borderRadius: 12,
+    minHeight: 48,
+    justifyContent: "center",
+    paddingHorizontal: spacing.xs,
+    borderRadius: radii.md,
     borderWidth: 1,
-    borderColor: "#e2e4ef",
-    backgroundColor: "#fff",
+    borderColor: colors.border,
+    backgroundColor: colors.card,
     alignItems: "center",
   },
-  roleChipActive: { backgroundColor: "#4f46e5", borderColor: "#4f46e5" },
-  roleChipText: { fontSize: 14, color: "#1a1a2e", fontWeight: "600" },
-  roleChipTextActive: { color: "#fff" },
+  roleChipActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  roleChipText: {
+    ...typography.supporting,
+    color: colors.text,
+    fontFamily: typography.semibold,
+    textAlign: "center",
+  },
+  roleChipTextActive: { color: colors.textInverse },
 });

@@ -8,7 +8,8 @@ import {
   View,
   type ViewStyle,
 } from "react-native";
-import { colors } from "@/constants/theme";
+import type { ReactNode } from "react";
+import { colors, radii, typography } from "@/constants/theme";
 
 export { colors };
 
@@ -36,7 +37,7 @@ export function OnboardingHeader({
   );
 }
 
-export function InfoCard({ children }: { children: string }) {
+export function InfoCard({ children }: { children: ReactNode }) {
   return (
     <View style={infoStyles.card}>
       <Text style={infoStyles.text}>{children}</Text>
@@ -44,7 +45,7 @@ export function InfoCard({ children }: { children: string }) {
   );
 }
 
-export function FieldLabel({ children }: { children: string }) {
+export function FieldLabel({ children }: { children: ReactNode }) {
   return <Text style={fieldStyles.label}>{children}</Text>;
 }
 
@@ -58,7 +59,7 @@ export function FieldInput({
       {label ? <FieldLabel>{label}</FieldLabel> : null}
       <TextInput
         style={fieldStyles.input}
-        placeholderTextColor="#94a3b8"
+        placeholderTextColor={colors.textSubtle}
         {...props}
       />
       {hint ? <Text style={fieldStyles.hint}>{hint}</Text> : null}
@@ -148,13 +149,13 @@ const headerStyles = StyleSheet.create({
   wrap: { marginBottom: 20 },
   step: {
     fontSize: 13,
-    fontWeight: "600",
+    fontFamily: typography.semibold,
     color: colors.primary,
     marginBottom: 6,
   },
   title: {
     fontSize: 26,
-    fontWeight: "700",
+    fontFamily: typography.bold,
     color: colors.text,
     letterSpacing: -0.5,
   },
@@ -162,6 +163,7 @@ const headerStyles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
     color: colors.textMuted,
+    fontFamily: typography.regular,
     marginTop: 8,
   },
 });
@@ -169,16 +171,17 @@ const headerStyles = StyleSheet.create({
 const infoStyles = StyleSheet.create({
   card: {
     backgroundColor: colors.primaryLight,
-    borderRadius: 14,
+    borderRadius: radii.md,
     padding: 16,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: "#c7d2fe",
+    borderColor: colors.primaryLight,
   },
   text: {
     fontSize: 14,
     lineHeight: 21,
-    color: "#3730a3",
+    color: colors.primaryDark,
+    fontFamily: typography.regular,
   },
 });
 
@@ -186,7 +189,7 @@ const fieldStyles = StyleSheet.create({
   wrap: { marginBottom: 16 },
   label: {
     fontSize: 14,
-    fontWeight: "600",
+    fontFamily: typography.semibold,
     color: colors.text,
     marginBottom: 8,
   },
@@ -194,11 +197,12 @@ const fieldStyles = StyleSheet.create({
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 14,
+    borderRadius: radii.md,
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 16,
     color: colors.text,
+    fontFamily: typography.regular,
   },
   hint: {
     fontSize: 12,
@@ -210,21 +214,29 @@ const fieldStyles = StyleSheet.create({
 const btnStyles = StyleSheet.create({
   primary: {
     backgroundColor: colors.primary,
-    borderRadius: 14,
+    borderRadius: radii.md,
     paddingVertical: 16,
     alignItems: "center",
     marginTop: 8,
   },
-  primaryText: { color: "#fff", fontSize: 16, fontWeight: "600" },
+  primaryText: {
+    color: colors.textInverse,
+    fontSize: 16,
+    fontFamily: typography.semibold,
+  },
   secondary: {
     borderWidth: 1.5,
     borderColor: colors.primary,
-    borderRadius: 14,
+    borderRadius: radii.md,
     paddingVertical: 14,
     alignItems: "center",
     marginTop: 8,
   },
-  secondaryText: { color: colors.primary, fontSize: 16, fontWeight: "600" },
+  secondaryText: {
+    color: colors.primary,
+    fontSize: 16,
+    fontFamily: typography.semibold,
+  },
   disabled: { opacity: 0.5 },
 });
 
@@ -241,8 +253,11 @@ const chipStyles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
-  text: { fontSize: 14, color: colors.text },
-  textActive: { color: "#fff", fontWeight: "600" },
+  text: { fontSize: 14, color: colors.text, fontFamily: typography.medium },
+  textActive: {
+    color: colors.textInverse,
+    fontFamily: typography.semibold,
+  },
 });
 
 const detailStyles = StyleSheet.create({

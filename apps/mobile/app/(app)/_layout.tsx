@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { colors } from "@/constants/theme";
+import { colors, typography } from "@/constants/theme";
 import { registerForPushNotifications } from "@/lib/push";
 
 type TabIconName = keyof typeof Ionicons.glyphMap;
@@ -33,7 +33,7 @@ export default function AppLayout() {
         tabBarInactiveTintColor: colors.tabInactive,
         headerTintColor: colors.text,
         headerStyle: { backgroundColor: colors.card },
-        headerTitleStyle: { fontWeight: "700", color: colors.text },
+        headerTitleStyle: { fontFamily: typography.bold, color: colors.text },
         headerShadowVisible: false,
         tabBarHideOnKeyboard: true,
         tabBarStyle: {
@@ -51,7 +51,7 @@ export default function AppLayout() {
         },
         tabBarLabelStyle: {
           fontSize: 11,
-          fontWeight: "600",
+          fontFamily: typography.semibold,
           marginTop: 2,
         },
         tabBarIconStyle: { marginTop: 1 },
@@ -67,6 +67,15 @@ export default function AppLayout() {
         }}
       />
       <Tabs.Screen
+        name="circles"
+        options={{
+          title: "My Circles",
+          tabBarLabel: "Circles",
+          tabBarIcon: ({ focused, color, size }) =>
+            tabIcon(focused, "people", "people-outline")({ color, size }),
+        }}
+      />
+      <Tabs.Screen
         name="activities"
         options={{
           title: "Activities",
@@ -77,25 +86,12 @@ export default function AppLayout() {
         }}
       />
       <Tabs.Screen
-        name="messages"
+        name="schools"
         options={{
-          title: "Messages",
-          tabBarLabel: "Messages",
+          title: "Schools",
+          tabBarLabel: "Schools",
           tabBarIcon: ({ focused, color, size }) =>
-            tabIcon(focused, "chatbubbles", "chatbubbles-outline")({
-              color,
-              size,
-            }),
-          headerShown: false,
-        }}
-      />
-      <Tabs.Screen
-        name="market"
-        options={{
-          title: "Market",
-          tabBarLabel: "Market",
-          tabBarIcon: ({ focused, color, size }) =>
-            tabIcon(focused, "storefront", "storefront-outline")({
+            tabIcon(focused, "school", "school-outline")({
               color,
               size,
             }),
@@ -112,15 +108,17 @@ export default function AppLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          title: "Account",
-          tabBarLabel: "Account",
+          title: "More",
+          tabBarLabel: "More",
           tabBarIcon: ({ focused, color, size }) =>
-            tabIcon(focused, "person-circle", "person-circle-outline")({
+            tabIcon(focused, "grid", "grid-outline")({
               color,
               size,
             }),
         }}
       />
+      <Tabs.Screen name="messages" options={{ href: null, headerShown: false }} />
+      <Tabs.Screen name="market" options={{ href: null, headerShown: false }} />
       <Tabs.Screen
         name="reminders"
         options={{ href: null, title: "Reminders" }}
@@ -133,7 +131,6 @@ export default function AppLayout() {
         name="contact-details"
         options={{ href: null, title: "Contact details" }}
       />
-      <Tabs.Screen name="schools" options={{ href: null, headerShown: false }} />
       <Tabs.Screen name="topics" options={{ href: null, headerShown: false }} />
       <Tabs.Screen name="calendar" options={{ href: null, headerShown: false }} />
       <Tabs.Screen name="practitioners" options={{ href: null, headerShown: false }} />

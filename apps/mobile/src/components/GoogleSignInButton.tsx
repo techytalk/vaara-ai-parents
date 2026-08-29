@@ -7,6 +7,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { isGoogleSignInConfigured } from "@/constants/google-auth";
+import { colors, radii, spacing, typography } from "@/constants/theme";
 
 type GoogleSignInButtonProps = {
   onPress: () => void;
@@ -30,10 +31,10 @@ export function GoogleSignInButton({
       disabled={loading}
     >
       {loading ? (
-        <ActivityIndicator color="#1a1a2e" />
+        <ActivityIndicator color={colors.text} />
       ) : (
         <View style={styles.content}>
-          <Ionicons name="logo-google" size={18} color="#1a1a2e" />
+          <Ionicons name="logo-google" size={18} color={colors.text} />
           <Text style={styles.label}>{label}</Text>
         </View>
       )}
@@ -53,12 +54,14 @@ export function AuthDivider() {
 
 const styles = StyleSheet.create({
   button: {
-    backgroundColor: "#fff",
+    minHeight: 50,
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: "#e2e4ef",
-    borderRadius: 12,
-    padding: 16,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.md,
     alignItems: "center",
+    justifyContent: "center",
   },
   buttonDisabled: {
     opacity: 0.7,
@@ -69,25 +72,25 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   label: {
-    color: "#1a1a2e",
-    fontSize: 16,
-    fontWeight: "600",
+    color: colors.text,
+    fontSize: 15,
+    fontFamily: typography.semibold,
   },
   dividerRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    marginVertical: 20,
+    marginVertical: spacing.lg,
   },
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: "#e2e4ef",
+    backgroundColor: colors.border,
   },
   dividerText: {
-    color: "#5c5c7a",
-    fontSize: 13,
-    fontWeight: "600",
+    color: colors.textMuted,
+    ...typography.caption,
+    fontFamily: typography.semibold,
     textTransform: "uppercase",
   },
 });

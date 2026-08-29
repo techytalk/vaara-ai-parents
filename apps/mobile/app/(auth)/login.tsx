@@ -1,14 +1,19 @@
 import { useCallback, useState } from "react";
 import {
-  ActivityIndicator,
-  Pressable,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Link, useRouter } from "expo-router";
 import { GoogleAuthSection } from "@/components/GoogleAuthSection";
+import { VaaraLogo } from "@/components/VaaraLogo";
+import { Button, InlineError } from "@/components/ui";
+import { colors, radii, spacing, typography } from "@/constants/theme";
 import { api } from "@/lib/api";
 import { routeAfterAuth } from "@/lib/auth-navigation";
 import { saveSession } from "@/lib/session";
@@ -45,99 +50,123 @@ export default function LoginScreen() {
   const displayError = error ?? googleError;
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Welcome back</Text>
-      <Text style={styles.subtitle}>Connect with parents in your community</Text>
-
-      <GoogleAuthSection
-        onSuccess={completeAuth}
-        onError={setGoogleError}
-      />
-
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        autoCapitalize="none"
-        keyboardType="email-address"
-        value={email}
-        onChangeText={setEmail}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-      />
-
-      {displayError ? <Text style={styles.error}>{displayError}</Text> : null}
-
-      <Pressable
-        style={styles.button}
-        onPress={onLogin}
-        disabled={loading}
+    <SafeAreaView style={styles.safe}>
+      <KeyboardAvoidingView
+        style={styles.safe}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
-        {loading ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.buttonText}>Sign in with email</Text>
-        )}
-      </Pressable>
+        <ScrollView
+          contentContainerStyle={styles.container}
+          keyboardShouldPersistTaps="handled"
+        >
+          <VaaraLogo />
+          <View style={styles.heading}>
+            <Text style={styles.title}>Welcome back</Text>
+            <Text style={styles.subtitle}>
+              Sign in to reconnect with your trusted parent community.
+            </Text>
+          </View>
 
-      <Link href="/(auth)/register" style={styles.link}>
-        Create an account
-      </Link>
-    </View>
+          <GoogleAuthSection
+            onSuccess={completeAuth}
+            onError={setGoogleError}
+          />
+
+          <Text style={styles.label}>Email address</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="you@example.com"
+            placeholderTextColor={colors.textSubtle}
+            autoCapitalize="none"
+            autoComplete="email"
+            keyboardType="email-address"
+            value={email}
+            onChangeText={setEmail}
+          />
+          <Text style={styles.label}>Password</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Your password"
+            placeholderTextColor={colors.textSubtle}
+            autoComplete="current-password"
+            secureTextEntry
+            value={password}
+            onChangeText={setPassword}
+          />
+
+          {displayError ? <InlineError message={displayError} /> : null}
+
+          <Button
+            label="Sign in with email"
+            onPress={onLogin}
+            loading={loading}
+            disabled={!email.trim() || !password}
+            style={styles.button}
+          />
+
+          <Link href="/(auth)/register" style={styles.link}>
+            New to Vaara? Create an account
+          </Link>
+          <Text style={styles.privacy}>
+            Your real name and child details stay private in circles.
+          </Text>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: colors.bg },
   container: {
-    flex: 1,
-    padding: 24,
-    backgroundColor: "#f8f9fc",
+    flexGrow: 1,
+    padding: spacing.xl,
+    paddingTop: spacing.lg,
   },
+  heading: { marginTop: spacing.xxl, marginBottom: spacing.xl },
   title: {
-    fontSize: 28,
-    fontWeight: "700",
-    color: "#1a1a2e",
-    marginTop: 24,
+    ...typography.display,
+    fontFamily: typography.bold,
+    color: colors.text,
+    letterSpacing: -1,
   },
   subtitle: {
-    fontSize: 15,
-    color: "#5c5c7a",
-    marginTop: 8,
-    marginBottom: 24,
+    ...typography.body,
+    fontFamily: typography.regular,
+    color: colors.textMuted,
+    marginTop: spacing.xs,
+  },
+  label: {
+    ...typography.supporting,
+    fontFamily: typography.semibold,
+    color: colors.text,
+    marginBottom: 6,
   },
   input: {
-    backgroundColor: "#fff",
+    minHeight: 50,
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: "#e2e4ef",
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 12,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.md,
     fontSize: 16,
+    color: colors.text,
+    fontFamily: typography.regular,
   },
-  button: {
-    backgroundColor: "#4f46e5",
-    borderRadius: 12,
-    padding: 16,
-    alignItems: "center",
-    marginTop: 8,
-  },
-  buttonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  error: {
-    color: "#dc2626",
-    marginBottom: 8,
-  },
+  button: { marginTop: spacing.md },
   link: {
-    marginTop: 20,
+    marginTop: spacing.lg,
     textAlign: "center",
-    color: "#4f46e5",
+    color: colors.primaryDark,
     fontSize: 15,
+    fontFamily: typography.semibold,
+  },
+  privacy: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontFamily: typography.medium,
+    textAlign: "center",
+    marginTop: spacing.xl,
   },
 });

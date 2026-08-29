@@ -192,7 +192,12 @@ Parents can **post** and **communicate** with each other in three ways. All chan
 | New DM | From member list / post → creates conversation |
 | Circle feed + thread | `(parent)/circles/[circleId]/` + `posts/[postId]` |
 
-Tab bar: **Home | Circles | Messages | Activities | Profile**
+Parent tab bar: **Home | Circles | Activities | Schools | More**
+
+Messages, Community Market, notifications, saved posts, topics, calendar,
+experts, reminders, privacy details, and account settings remain directly
+routeable and are collected under **More**. Circle feeds stay in the root
+circle stack so existing `/circles/[circleId]` links continue to work.
 
 ---
 

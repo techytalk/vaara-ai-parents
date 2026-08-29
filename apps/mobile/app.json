@@ -5,15 +5,23 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "scheme": "vaara-parents",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FFFCF7"
+    },
     "newArchEnabled": false,
     "ios": {
       "supportsTablet": true,
+      "icon": "./assets/icon.png",
       "bundleIdentifier": "com.vaara.parents"
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#1a1a2e"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#FFFCF7"
       },
       "package": "com.vaara.parents"
     },

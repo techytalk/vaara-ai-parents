@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -8,10 +7,12 @@ import {
   Text,
   View,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { SignOutButton } from "@/components/SignOutButton";
+import { Avatar, ScreenLoader, SectionHeader } from "@/components/ui";
 import { FEATURE_FLAGS } from "@/constants/features";
-import { colors } from "@/constants/theme";
+import { colors, radii, spacing, typography } from "@/constants/theme";
 import {
   api,
   type AuthUser,
@@ -34,6 +35,43 @@ const PREF_LABELS: Record<BooleanPrefKey, string> = {
   school_events: "School calendar",
   expert_sessions: "Expert sessions",
 };
+
+type MenuIcon = keyof typeof Ionicons.glyphMap;
+
+function MenuRow({
+  icon,
+  label,
+  detail,
+  onPress,
+  color = colors.primary,
+}: {
+  icon: MenuIcon;
+  label: string;
+  detail?: string;
+  onPress: () => void;
+  color?: string;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.menuRow,
+        pressed && styles.menuRowPressed,
+      ]}
+    >
+      <View style={[styles.menuIcon, { backgroundColor: `${color}18` }]}>
+        <Ionicons name={icon} size={20} color={color} />
+      </View>
+      <View style={styles.menuCopy}>
+        <Text style={styles.menuLabel}>{label}</Text>
+        {detail ? <Text style={styles.menuDetail}>{detail}</Text> : null}
+      </View>
+      <Ionicons name="chevron-forward" size={18} color={colors.textSubtle} />
+    </Pressable>
+  );
+}
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -88,11 +126,7 @@ export default function ProfileScreen() {
   }
 
   if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
+    return <ScreenLoader label="Loading your account" />;
   }
 
   return (
@@ -100,94 +134,111 @@ export default function ProfileScreen() {
       style={styles.container}
       contentContainerStyle={styles.content}
     >
-      <Text style={styles.label}>Anonymous handle</Text>
-      <Text style={styles.value}>{user?.anonymousHandle}</Text>
+      <View style={styles.profileCard}>
+        <Avatar handle={user?.anonymousHandle ?? "Parent"} size={64} />
+        <View style={styles.profileCopy}>
+          <Text style={styles.handle}>{user?.anonymousHandle ?? "Parent"}</Text>
+          <Text style={styles.privateLabel}>
+            <Ionicons name="shield-checkmark" size={13} /> Private parent profile
+          </Text>
+          <Text style={styles.email}>{user?.email}</Text>
+        </View>
+      </View>
 
-      <Text style={styles.label}>Email</Text>
-      <Text style={styles.valueMuted}>{user?.email}</Text>
+      <SectionHeader title="Community" />
+      <View style={styles.menuGroup}>
+        <MenuRow
+          icon="chatbubbles-outline"
+          label="Messages"
+          detail="Private conversations with parents"
+          onPress={() => router.push("/(app)/messages")}
+        />
+        <MenuRow
+          icon="storefront-outline"
+          label="Community Market"
+          detail="Local hand-me-downs and listings"
+          color={colors.coral}
+          onPress={() => router.push("/(app)/market")}
+        />
+        <MenuRow
+          icon="notifications-outline"
+          label="Notifications"
+          onPress={() => router.push("/(app)/notifications")}
+        />
+        <MenuRow
+          icon="bookmark-outline"
+          label="Saved posts"
+          onPress={() => router.push("/(app)/saved")}
+        />
+      </View>
 
-      <Text style={styles.sectionTitle}>Family & circles</Text>
-      <Pressable
-        style={styles.linkRow}
-        onPress={() => router.push("/onboarding/children")}
-      >
-        <Text style={styles.linkText}>Children & schools</Text>
-      </Pressable>
-      <Pressable
-        style={styles.linkRow}
-        onPress={() => router.push("/onboarding/location")}
-      >
-        <Text style={styles.linkText}>Location & community</Text>
-      </Pressable>
+      <SectionHeader title="Explore & organize" />
+      <View style={styles.menuGroup}>
+        <MenuRow
+          icon="pricetags-outline"
+          label="Interest topics"
+          color={colors.lavender}
+          onPress={() => router.push("/(app)/topics")}
+        />
+        <MenuRow
+          icon="calendar-outline"
+          label="School calendar"
+          onPress={() => router.push("/(app)/calendar")}
+        />
+        <MenuRow
+          icon="sparkles-outline"
+          label="Expert Q&A"
+          color={colors.amber}
+          onPress={() => router.push("/(app)/experts")}
+        />
+        <MenuRow
+          icon="alarm-outline"
+          label="My reminders"
+          onPress={() => router.push("/(app)/reminders")}
+        />
+        {FEATURE_FLAGS.showDoctors ? (
+          <MenuRow
+            icon="medkit-outline"
+            label="Local practitioners"
+            onPress={() => router.push("/(app)/practitioners")}
+          />
+        ) : null}
+        {FEATURE_FLAGS.showPlaydates ? (
+          <MenuRow
+            icon="happy-outline"
+            label="Playdates"
+            onPress={() => router.push("/(app)/playdates")}
+          />
+        ) : null}
+        {FEATURE_FLAGS.showCarpool ? (
+          <MenuRow
+            icon="car-outline"
+            label="School carpool"
+            onPress={() => router.push("/(app)/carpool")}
+          />
+        ) : null}
+      </View>
 
-      {FEATURE_FLAGS.showDoctors ? (
-        <Pressable
-          style={styles.linkRow}
-          onPress={() => router.push("/(app)/practitioners")}
-        >
-          <Text style={styles.linkText}>Local doctor recommendations</Text>
-        </Pressable>
-      ) : null}
-      <Pressable
-        style={styles.linkRow}
-        onPress={() => router.push("/(app)/experts")}
-      >
-        <Text style={styles.linkText}>Expert Q&A sessions</Text>
-      </Pressable>
-      {FEATURE_FLAGS.showPlaydates ? (
-        <Pressable
-          style={styles.linkRow}
-          onPress={() => router.push("/(app)/playdates")}
-        >
-          <Text style={styles.linkText}>Playdates (opt-in)</Text>
-        </Pressable>
-      ) : null}
-      {FEATURE_FLAGS.showCarpool ? (
-        <Pressable
-          style={styles.linkRow}
-          onPress={() => router.push("/(app)/carpool")}
-        >
-          <Text style={styles.linkText}>School carpool</Text>
-        </Pressable>
-      ) : null}
-      <Pressable
-        style={styles.linkRow}
-        onPress={() => router.push("/(app)/schools")}
-      >
-        <Text style={styles.linkText}>Browse schools</Text>
-      </Pressable>
-      <Pressable
-        style={styles.linkRow}
-        onPress={() => router.push("/(app)/topics")}
-      >
-        <Text style={styles.linkText}>Interest topics</Text>
-      </Pressable>
-      <Pressable
-        style={styles.linkRow}
-        onPress={() => router.push("/(app)/calendar")}
-      >
-        <Text style={styles.linkText}>School calendar</Text>
-      </Pressable>
-      <Pressable
-        style={styles.linkRow}
-        onPress={() => router.push("/(app)/contact-details")}
-      >
-        <Text style={styles.linkText}>Contact details for handover</Text>
-      </Pressable>
-      <Pressable
-        style={styles.linkRow}
-        onPress={() => router.push("/(app)/saved")}
-      >
-        <Text style={styles.linkText}>Saved posts</Text>
-      </Pressable>
-      <Pressable
-        style={styles.linkRow}
-        onPress={() => router.push("/(app)/reminders")}
-      >
-        <Text style={styles.linkText}>My reminders</Text>
-      </Pressable>
+      <SectionHeader title="Family & privacy" />
+      <View style={styles.menuGroup}>
+        <MenuRow
+          icon="people-outline"
+          label="Children & schools"
+          onPress={() => router.push("/onboarding/children")}
+        />
+        <MenuRow
+          icon="location-outline"
+          label="Location & community"
+          onPress={() => router.push("/onboarding/location")}
+        />
+        <MenuRow
+          icon="id-card-outline"
+          label="Contact details for handover"
+          onPress={() => router.push("/(app)/contact-details")}
+        />
+      </View>
 
-      <Text style={styles.sectionTitle}>Notification preferences</Text>
+      <SectionHeader title="Notification preferences" />
       <Text style={styles.sectionHint}>
         Circle and topic activity arrives as a digest. Replies and messages are immediate.
       </Text>
@@ -200,6 +251,8 @@ export default function ProfileScreen() {
               <Switch
                 value={prefs[key] !== false}
                 onValueChange={(value) => togglePref(key, value)}
+                trackColor={{ false: colors.border, true: colors.primaryLight }}
+                thumbColor={prefs[key] !== false ? colors.primary : colors.card}
               />
             </View>
           ))}
@@ -213,6 +266,12 @@ export default function ProfileScreen() {
             <Switch
               value={prefs.quiet_hours?.enabled !== false}
               onValueChange={toggleQuietHours}
+              trackColor={{ false: colors.border, true: colors.primaryLight }}
+              thumbColor={
+                prefs.quiet_hours?.enabled !== false
+                  ? colors.primary
+                  : colors.card
+              }
             />
           </View>
         </>
@@ -229,70 +288,103 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg,
   },
   content: {
-    padding: 24,
-    paddingBottom: 40,
+    padding: spacing.lg,
+    paddingBottom: spacing.xxxl,
   },
-  centered: {
-    flex: 1,
-    justifyContent: "center",
+  profileCard: {
+    flexDirection: "row",
     alignItems: "center",
+    gap: spacing.md,
+    padding: spacing.lg,
+    borderRadius: radii.xl,
+    backgroundColor: colors.navy,
+    marginBottom: spacing.lg,
   },
-  label: {
-    fontSize: 13,
-    color: colors.textMuted,
-    marginTop: 16,
-    marginBottom: 4,
+  profileCopy: { flex: 1 },
+  handle: {
+    ...typography.sectionTitle,
+    color: colors.textInverse,
+    fontFamily: typography.bold,
   },
-  value: {
-    fontSize: 20,
-    fontWeight: "600",
-    color: colors.primary,
+  privateLabel: {
+    ...typography.caption,
+    color: colors.primaryLight,
+    fontFamily: typography.semibold,
+    marginTop: 3,
   },
-  valueMuted: {
-    fontSize: 16,
-    color: colors.text,
+  email: {
+    ...typography.caption,
+    color: "#C4CDD5",
+    fontFamily: typography.regular,
+    marginTop: 6,
   },
-  linkRow: {
-    marginTop: 24,
-    padding: 14,
-    backgroundColor: "#fff",
-    borderRadius: 12,
+  menuGroup: {
+    overflow: "hidden",
+    borderRadius: radii.lg,
     borderWidth: 1,
-    borderColor: "#e2e4ef",
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    marginBottom: spacing.md,
   },
-  linkText: { color: colors.primary, fontWeight: "600", fontSize: 15 },
-  sectionTitle: {
-    fontSize: 15,
-    fontWeight: "600",
+  menuRow: {
+    minHeight: 66,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  menuRowPressed: { backgroundColor: colors.surfaceMuted },
+  menuIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  menuCopy: { flex: 1 },
+  menuLabel: {
+    ...typography.body,
     color: colors.text,
-    marginTop: 24,
-    marginBottom: 8,
+    fontFamily: typography.semibold,
+  },
+  menuDetail: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontFamily: typography.regular,
+    marginTop: 1,
   },
   sectionHint: {
-    fontSize: 13,
+    ...typography.supporting,
     color: colors.textMuted,
     marginBottom: 8,
-    lineHeight: 18,
+    fontFamily: typography.regular,
   },
   prefRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: "#fff",
-    padding: 14,
-    borderRadius: 12,
+    backgroundColor: colors.card,
+    padding: spacing.sm,
+    borderRadius: radii.md,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: "#e2e4ef",
+    borderColor: colors.border,
   },
   prefCopy: {
     flex: 1,
     paddingRight: 12,
   },
-  prefLabel: { fontSize: 15, color: colors.text },
+  prefLabel: {
+    ...typography.body,
+    color: colors.text,
+    fontFamily: typography.medium,
+  },
   prefHint: {
-    fontSize: 12,
+    ...typography.caption,
     color: colors.textMuted,
     marginTop: 2,
+    fontFamily: typography.regular,
   },
 });

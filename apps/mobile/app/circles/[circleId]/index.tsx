@@ -1,5 +1,6 @@
 import { useCallback, useLayoutEffect, useState } from "react";
 import {
+  Alert,
   FlatList,
   Pressable,
   RefreshControl,
@@ -21,6 +22,7 @@ import {
   ScreenLoader,
   theme,
 } from "@/components/circles/ui";
+import { colors, radii, spacing, typography } from "@/constants/theme";
 import { useRealtimeChannel } from "@/hooks/useRealtimeChannel";
 import { api, type CirclePost } from "@/lib/api";
 import { getToken } from "@/lib/session";
@@ -269,14 +271,45 @@ export default function CircleFeedScreen() {
         </View>
       </View>
 
-      <View style={styles.actionRow}>
-        <Pressable style={styles.secondaryAction} onPress={openMembers}>
-          <Ionicons name="people-outline" size={18} color={theme.primary} />
-          <Text style={styles.secondaryActionText}>Members</Text>
+      <View style={styles.segmented}>
+        <View style={[styles.segment, styles.segmentActive]}>
+          <Text style={[styles.segmentText, styles.segmentTextActive]}>Feed</Text>
+        </View>
+        <Pressable style={styles.segment} onPress={openMembers}>
+          <Text style={styles.segmentText}>Members</Text>
         </Pressable>
-        <Pressable style={styles.primaryAction} onPress={openNewPost}>
-          <Ionicons name="add" size={20} color="#fff" />
-          <Text style={styles.primaryActionText}>New post</Text>
+        <Pressable
+          style={styles.segment}
+          onPress={() =>
+            Alert.alert(
+              "About this circle",
+              `Vaara automatically connects ${memberCount} parent${memberCount === 1 ? "" : "s"} in this shared school, class or local context. Parent identities remain private.`
+            )
+          }
+        >
+          <Text style={styles.segmentText}>About</Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.composeWrap}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Create a post"
+          style={styles.compose}
+          onPress={openNewPost}
+        >
+          <View style={styles.composeIcon}>
+            <Ionicons
+              name="create-outline"
+              size={19}
+              color={colors.primaryDark}
+            />
+          </View>
+          <Text style={styles.composePlaceholder}>What's on your mind?</Text>
+          <View style={styles.composeButton}>
+            <Ionicons name="add" size={18} color={colors.textInverse} />
+            <Text style={styles.composeButtonText}>Post</Text>
+          </View>
         </Pressable>
       </View>
 
@@ -325,23 +358,22 @@ export default function CircleFeedScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.bg },
   hero: {
-    backgroundColor: theme.card,
+    backgroundColor: colors.navy,
     marginHorizontal: 16,
     marginTop: 12,
     marginBottom: 4,
     padding: 18,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: theme.border,
+    borderRadius: radii.lg,
   },
   heroTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: theme.text,
+    ...typography.sectionTitle,
+    fontFamily: typography.bold,
+    color: colors.textInverse,
   },
   heroSubtitle: {
-    fontSize: 14,
-    color: theme.textMuted,
+    ...typography.supporting,
+    fontFamily: typography.regular,
+    color: "#C4CDD5",
     marginTop: 4,
     lineHeight: 20,
   },
@@ -355,15 +387,84 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: theme.primaryLight,
+    backgroundColor: "rgba(255,255,255,0.12)",
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 20,
   },
   statText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: theme.primary,
+    ...typography.caption,
+    fontFamily: typography.semibold,
+    color: colors.textInverse,
+  },
+  segmented: {
+    flexDirection: "row",
+    marginHorizontal: spacing.md,
+    marginTop: spacing.sm,
+    padding: 4,
+    borderRadius: radii.md,
+    backgroundColor: colors.surfaceMuted,
+  },
+  segment: {
+    flex: 1,
+    minHeight: 38,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radii.sm,
+  },
+  segmentActive: {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  segmentText: {
+    ...typography.supporting,
+    color: colors.textMuted,
+    fontFamily: typography.semibold,
+  },
+  segmentTextActive: { color: colors.primaryDark },
+  composeWrap: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  compose: {
+    minHeight: 58,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    padding: spacing.xs,
+    borderRadius: radii.lg,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  composeIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.primarySoft,
+  },
+  composePlaceholder: {
+    ...typography.supporting,
+    flex: 1,
+    color: colors.textMuted,
+    fontFamily: typography.regular,
+  },
+  composeButton: {
+    minHeight: 40,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radii.pill,
+    backgroundColor: colors.coral,
+  },
+  composeButtonText: {
+    ...typography.supporting,
+    color: colors.textInverse,
+    fontFamily: typography.bold,
   },
   actionRow: {
     flexDirection: "row",
@@ -413,7 +514,7 @@ const styles = StyleSheet.create({
   },
   postCard: {
     backgroundColor: theme.card,
-    borderRadius: 16,
+    borderRadius: radii.lg,
     padding: 16,
     marginBottom: 12,
     borderWidth: 1,
@@ -424,9 +525,10 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   postText: {
-    fontSize: 16,
+    fontSize: 15,
     color: theme.text,
-    lineHeight: 24,
+    lineHeight: 23,
+    fontFamily: typography.regular,
   },
   postFooter: {
     flexDirection: "row",
@@ -443,12 +545,13 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   footerStatText: {
-    fontSize: 13,
-    fontWeight: "600",
+    ...typography.caption,
+    fontFamily: typography.semibold,
     color: theme.textMuted,
   },
   footerTime: {
-    fontSize: 12,
+    ...typography.caption,
+    fontFamily: typography.regular,
     color: theme.textMuted,
   },
 });

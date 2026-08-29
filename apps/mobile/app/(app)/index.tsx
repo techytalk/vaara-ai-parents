@@ -1,12 +1,5 @@
 import { useCallback, useLayoutEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
@@ -23,8 +16,9 @@ import {
   isPlaceholderSchool,
 } from "@/constants/circles";
 import { HomeInterestsPanel } from "@/components/HomeInterestsPanel";
+import { Avatar, Card, ScreenLoader, SectionHeader } from "@/components/ui";
 import { FEATURE_FLAGS } from "@/constants/features";
-import { colors } from "@/constants/theme";
+import { colors, radii, spacing, typography } from "@/constants/theme";
 
 type CirclePlaceholder = {
   key: string;
@@ -38,9 +32,9 @@ const CIRCLE_TAG_COLORS: Record<
   { bg: string; border: string; text: string }
 > = {
   curriculum: {
-    bg: colors.primarySoft,
-    border: colors.primaryLight,
-    text: colors.primaryDark,
+    bg: "#F2EDFF",
+    border: "#D8CBFF",
+    text: "#6648B5",
   },
   locality: {
     bg: colors.card,
@@ -48,8 +42,8 @@ const CIRCLE_TAG_COLORS: Record<
     text: colors.text,
   },
   school_class: {
-    bg: "#ecfdf5",
-    border: "#a7f3d0",
+    bg: colors.primarySoft,
+    border: colors.primaryLight,
     text: colors.primaryDark,
   },
   class: {
@@ -58,9 +52,9 @@ const CIRCLE_TAG_COLORS: Record<
     text: colors.text,
   },
   school: {
-    bg: "#fff7ed",
+    bg: colors.accentLight,
     border: colors.accentLight,
-    text: "#9a3412",
+    text: colors.accentDark,
   },
   community: {
     bg: colors.card,
@@ -276,11 +270,7 @@ export default function HomeScreen() {
   );
 
   if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
+    return <ScreenLoader label="Preparing your community" />;
   }
 
   const curriculum = circles.filter((c) => c.circleType === "curriculum");
@@ -351,139 +341,184 @@ export default function HomeScreen() {
     schoolPlaceholders.length > 0 ||
     communityPlaceholders.length > 0;
 
+  const circlePriority: Circle["circleType"][] = [
+    "school_class",
+    "class",
+    "school",
+    "community",
+    "locality",
+    "curriculum",
+  ];
+  const previewCircles = [...circles]
+    .sort(
+      (a, b) =>
+        circlePriority.indexOf(a.circleType) -
+        circlePriority.indexOf(b.circleType)
+    )
+    .slice(0, 4);
+  const shortcuts = [
+    {
+      label: "Activities",
+      icon: "compass-outline" as const,
+      color: colors.amber,
+      route: "/(app)/activities" as const,
+    },
+    {
+      label: "Schools",
+      icon: "school-outline" as const,
+      color: colors.coral,
+      route: "/(app)/schools" as const,
+    },
+    {
+      label: "Topics",
+      icon: "pricetags-outline" as const,
+      color: colors.lavender,
+      route: "/(app)/topics" as const,
+    },
+    {
+      label: "Experts",
+      icon: "shield-checkmark-outline" as const,
+      color: colors.teal,
+      route: "/(app)/experts" as const,
+    },
+  ];
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.greeting}>Your circles</Text>
-      <Text style={styles.handle}>{user?.anonymousHandle}</Text>
-      <Text style={styles.hint}>
-        {circles.length > 0
-          ? `You are in ${circles.length} circle${circles.length !== 1 ? "s" : ""} based on your children, school, and area.`
-          : "Add your children and location to join parent circles."}
+      <View style={styles.hero}>
+        <Avatar handle={user?.anonymousHandle ?? "Parent"} size={48} />
+        <View style={styles.heroCopy}>
+          <Text style={styles.welcome}>Good to see you,</Text>
+          <Text style={styles.heroHandle}>
+            {user?.anonymousHandle ?? "Parent"}
+          </Text>
+        </View>
+        <View style={styles.privatePill}>
+          <Ionicons name="lock-closed" size={12} color={colors.primaryDark} />
+          <Text style={styles.privatePillText}>Private</Text>
+        </View>
+      </View>
+
+      <SectionHeader
+        title="My Circles"
+        actionLabel="See all"
+        onAction={() => router.push("/(app)/circles" as never)}
+      />
+      <Text style={styles.sectionLead}>
+        Parents connected by your children's school, class and area.
       </Text>
 
-      {(FEATURE_FLAGS.showDoctors ||
-        FEATURE_FLAGS.showPlaydates ||
-        FEATURE_FLAGS.showCarpool) && (
-        <View style={styles.discoveryRow}>
-          {FEATURE_FLAGS.showDoctors ? (
-            <Pressable
-              style={styles.discoveryChip}
-              onPress={() => router.push("/(app)/practitioners")}
-            >
-              <Text style={styles.discoveryChipText}>Doctors</Text>
-            </Pressable>
-          ) : null}
-          {FEATURE_FLAGS.showPlaydates ? (
-            <Pressable
-              style={styles.discoveryChip}
-              onPress={() => router.push("/(app)/playdates")}
-            >
-              <Text style={styles.discoveryChipText}>Playdates</Text>
-            </Pressable>
-          ) : null}
-          {FEATURE_FLAGS.showCarpool ? (
-            <Pressable
-              style={styles.discoveryChip}
-              onPress={() => router.push("/(app)/carpool")}
-            >
-              <Text style={styles.discoveryChipText}>Carpool</Text>
-            </Pressable>
-          ) : null}
+      {previewCircles.length > 0 ? (
+        <View style={styles.previewList}>
+          {previewCircles.map((circle) => (
+            <CircleTag
+              key={circle.id}
+              circle={circle}
+              onPress={() => openCircle(circle)}
+            />
+          ))}
         </View>
+      ) : (
+        <Card style={styles.emptyCard}>
+          <Text style={styles.emptyTitle}>Your circles are being formed</Text>
+          <Text style={styles.emptyText}>
+            Add your child's school and your location to meet relevant parents.
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push("/onboarding/children")}
+          >
+            <Text style={styles.emptyAction}>Complete your profile</Text>
+          </Pressable>
+        </Card>
       )}
 
-      <View style={styles.discoveryRow}>
-        <Pressable
-          style={styles.discoveryChip}
-          onPress={() => router.push("/(app)/schools")}
-        >
-          <Text style={styles.discoveryChipText}>Schools</Text>
-        </Pressable>
-        <Pressable
-          style={styles.discoveryChip}
-          onPress={() => router.push("/(app)/topics")}
-        >
-          <Text style={styles.discoveryChipText}>Topics</Text>
-        </Pressable>
-        <Pressable
-          style={styles.discoveryChip}
-          onPress={() => router.push("/(app)/experts")}
-        >
-          <Text style={styles.discoveryChipText}>Experts</Text>
-        </Pressable>
-        <Pressable
-          style={styles.discoveryChip}
-          onPress={() => router.push("/(app)/calendar")}
-        >
-          <Text style={styles.discoveryChipText}>Calendar</Text>
-        </Pressable>
+      <Card style={styles.privacyCard}>
+        <View style={styles.privacyIcon}>
+          <Ionicons
+            name="shield-checkmark"
+            size={24}
+            color={colors.primaryDark}
+          />
+        </View>
+        <View style={styles.privacyCopy}>
+          <Text style={styles.privacyTitle}>
+            You are safe in every circle
+          </Text>
+          <Text style={styles.privacyBody}>
+            Parents see your anonymous handle—not your real name or child details.
+          </Text>
+        </View>
+      </Card>
+
+      <SectionHeader title="Discover for your family" />
+      <View style={styles.shortcutGrid}>
+        {shortcuts.map((shortcut) => (
+          <Pressable
+            key={shortcut.label}
+            accessibilityRole="button"
+            accessibilityLabel={`Open ${shortcut.label}`}
+            onPress={() => router.push(shortcut.route)}
+            style={({ pressed }) => [
+              styles.shortcut,
+              pressed && styles.circleTagPressed,
+            ]}
+          >
+            <View
+              style={[
+                styles.shortcutIcon,
+                { backgroundColor: `${shortcut.color}18` },
+              ]}
+            >
+              <Ionicons
+                name={shortcut.icon}
+                size={22}
+                color={shortcut.color}
+              />
+            </View>
+            <Text style={styles.shortcutText}>{shortcut.label}</Text>
+          </Pressable>
+        ))}
       </View>
 
       {weekEvents.length > 0 ? (
-        <View style={styles.weekStrip}>
-          <Text style={styles.weekTitle}>This week at school</Text>
-          {weekEvents.map((event) => (
-            <Pressable
-              key={event.id}
-              style={styles.weekItem}
-              onPress={() => router.push("/(app)/calendar")}
-            >
-              <Text style={styles.weekItemTitle} numberOfLines={1}>
-                {event.title}
-              </Text>
-              <Text style={styles.weekItemMeta} numberOfLines={1}>
-                {event.schoolName} · {new Date(event.startsAt).toLocaleDateString()}
-              </Text>
-            </Pressable>
-          ))}
+        <View style={styles.calendarBlock}>
+          <SectionHeader
+            title="This week at school"
+            actionLabel="Calendar"
+            onAction={() => router.push("/(app)/calendar")}
+          />
+          <Card style={styles.weekStrip}>
+            {weekEvents.map((event, index) => (
+              <Pressable
+                key={event.id}
+                style={[
+                  styles.weekItem,
+                  index > 0 && styles.weekItemBorder,
+                ]}
+                onPress={() => router.push("/(app)/calendar")}
+              >
+                <View style={styles.dateIcon}>
+                  <Ionicons
+                    name="calendar-outline"
+                    size={18}
+                    color={colors.coral}
+                  />
+                </View>
+                <View style={styles.weekCopy}>
+                  <Text style={styles.weekItemTitle} numberOfLines={1}>
+                    {event.title}
+                  </Text>
+                  <Text style={styles.weekItemMeta} numberOfLines={1}>
+                    {event.schoolName} ·{" "}
+                    {new Date(event.startsAt).toLocaleDateString()}
+                  </Text>
+                </View>
+              </Pressable>
+            ))}
+          </Card>
         </View>
       ) : null}
-
-      {!hasAnyContent ? (
-        <View style={styles.emptyCard}>
-          <Text style={styles.emptyText}>
-            No circles yet. Add your children and location under Profile to get
-            started.
-          </Text>
-        </View>
-      ) : (
-        <>
-          <CirclesCallout />
-          <CircleSection
-            title="Curriculum wise"
-            circles={curriculum}
-            onPressCircle={openCircle}
-          />
-          <CircleSection
-            title="Pincode / Area"
-            circles={locality}
-            placeholders={areaPlaceholders}
-            onPressCircle={openCircle}
-          />
-          <CircleSection
-            title="My child's class at school"
-            circles={schoolClassCircles}
-            onPressCircle={openCircle}
-          />
-          <CircleSection
-            title="Class circles"
-            circles={classCircles}
-            onPressCircle={openCircle}
-          />
-          <CircleSection
-            title="School circles"
-            circles={schoolCircles}
-            placeholders={schoolPlaceholders}
-            onPressCircle={openCircle}
-          />
-          <CircleSection
-            title="Community circles"
-            circles={community}
-            placeholders={communityPlaceholders}
-            onPressCircle={openCircle}
-          />
-        </>
-      )}
 
       <HomeInterestsPanel
         categories={topicCategories}
@@ -497,8 +532,51 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  content: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 28 },
+  content: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xxxl,
+  },
   centered: { flex: 1, justifyContent: "center", alignItems: "center" },
+  hero: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+  },
+  heroCopy: { flex: 1 },
+  welcome: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontFamily: typography.medium,
+  },
+  heroHandle: {
+    ...typography.sectionTitle,
+    color: colors.text,
+    fontFamily: typography.bold,
+  },
+  privatePill: {
+    minHeight: 28,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: spacing.xs,
+    borderRadius: radii.pill,
+    backgroundColor: colors.primarySoft,
+  },
+  privatePillText: {
+    ...typography.caption,
+    color: colors.primaryDark,
+    fontFamily: typography.semibold,
+  },
+  sectionLead: {
+    ...typography.supporting,
+    color: colors.textMuted,
+    fontFamily: typography.regular,
+    marginTop: -4,
+    marginBottom: spacing.sm,
+  },
+  previewList: { gap: spacing.xs, marginBottom: spacing.md },
   greeting: { fontSize: 24, fontWeight: "700", color: colors.text },
   handle: {
     fontSize: 16,
@@ -558,21 +636,49 @@ const styles = StyleSheet.create({
   discoveryChipText: { color: colors.primary, fontWeight: "700", fontSize: 13 },
   weekStrip: {
     backgroundColor: colors.card,
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 16,
+    borderRadius: radii.lg,
+    padding: spacing.xs,
     borderWidth: 1,
     borderColor: colors.border,
   },
+  calendarBlock: { marginTop: spacing.md },
   weekTitle: {
     fontSize: 14,
     fontWeight: "700",
     color: colors.text,
     marginBottom: 8,
   },
-  weekItem: { paddingVertical: 6 },
-  weekItemTitle: { fontSize: 14, fontWeight: "600", color: colors.text },
-  weekItemMeta: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
+  weekItem: {
+    minHeight: 58,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    padding: spacing.xs,
+  },
+  weekItemBorder: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  dateIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: colors.accentLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  weekCopy: { flex: 1 },
+  weekItemTitle: {
+    ...typography.supporting,
+    fontFamily: typography.semibold,
+    color: colors.text,
+  },
+  weekItemMeta: {
+    ...typography.caption,
+    fontFamily: typography.regular,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
   section: { marginBottom: 14 },
   sectionTitle: {
     fontSize: 12,
@@ -593,7 +699,7 @@ const styles = StyleSheet.create({
     width: "100%",
     paddingHorizontal: 12,
     paddingVertical: 10,
-    borderRadius: 14,
+    borderRadius: radii.md,
     borderWidth: 1,
     gap: 8,
   },
@@ -601,20 +707,19 @@ const styles = StyleSheet.create({
   circleTagMain: { flex: 1, minWidth: 0 },
   circleTagType: {
     fontSize: 10,
-    fontWeight: "700",
+    fontFamily: typography.bold,
     color: colors.textMuted,
     textTransform: "uppercase",
     letterSpacing: 0.5,
     marginBottom: 2,
   },
   circleTagLabel: {
-    fontSize: 14,
-    fontWeight: "700",
-    lineHeight: 18,
+    ...typography.body,
+    fontFamily: typography.semibold,
   },
   circleTagMeta: {
-    fontSize: 12,
-    fontWeight: "600",
+    ...typography.caption,
+    fontFamily: typography.medium,
     marginTop: 4,
     opacity: 0.85,
   },
@@ -641,12 +746,85 @@ const styles = StyleSheet.create({
   },
   emptyCard: {
     backgroundColor: colors.card,
-    borderRadius: 14,
-    padding: 20,
+    borderRadius: radii.lg,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.md,
+  },
+  emptyTitle: {
+    ...typography.sectionTitle,
+    color: colors.text,
+    fontFamily: typography.bold,
+  },
+  emptyText: {
+    ...typography.body,
+    fontFamily: typography.regular,
+    color: colors.textMuted,
+    marginTop: spacing.xs,
+  },
+  emptyAction: {
+    ...typography.supporting,
+    color: colors.primaryDark,
+    fontFamily: typography.bold,
+    marginTop: spacing.sm,
+  },
+  privacyCard: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    alignItems: "center",
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.primaryLight,
+    marginBottom: spacing.md,
+  },
+  privacyIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 15,
+    backgroundColor: colors.card,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  privacyCopy: { flex: 1 },
+  privacyTitle: {
+    ...typography.supporting,
+    color: colors.text,
+    fontFamily: typography.bold,
+  },
+  privacyBody: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontFamily: typography.regular,
+    marginTop: 3,
+  },
+  shortcutGrid: {
+    flexDirection: "row",
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  shortcut: {
+    minHeight: 86,
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.xs,
+    borderRadius: radii.md,
+    backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  emptyText: { fontSize: 15, color: colors.textMuted, lineHeight: 22 },
+  shortcutIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  shortcutText: {
+    ...typography.caption,
+    color: colors.text,
+    fontFamily: typography.semibold,
+  },
   bellBtn: { marginRight: 8, position: "relative" },
   bellBadge: {
     position: "absolute",

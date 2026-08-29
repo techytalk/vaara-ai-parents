@@ -125,8 +125,7 @@ export function SchoolPicker({
 
   const canShowResults =
     query.trim().length >= 2 &&
-    !selected &&
-    query.trim() !== selected?.displayLabel;
+    !selected;
 
   return (
     <View style={styles.wrap}>

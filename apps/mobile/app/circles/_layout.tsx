@@ -1,5 +1,5 @@
 import { Stack } from "expo-router";
-import { colors } from "@/constants/theme";
+import { colors, typography } from "@/constants/theme";
 
 export default function CirclesLayout() {
   return (
@@ -8,12 +8,11 @@ export default function CirclesLayout() {
         headerStyle: { backgroundColor: colors.card },
         headerTintColor: colors.text,
         headerTitleStyle: {
-          fontWeight: "700",
+          fontFamily: typography.bold,
           color: colors.text,
           fontSize: 17,
         },
         headerShadowVisible: false,
-        headerBackTitleVisible: false,
         headerBackButtonDisplayMode: "minimal",
         contentStyle: { backgroundColor: colors.bg },
       }}

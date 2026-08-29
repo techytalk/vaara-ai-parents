@@ -9,7 +9,12 @@ import {
   View,
   type ViewStyle,
 } from "react-native";
-import { avatarPalette, colors } from "@/constants/theme";
+import {
+  avatarPalette,
+  colors,
+  radii,
+  typography,
+} from "@/constants/theme";
 import type { PollView } from "@/lib/api";
 
 export const theme = colors;
@@ -21,29 +26,29 @@ export const POST_TAGS = [
     value: "question",
     label: "Question",
     icon: "help-circle-outline" as const,
-    color: "#0369a1",
-    bg: "#e0f2fe",
+    color: "#5B4AB5",
+    bg: "#F2EDFF",
   },
   {
     value: "recommendation",
     label: "Recommendation",
     icon: "star-outline" as const,
-    color: "#047857",
-    bg: "#d1fae5",
+    color: colors.primaryDark,
+    bg: colors.primarySoft,
   },
   {
     value: "heads_up",
     label: "Heads up",
     icon: "megaphone-outline" as const,
-    color: "#c2410c",
-    bg: "#ffedd5",
+    color: colors.accentDark,
+    bg: colors.accentLight,
   },
   {
     value: "general",
     label: "General",
     icon: "chatbubble-outline" as const,
-    color: "#57534e",
-    bg: "#f5f5f4",
+    color: colors.textMuted,
+    bg: colors.surfaceMuted,
   },
 ] as const;
 
@@ -356,8 +361,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   avatarText: {
-    color: "#fff",
-    fontWeight: "700",
+    color: colors.textInverse,
+    fontFamily: typography.bold,
   },
   tagBadge: {
     flexDirection: "row",
@@ -365,7 +370,7 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
     paddingHorizontal: 10,
     paddingVertical: 5,
-    borderRadius: 20,
+    borderRadius: radii.pill,
     gap: 4,
   },
   tagBadgeCompact: {
@@ -375,7 +380,7 @@ const styles = StyleSheet.create({
   tagIcon: { marginRight: 2 },
   tagText: {
     fontSize: 12,
-    fontWeight: "600",
+    fontFamily: typography.semibold,
   },
   mediaGallery: {
     flexDirection: "row",
@@ -423,7 +428,7 @@ const styles = StyleSheet.create({
   authorMeta: { flex: 1 },
   authorHandle: {
     fontSize: 15,
-    fontWeight: "700",
+    fontFamily: typography.bold,
     color: theme.text,
   },
   authorHandleSm: {
@@ -432,11 +437,13 @@ const styles = StyleSheet.create({
   authorContext: {
     fontSize: 12,
     color: theme.textMuted,
+    fontFamily: typography.regular,
     marginTop: 2,
   },
   timestamp: {
     fontSize: 12,
     color: theme.textMuted,
+    fontFamily: typography.regular,
   },
   emptyState: {
     alignItems: "center",
@@ -454,7 +461,7 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     fontSize: 18,
-    fontWeight: "700",
+    fontFamily: typography.bold,
     color: theme.text,
     textAlign: "center",
   },
@@ -463,6 +470,7 @@ const styles = StyleSheet.create({
     color: theme.textMuted,
     textAlign: "center",
     lineHeight: 22,
+    fontFamily: typography.regular,
     marginTop: 8,
   },
   emptyAction: {
@@ -473,8 +481,8 @@ const styles = StyleSheet.create({
     borderRadius: 24,
   },
   emptyActionText: {
-    color: "#fff",
-    fontWeight: "600",
+    color: colors.textInverse,
+    fontFamily: typography.semibold,
     fontSize: 15,
   },
   primaryBtn: {
@@ -489,9 +497,9 @@ const styles = StyleSheet.create({
     opacity: 0.85,
   },
   primaryBtnText: {
-    color: "#fff",
+    color: colors.textInverse,
     fontSize: 16,
-    fontWeight: "600",
+    fontFamily: typography.semibold,
   },
   btnIcon: { marginRight: 6 },
   loader: {
@@ -509,7 +517,7 @@ const styles = StyleSheet.create({
   },
   pollQuestion: {
     fontSize: 15,
-    fontWeight: "700",
+    fontFamily: typography.bold,
     color: theme.text,
     marginBottom: 2,
   },
