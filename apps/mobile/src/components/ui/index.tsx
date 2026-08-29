@@ -14,13 +14,13 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
-  avatarPalette,
   colors,
   radii,
   shadows,
   spacing,
   typography,
 } from "@/constants/theme";
+import { ParentAvatar } from "@/components/ParentAvatar";
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -198,36 +198,14 @@ export function SearchField(props: TextInputProps) {
 
 export function Avatar({
   handle,
+  avatarKey,
   size = 42,
 }: {
   handle: string;
+  avatarKey?: string | null;
   size?: number;
 }) {
-  let hash = 0;
-  for (let index = 0; index < handle.length; index += 1) {
-    hash = (hash * 31 + handle.charCodeAt(index)) | 0;
-  }
-  const backgroundColor =
-    avatarPalette[Math.abs(hash) % avatarPalette.length] ?? colors.teal;
-  const initials = handle
-    .split(/[-\s]/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join("");
-  return (
-    <View
-      accessibilityLabel={`${handle} avatar`}
-      style={[
-        styles.avatar,
-        { width: size, height: size, borderRadius: size / 2, backgroundColor },
-      ]}
-    >
-      <Text style={[styles.avatarText, { fontSize: size * 0.3 }]}>
-        {initials || "P"}
-      </Text>
-    </View>
-  );
+  return <ParentAvatar handle={handle} avatarKey={avatarKey} size={size} />;
 }
 
 export function EmptyState({

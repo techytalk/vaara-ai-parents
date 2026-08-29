@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
+  DeleteObjectsCommand,
   HeadObjectCommand,
   PutObjectCommand,
   S3Client,
@@ -134,6 +135,31 @@ export async function verifyUploadedMedia(params: {
   }
 
   return { sizeBytes, mimeType: storedMimeType };
+}
+
+/** Best-effort removal of uploaded circle/listing media objects from S3. */
+export async function deleteStoredMedia(storageKeys: string[]): Promise<void> {
+  if (!s3 || !bucket || storageKeys.length === 0) return;
+
+  const keys = [
+    ...new Set(
+      storageKeys.filter(
+        (key) =>
+          key.startsWith("circle-media/") || key.startsWith("listing-media/")
+      )
+    ),
+  ];
+  if (keys.length === 0) return;
+
+  await s3.send(
+    new DeleteObjectsCommand({
+      Bucket: bucket,
+      Delete: {
+        Objects: keys.map((Key) => ({ Key })),
+        Quiet: true,
+      },
+    })
+  );
 }
 
 export async function createListingMediaUpload(params: {

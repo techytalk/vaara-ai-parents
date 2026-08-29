@@ -15,6 +15,7 @@ import {
   mergeNotificationPrefs,
   type NotificationPrefs,
 } from "../lib/notification-prefs.js";
+import { isValidAvatarKey, resolveAvatarKey } from "../lib/avatar.js";
 
 const CHILD_SELECT = `
   ch.id, ch.nickname, ch.gender, ch.curriculum_id, ch.grade_id, ch.school_id,
@@ -84,7 +85,7 @@ export function createMeRoutes() {
     const client = await pool.connect();
     try {
       const { rows } = await client.query(
-        `SELECT id, email, role, display_name, anonymous_handle, onboarding_complete
+        `SELECT id, email, role, display_name, anonymous_handle, onboarding_complete, avatar_key
          FROM users WHERE id = $1`,
         [jwtUser.sub]
       );
@@ -99,6 +100,39 @@ export function createMeRoutes() {
         displayName: user.display_name,
         anonymousHandle: user.anonymous_handle,
         onboardingComplete: user.onboarding_complete,
+        avatarKey: resolveAvatarKey(user.avatar_key, user.anonymous_handle),
+      });
+    } finally {
+      client.release();
+    }
+  });
+
+  app.patch("/avatar", async (c) => {
+    const userId = c.get("user").sub;
+    const body = await c.req.json<{ avatarKey?: string }>();
+    const avatarKey = body.avatarKey?.trim();
+
+    if (!avatarKey || !isValidAvatarKey(avatarKey)) {
+      return c.json({ error: "Invalid avatar selection" }, 400);
+    }
+
+    const client = await pool.connect();
+    try {
+      const { rows } = await client.query(
+        `UPDATE users
+         SET avatar_key = $2, updated_at = now()
+         WHERE id = $1
+         RETURNING anonymous_handle, avatar_key`,
+        [userId, avatarKey]
+      );
+      if (rows.length === 0) {
+        return c.json({ error: "User not found" }, 404);
+      }
+      return c.json({
+        avatarKey: resolveAvatarKey(
+          rows[0].avatar_key,
+          rows[0].anonymous_handle
+        ),
       });
     } finally {
       client.release();
@@ -906,7 +940,7 @@ export function createMeRoutes() {
       for (const row of rows) {
         if (row.item_type !== "post") continue;
         const post = await client.query(
-          `SELECT p.id, p.body, p.tag, p.created_at, u.anonymous_handle,
+          `SELECT p.id, p.body, p.tag, p.created_at, u.anonymous_handle, u.avatar_key,
                   EXISTS (
                     SELECT 1 FROM circle_post_targets pct
                     JOIN circle_members cm ON cm.circle_id = pct.circle_id
@@ -937,6 +971,10 @@ export function createMeRoutes() {
             tag: post.rows[0].tag,
             createdAt: post.rows[0].created_at,
             authorHandle: post.rows[0].anonymous_handle,
+            authorAvatarKey: resolveAvatarKey(
+              post.rows[0].avatar_key,
+              post.rows[0].anonymous_handle
+            ),
             savedAt: row.created_at,
           });
         }

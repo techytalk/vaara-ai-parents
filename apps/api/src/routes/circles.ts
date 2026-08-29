@@ -15,7 +15,9 @@ import {
   assertSharedCircle,
   buildAuthorView,
   isBlocked,
+  mapAuthorView,
 } from "../lib/author.js";
+import { resolveAvatarKey } from "../lib/avatar.js";
 import {
   attachTopicsToPost,
   loadTopicsForPosts,
@@ -47,6 +49,7 @@ import { dispatchPostCreated, dispatchMessageCreated } from "../lib/async-events
 import { rateLimitMiddleware } from "../middleware/rate-limit.js";
 import { authMiddleware, type AuthVariables } from "../middleware/auth.js";
 import {
+  deleteStoredMedia,
   MAX_POST_MEDIA,
   mediaPublicUrl,
   type MediaType,
@@ -70,7 +73,12 @@ type PostMediaView = {
 
 function mapPost(
   row: Record<string, unknown>,
-  author: { anonymousHandle: string; contextLabel: string; userId: string },
+  author: {
+    anonymousHandle: string;
+    contextLabel: string;
+    userId: string;
+    avatarKey: string;
+  },
   media: PostMediaView[] = [],
   poll?: PollView | null,
   topics: TopicSummary[] = []
@@ -84,10 +92,12 @@ function mapPost(
     media,
     poll: poll ?? null,
     topics,
+    authorId: author.userId,
     author: {
       userId: author.userId,
       anonymousHandle: author.anonymousHandle,
       contextLabel: author.contextLabel,
+      avatarKey: author.avatarKey,
     },
   };
 }
@@ -222,7 +232,7 @@ export function createCirclesRoutes() {
       }
 
       const { rows } = await client.query(
-        `SELECT u.id, u.anonymous_handle
+        `SELECT u.id, u.anonymous_handle, u.avatar_key
          FROM circle_members cm
          JOIN users u ON u.id = cm.user_id
          WHERE cm.circle_id = $1 AND u.id != $2
@@ -236,12 +246,14 @@ export function createCirclesRoutes() {
             client,
             row.id,
             row.anonymous_handle,
-            circle
+            circle,
+            row.avatar_key
           );
           return {
             userId: author.userId,
             anonymousHandle: author.anonymousHandle,
             contextLabel: author.contextLabel,
+            avatarKey: author.avatarKey,
           };
         })
       );
@@ -422,6 +434,7 @@ export function createCirclesRoutes() {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+      await syncCircleMembership(client, userId);
 
       const targetResult = await client.query(
         `SELECT c.id, c.circle_type, c.key, c.display_name, c.metadata
@@ -511,14 +524,15 @@ export function createCirclesRoutes() {
       }
 
       const userRow = await client.query(
-        "SELECT anonymous_handle FROM users WHERE id = $1",
+        "SELECT anonymous_handle, avatar_key FROM users WHERE id = $1",
         [userId]
       );
       const author = await buildAuthorView(
         client,
         userId,
         userRow.rows[0].anonymous_handle,
-        primaryCircle
+        primaryCircle,
+        userRow.rows[0].avatar_key
       );
 
       const memberCountResult = await client.query(
@@ -588,7 +602,7 @@ export function createCirclesRoutes() {
 
       const postResult = await client.query(
         `SELECT p.id, p.body, p.tag, p.reply_count, p.created_at, p.author_id,
-                u.anonymous_handle
+                u.anonymous_handle, u.avatar_key
          FROM circle_posts p
          JOIN users u ON u.id = p.author_id
          WHERE p.id = $1
@@ -620,11 +634,12 @@ export function createCirclesRoutes() {
         client,
         postRow.author_id,
         postRow.anonymous_handle,
-        circle
+        circle,
+        postRow.avatar_key
       );
 
       const repliesResult = await client.query(
-        `SELECT r.id, r.body, r.created_at, r.author_id, u.anonymous_handle
+        `SELECT r.id, r.body, r.created_at, r.author_id, u.anonymous_handle, u.avatar_key
          FROM circle_post_replies r
          JOIN users u ON u.id = r.author_id
          WHERE r.post_id = $1
@@ -638,7 +653,8 @@ export function createCirclesRoutes() {
             client,
             row.author_id,
             row.anonymous_handle,
-            circle
+            circle,
+            row.avatar_key
           );
           return {
             id: row.id,
@@ -648,6 +664,7 @@ export function createCirclesRoutes() {
               userId: author.userId,
               anonymousHandle: author.anonymousHandle,
               contextLabel: author.contextLabel,
+              avatarKey: author.avatarKey,
             },
           };
         })
@@ -670,11 +687,95 @@ export function createCirclesRoutes() {
             mediaByPost.get(postId) ?? [],
             pollsByPost.get(postId)
           ),
+          authorId: String(postRow.author_id),
           helpfulCount: helpfulResult.rows[0]?.count ?? 0,
           myHelpful: helpfulResult.rows[0]?.mine ?? false,
         },
         replies,
       });
+    } finally {
+      client.release();
+    }
+  });
+
+  app.delete("/:circleId/posts/:postId", async (c) => {
+    const userId = c.get("user").sub;
+    const circleId = c.req.param("circleId");
+    const postId = c.req.param("postId");
+
+    const client = await pool.connect();
+    try {
+      const circle = await assertCircleMember(client, circleId, userId);
+      if (!circle) {
+        return c.json({ error: "Circle not found" }, 404);
+      }
+
+      const postCheck = await client.query(
+        `SELECT p.id, p.author_id
+         FROM circle_posts p
+         WHERE p.id = $1
+           AND EXISTS (
+             SELECT 1 FROM circle_post_targets pct
+             WHERE pct.post_id = p.id AND pct.circle_id = $2
+           )`,
+        [postId, circleId]
+      );
+      if (postCheck.rows.length === 0) {
+        return c.json({ error: "Post not found" }, 404);
+      }
+      if (String(postCheck.rows[0].author_id) !== userId) {
+        return c.json({ error: "You can only delete your own posts" }, 403);
+      }
+
+      const targetResult = await client.query(
+        `SELECT circle_id FROM circle_post_targets WHERE post_id = $1`,
+        [postId]
+      );
+      const circleIds = targetResult.rows.map((row) => String(row.circle_id));
+
+      const mediaResult = await client.query(
+        `SELECT storage_key FROM circle_post_media WHERE post_id = $1`,
+        [postId]
+      );
+      const storageKeys = mediaResult.rows.map((row) =>
+        String(row.storage_key)
+      );
+
+      await client.query("BEGIN");
+      await client.query(
+        `UPDATE reports SET target_post_id = NULL WHERE target_post_id = $1`,
+        [postId]
+      );
+      await client.query(
+        `DELETE FROM saved_items WHERE item_type = 'post' AND item_id = $1`,
+        [postId]
+      );
+      const deleted = await client.query(
+        `DELETE FROM circle_posts WHERE id = $1 AND author_id = $2 RETURNING id`,
+        [postId, userId]
+      );
+      if (deleted.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return c.json({ error: "Post not found" }, 404);
+      }
+      await client.query("COMMIT");
+
+      if (storageKeys.length > 0) {
+        try {
+          await deleteStoredMedia(storageKeys);
+        } catch (error) {
+          console.error("[media] post delete S3 cleanup failed", error);
+        }
+      }
+
+      await Promise.all(
+        circleIds.map((targetCircleId) => invalidateCircleFeedCache(targetCircleId))
+      );
+
+      return c.json({ ok: true });
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw error;
     } finally {
       client.release();
     }
@@ -726,14 +827,15 @@ export function createCirclesRoutes() {
       );
 
       const userRow = await client.query(
-        "SELECT anonymous_handle FROM users WHERE id = $1",
+        "SELECT anonymous_handle, avatar_key FROM users WHERE id = $1",
         [userId]
       );
       const author = await buildAuthorView(
         client,
         userId,
         userRow.rows[0].anonymous_handle,
-        circle
+        circle,
+        userRow.rows[0].avatar_key
       );
 
       await notifyCircleReply(client, {
@@ -770,6 +872,7 @@ export function createCirclesRoutes() {
             userId: author.userId,
             anonymousHandle: author.anonymousHandle,
             contextLabel: author.contextLabel,
+            avatarKey: author.avatarKey,
           },
         },
         201
@@ -951,6 +1054,7 @@ export function createConversationsRoutes() {
         `SELECT DISTINCT ON (peer.id)
                 peer.id AS peer_id,
                 peer.anonymous_handle,
+                peer.avatar_key,
                 c.id AS circle_id,
                 c.circle_type,
                 c.key,
@@ -1000,7 +1104,8 @@ export function createConversationsRoutes() {
               key: row.key,
               display_name: row.display_name,
               metadata: row.metadata,
-            }
+            },
+            row.avatar_key
           );
           return {
             ...author,
@@ -1023,7 +1128,8 @@ export function createConversationsRoutes() {
       const { rows } = await client.query(
         `SELECT r.id, r.sender_id, r.recipient_id, r.introduction,
                 r.status, r.conversation_id, r.created_at, r.responded_at,
-                peer.anonymous_handle AS peer_handle
+                peer.anonymous_handle AS peer_handle,
+                peer.avatar_key AS peer_avatar_key
          FROM parent_connection_requests r
          JOIN users peer ON peer.id = CASE
            WHEN r.sender_id = $1 THEN r.recipient_id
@@ -1037,12 +1143,12 @@ export function createConversationsRoutes() {
       const mapped = rows.map((row) => ({
         id: row.id,
         direction: row.sender_id === userId ? "outgoing" : "incoming",
-        peer: {
-          userId:
-            row.sender_id === userId ? row.recipient_id : row.sender_id,
-          anonymousHandle: row.peer_handle,
-          contextLabel: "",
-        },
+        peer: mapAuthorView(
+          row.sender_id === userId ? row.recipient_id : row.sender_id,
+          row.peer_handle,
+          "",
+          row.peer_avatar_key
+        ),
         introduction: row.introduction,
         status: row.status,
         conversationId: row.conversation_id,
@@ -1306,6 +1412,7 @@ export function createConversationsRoutes() {
                 cp.last_read_at,
                 peer.id AS peer_id,
                 peer.anonymous_handle AS peer_handle,
+                peer.avatar_key AS peer_avatar_key,
                 dm.body AS last_body,
                 dm.created_at AS last_message_created,
                 (
@@ -1343,9 +1450,12 @@ export function createConversationsRoutes() {
           return {
             id: row.id,
             peer: peer ?? {
-              userId: row.peer_id,
-              anonymousHandle: row.peer_handle,
-              contextLabel: "",
+              ...mapAuthorView(
+                row.peer_id,
+                row.peer_handle,
+                "",
+                row.peer_avatar_key
+              ),
               disclosureLevel: 0 as DisclosureLevel,
             },
             lastMessage: row.last_body
@@ -1367,14 +1477,18 @@ export function createConversationsRoutes() {
     const userId = c.get("user").sub;
     const body = await c.req.json<{
       peerUserId?: string;
+      peerId?: string;
       circleId?: string;
       postId?: string;
       listingId?: string;
     }>();
 
-    const peerUserId = body.peerUserId;
-    if (!peerUserId || peerUserId === userId) {
+    const peerUserId = body.peerUserId ?? body.peerId;
+    if (!peerUserId) {
       return c.json({ error: "peerUserId is required" }, 400);
+    }
+    if (peerUserId === userId) {
+      return c.json({ error: "You cannot message yourself" }, 400);
     }
 
     const client = await pool.connect();

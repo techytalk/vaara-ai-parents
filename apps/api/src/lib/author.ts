@@ -1,10 +1,26 @@
 import type { PoolClient } from "pg";
+import { resolveAvatarKey } from "./avatar.js";
 
 export type AuthorView = {
   userId: string;
   anonymousHandle: string;
   contextLabel: string;
+  avatarKey: string;
 };
+
+export function mapAuthorView(
+  userId: string,
+  anonymousHandle: string,
+  contextLabel: string,
+  storedAvatarKey?: string | null
+): AuthorView {
+  return {
+    userId,
+    anonymousHandle,
+    contextLabel,
+    avatarKey: resolveAvatarKey(storedAvatarKey, anonymousHandle),
+  };
+}
 
 type CircleRow = {
   id: string;
@@ -81,20 +97,18 @@ export async function buildAuthorView(
   client: PoolClient,
   userId: string,
   anonymousHandle: string,
-  circle: CircleRow
+  circle: CircleRow,
+  storedAvatarKey?: string | null
 ): Promise<AuthorView> {
   const contextLabel = await getAuthorContextForCircle(client, userId, circle);
-  return {
-    userId,
-    anonymousHandle,
-    contextLabel,
-  };
+  return mapAuthorView(userId, anonymousHandle, contextLabel, storedAvatarKey);
 }
 
 export async function buildReviewAuthorView(
   client: PoolClient,
   userId: string,
-  anonymousHandle: string
+  anonymousHandle: string,
+  storedAvatarKey?: string | null
 ): Promise<AuthorView> {
   const { rows } = await client.query(
     `SELECT cur.name AS curriculum_name, g.label AS grade_label
@@ -112,11 +126,7 @@ export async function buildReviewAuthorView(
       ? `${rows[0].curriculum_name} · ${rows[0].grade_label}`
       : "";
 
-  return {
-    userId,
-    anonymousHandle,
-    contextLabel,
-  };
+  return mapAuthorView(userId, anonymousHandle, contextLabel, storedAvatarKey);
 }
 
 const CIRCLE_TYPE_RANK: Record<string, number> = {
@@ -133,7 +143,8 @@ export async function buildAuthorViewForPost(
   readerId: string,
   authorId: string,
   postId: string,
-  anonymousHandle: string
+  anonymousHandle: string,
+  storedAvatarKey?: string | null
 ): Promise<AuthorView> {
   const { rows } = await client.query(
     `SELECT c.id, c.circle_type, c.key, c.display_name, c.metadata
@@ -148,7 +159,7 @@ export async function buildAuthorViewForPost(
   );
 
   if (rows.length === 0) {
-    return { userId: authorId, anonymousHandle, contextLabel: "" };
+    return mapAuthorView(authorId, anonymousHandle, "", storedAvatarKey);
   }
 
   const best = (rows as CircleRow[]).reduce((a, b) =>
@@ -157,7 +168,13 @@ export async function buildAuthorViewForPost(
       : b
   );
 
-  return buildAuthorView(client, authorId, anonymousHandle, best);
+  return buildAuthorView(
+    client,
+    authorId,
+    anonymousHandle,
+    best,
+    storedAvatarKey
+  );
 }
 
 export async function assertCircleMember(

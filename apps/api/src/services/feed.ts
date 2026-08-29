@@ -32,6 +32,7 @@ export type FeedPost = {
     userId: string;
     anonymousHandle: string;
     contextLabel: string;
+    avatarKey: string;
   };
 };
 
@@ -74,7 +75,12 @@ async function loadPostMedia(
 
 function mapPost(
   row: Record<string, unknown>,
-  author: { anonymousHandle: string; contextLabel: string; userId: string },
+  author: {
+    anonymousHandle: string;
+    contextLabel: string;
+    userId: string;
+    avatarKey: string;
+  },
   media: PostMediaView[] = [],
   poll?: PollView | null,
   topics: TopicSummary[] = []
@@ -92,6 +98,7 @@ function mapPost(
       userId: author.userId,
       anonymousHandle: author.anonymousHandle,
       contextLabel: author.contextLabel,
+      avatarKey: author.avatarKey,
     },
   };
 }
@@ -118,7 +125,7 @@ export async function loadCircleFeed(params: {
 
     let query = `
       SELECT p.id, p.body, p.tag, p.reply_count, p.created_at, p.author_id,
-             u.anonymous_handle
+             u.anonymous_handle, u.avatar_key
       FROM circle_posts p
       JOIN circle_post_targets pct ON pct.post_id = p.id
       JOIN users u ON u.id = p.author_id
@@ -129,11 +136,14 @@ export async function loadCircleFeed(params: {
 
     if (localFilter) {
       query += `
-        AND EXISTS (
-          SELECT 1 FROM user_locations viewer_loc
-          JOIN user_locations author_loc ON author_loc.pin_code = viewer_loc.pin_code
-          WHERE viewer_loc.user_id = $${paramIdx}
-            AND author_loc.user_id = p.author_id
+        AND (
+          p.author_id = $${paramIdx}
+          OR EXISTS (
+            SELECT 1 FROM user_locations viewer_loc
+            JOIN user_locations author_loc ON author_loc.pin_code = viewer_loc.pin_code
+            WHERE viewer_loc.user_id = $${paramIdx}
+              AND author_loc.user_id = p.author_id
+          )
         )`;
       sqlParams.push(params.userId);
       paramIdx++;
@@ -175,7 +185,8 @@ export async function loadCircleFeed(params: {
           client,
           row.author_id,
           row.anonymous_handle,
-          circle
+          circle,
+          row.avatar_key
         );
         return mapPost(
           row,
@@ -266,6 +277,7 @@ export async function loadHomeFeed(params: {
            p.created_at,
            p.author_id,
            u.anonymous_handle,
+           u.avatar_key,
            mc.id AS circle_id,
            mc.display_name AS circle_name,
            mc.circle_type,
@@ -290,6 +302,7 @@ export async function loadHomeFeed(params: {
          JOIN users u ON u.id = p.author_id
          WHERE (
            mc.circle_type <> 'curriculum'
+           OR p.author_id = $1
            OR EXISTS (
              SELECT 1
              FROM user_locations viewer_loc
@@ -361,7 +374,8 @@ export async function loadHomeFeed(params: {
           client,
           row.author_id,
           row.anonymous_handle,
-          circle
+          circle,
+          row.avatar_key
         );
         const helpful = helpfulByPost.get(row.id as string) ?? {
           count: 0,

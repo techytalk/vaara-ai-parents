@@ -244,7 +244,11 @@ export default function NewMessageScreen() {
           <SectionHeader title="Connection requests" />
           {incoming.map((request) => (
             <View key={request.id} style={styles.requestCard}>
-              <Avatar handle={request.peer.anonymousHandle} size={42} />
+              <Avatar
+                handle={request.peer.anonymousHandle}
+                avatarKey={request.peer.avatarKey}
+                size={42}
+              />
               <View style={styles.rowCopy}>
                 <Text style={styles.name}>{request.peer.anonymousHandle}</Text>
                 {request.introduction ? (
@@ -301,7 +305,11 @@ export default function NewMessageScreen() {
               disabled={workingId === parent.userId}
               onPress={() => openSuggestion(parent)}
             >
-              <Avatar handle={parent.anonymousHandle} size={44} />
+              <Avatar
+                handle={parent.anonymousHandle}
+                avatarKey={parent.avatarKey}
+                size={44}
+              />
               <View style={styles.rowCopy}>
                 <Text style={styles.name}>{parent.anonymousHandle}</Text>
                 <Text style={styles.meta} numberOfLines={1}>
@@ -356,7 +364,11 @@ export default function NewMessageScreen() {
           <SectionHeader title="Pending requests" />
           {outgoing.map((request) => (
             <View key={request.id} style={styles.parentRow}>
-              <Avatar handle={request.peer.anonymousHandle} size={40} />
+              <Avatar
+                handle={request.peer.anonymousHandle}
+                avatarKey={request.peer.avatarKey}
+                size={40}
+              />
               <View style={styles.rowCopy}>
                 <Text style={styles.name}>{request.peer.anonymousHandle}</Text>
                 <Text style={styles.meta}>Waiting for acceptance</Text>

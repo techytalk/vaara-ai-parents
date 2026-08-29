@@ -162,7 +162,11 @@ export default function PlaydatesScreen() {
               style={styles.matchMain}
               onPress={() => connect(m.userId, m.anonymousHandle)}
             >
-              <Avatar handle={m.anonymousHandle} size={40} />
+              <Avatar
+                handle={m.anonymousHandle}
+                avatarKey={m.avatarKey}
+                size={40}
+              />
               <View style={styles.matchCopy}>
                 <Text style={styles.handle}>{m.anonymousHandle}</Text>
                 <Text style={styles.meta}>

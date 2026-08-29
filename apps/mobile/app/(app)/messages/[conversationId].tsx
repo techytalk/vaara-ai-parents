@@ -179,7 +179,10 @@ export default function ChatScreen() {
     setError(null);
     try {
       const token = await getToken();
-      if (!token) return;
+      if (!token) {
+        setError("Your session expired. Please sign in again.");
+        return;
+      }
       const msg = await api.sendMessage(token, conversationId, body);
       queryClient.setQueryData(
         ["conversation", conversationId],
@@ -195,6 +198,10 @@ export default function ChatScreen() {
       setText("");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Failed to send");
+      Alert.alert(
+        "Could not send",
+        cause instanceof Error ? cause.message : "Failed to send"
+      );
     } finally {
       setSending(false);
     }

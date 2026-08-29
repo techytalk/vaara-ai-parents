@@ -90,7 +90,11 @@ export default function SavedScreen() {
           ) : (
             <>
               <View style={styles.cardHeader}>
-                <Avatar handle={item.authorHandle ?? "Parent"} size={32} />
+                <Avatar
+                  handle={item.authorHandle ?? "Parent"}
+                  avatarKey={item.authorAvatarKey}
+                  size={32}
+                />
                 <Text style={styles.handle}>{item.authorHandle ?? "Parent"}</Text>
               </View>
               <Text style={styles.body} numberOfLines={4}>

@@ -1,9 +1,11 @@
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 import { api } from "./api";
 import { getToken } from "./session";
+
+const ANDROID_DEFAULT_CHANNEL = "default";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -15,22 +17,36 @@ Notifications.setNotificationHandler({
   }),
 });
 
+async function ensureAndroidNotificationChannel(): Promise<void> {
+  if (Platform.OS !== "android") {
+    return;
+  }
+
+  await Notifications.setNotificationChannelAsync(ANDROID_DEFAULT_CHANNEL, {
+    name: "Notifications",
+    importance: Notifications.AndroidImportance.MAX,
+    vibrationPattern: [0, 250, 250, 250],
+    lightColor: "#0E9A8A",
+  });
+}
+
 export async function registerForPushNotifications(): Promise<string | null> {
   if (!Device.isDevice) {
     return null;
   }
 
-  if (Platform.OS === "android") {
-    await Notifications.setNotificationChannelAsync("default", {
-      name: "default",
-      importance: Notifications.AndroidImportance.MAX,
-    });
-  }
+  await ensureAndroidNotificationChannel();
 
   const { status: existing } = await Notifications.getPermissionsAsync();
   let finalStatus = existing;
   if (existing !== "granted") {
-    const { status } = await Notifications.requestPermissionsAsync();
+    const { status } = await Notifications.requestPermissionsAsync({
+      ios: {
+        allowAlert: true,
+        allowBadge: true,
+        allowSound: true,
+      },
+    });
     finalStatus = status;
   }
   if (finalStatus !== "granted") {
@@ -56,4 +72,27 @@ export async function registerForPushNotifications(): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+export function setupPushNotifications(): () => void {
+  const register = () => {
+    registerForPushNotifications().catch(() => {});
+  };
+
+  register();
+
+  const tokenSubscription = Notifications.addPushTokenListener(() => {
+    register();
+  });
+
+  const appStateSubscription = AppState.addEventListener("change", (state) => {
+    if (state === "active") {
+      register();
+    }
+  });
+
+  return () => {
+    tokenSubscription.remove();
+    appStateSubscription.remove();
+  };
 }

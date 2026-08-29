@@ -1,5 +1,6 @@
 import { useCallback, useLayoutEffect, useState } from "react";
 import {
+  Alert,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -10,6 +11,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
@@ -25,7 +27,7 @@ import {
 } from "@/components/circles/ui";
 import { useRealtimeChannel } from "@/hooks/useRealtimeChannel";
 import { api, type CirclePost, type PostComment } from "@/lib/api";
-import { getToken } from "@/lib/session";
+import { getStoredUser, getToken } from "@/lib/session";
 
 function CommentCard({ comment }: { comment: PostComment }) {
   return (
@@ -34,6 +36,7 @@ function CommentCard({ comment }: { comment: PostComment }) {
       <View style={[styles.commentCard, cardShadow()]}>
         <AuthorRow
           handle={comment.author.anonymousHandle}
+          avatarKey={comment.author.avatarKey}
           contextLabel={comment.author.contextLabel}
           timestamp={comment.createdAt}
           size="sm"
@@ -54,17 +57,22 @@ export default function PostThreadScreen() {
   }>();
   const router = useRouter();
   const navigation = useNavigation();
+  const queryClient = useQueryClient();
   const [post, setPost] = useState<CirclePost | null>(null);
   const [comments, setComments] = useState<PostComment[]>([]);
   const [saved, setSaved] = useState(false);
   const [commentText, setCommentText] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const token = await getToken();
     if (!token) return;
+    const user = await getStoredUser();
+    setCurrentUserId(user?.id ?? null);
     try {
       const [data, savedData] = await Promise.all([
         api.getPost(token, circleId, postId),
@@ -97,19 +105,71 @@ export default function PostThreadScreen() {
   });
 
   useLayoutEffect(() => {
+    const isOwnPost =
+      Boolean(currentUserId) && post?.author.userId === currentUserId;
     navigation.setOptions({
       title: "Post",
       headerRight: () => (
-        <Pressable onPress={toggleSave} hitSlop={8} style={styles.headerSave}>
-          <Ionicons
-            name={saved ? "bookmark" : "bookmark-outline"}
-            size={22}
-            color={theme.primary}
-          />
-        </Pressable>
+        <View style={styles.headerActions}>
+          {isOwnPost ? (
+            <Pressable
+              onPress={confirmDelete}
+              hitSlop={8}
+              style={styles.headerDelete}
+              accessibilityRole="button"
+              accessibilityLabel="Delete post"
+              disabled={deleting}
+            >
+              <Ionicons name="trash-outline" size={22} color={theme.error} />
+            </Pressable>
+          ) : null}
+          <Pressable onPress={toggleSave} hitSlop={8} style={styles.headerSave}>
+            <Ionicons
+              name={saved ? "bookmark" : "bookmark-outline"}
+              size={22}
+              color={theme.primary}
+            />
+          </Pressable>
+        </View>
       ),
     });
-  }, [navigation, saved]);
+  }, [navigation, saved, currentUserId, post, deleting]);
+
+  function confirmDelete() {
+    Alert.alert(
+      "Delete post?",
+      "This will permanently remove your post and its comments.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Delete", style: "destructive", onPress: () => void onDelete() },
+      ]
+    );
+  }
+
+  async function onDelete() {
+    const token = await getToken();
+    if (!token) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      await api.deletePost(token, circleId, postId);
+      queryClient.setQueryData(
+        ["circleFeed", circleId],
+        (current: { posts: CirclePost[]; memberCount: number } | undefined) =>
+          current
+            ? {
+                ...current,
+                posts: current.posts.filter((item) => item.id !== postId),
+              }
+            : current
+      );
+      router.back();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not delete post");
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   async function toggleSave() {
     const token = await getToken();
@@ -153,7 +213,12 @@ export default function PostThreadScreen() {
     setError(null);
     try {
       const token = await getToken();
-      if (!token) return;
+      if (!token) {
+        const message = "Your session expired. Please sign in again.";
+        setError(message);
+        Alert.alert("Could not comment", message);
+        return;
+      }
       const comment = await api.addReply(token, circleId, postId, text);
       setComments((prev) => [...prev, comment]);
       setCommentText("");
@@ -163,7 +228,10 @@ export default function PostThreadScreen() {
           : current
       );
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Failed to comment");
+      const message =
+        cause instanceof Error ? cause.message : "Failed to comment";
+      setError(message);
+      Alert.alert("Could not comment", message);
     } finally {
       setSubmitting(false);
     }
@@ -182,10 +250,32 @@ export default function PostThreadScreen() {
   async function onMessageAuthor() {
     if (!post) return;
     const token = await getToken();
-    if (!token) return;
+    if (!token) {
+      Alert.alert("Could not message", "Your session expired. Please sign in again.");
+      return;
+    }
     try {
+      let peerUserId = post.authorId ?? post.author.userId;
+      if (!peerUserId) {
+        const members = await api.getCircleMembers(token, circleId);
+        peerUserId =
+          members.find(
+            (member) =>
+              member.anonymousHandle === post.author.anonymousHandle
+          )?.userId ?? "";
+      }
+      if (!peerUserId) {
+        const message = "Could not identify this parent. Try Messages instead.";
+        setError(message);
+        Alert.alert("Could not message", message);
+        return;
+      }
+      if (currentUserId && peerUserId === currentUserId) {
+        Alert.alert("Could not message", "You cannot message yourself.");
+        return;
+      }
       const conv = await api.startConversation(token, {
-        peerUserId: post.author.userId,
+        peerUserId,
         circleId,
         postId,
       });
@@ -197,7 +287,10 @@ export default function PostThreadScreen() {
         },
       });
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not message");
+      const message =
+        cause instanceof Error ? cause.message : "Could not message";
+      setError(message);
+      Alert.alert("Could not message", message);
     }
   }
 
@@ -225,6 +318,11 @@ export default function PostThreadScreen() {
   }
 
   const helpfulCount = post.helpfulCount ?? 0;
+  const isOwnPost =
+    Boolean(currentUserId) &&
+    (post.authorId === currentUserId || post.author.userId === currentUserId);
+  const canMessageAuthor =
+    !isOwnPost && Boolean(post.authorId ?? post.author.userId);
 
   return (
     <KeyboardAvoidingView
@@ -244,6 +342,7 @@ export default function PostThreadScreen() {
               <View style={styles.postInner}>
                 <AuthorRow
                   handle={post.author.anonymousHandle}
+                  avatarKey={post.author.avatarKey}
                   contextLabel={post.author.contextLabel}
                   timestamp={post.createdAt}
                 />
@@ -297,18 +396,20 @@ export default function PostThreadScreen() {
                     />
                     <Text style={styles.actionText}>Share</Text>
                   </Pressable>
-                  <Pressable
-                    style={styles.action}
-                    onPress={onMessageAuthor}
-                    hitSlop={8}
-                  >
-                    <Ionicons
-                      name="chatbubble-ellipses-outline"
-                      size={18}
-                      color={theme.textMuted}
-                    />
-                    <Text style={styles.actionText}>Message</Text>
-                  </Pressable>
+                  {canMessageAuthor ? (
+                    <Pressable
+                      style={styles.action}
+                      onPress={onMessageAuthor}
+                      hitSlop={8}
+                    >
+                      <Ionicons
+                        name="chatbubble-ellipses-outline"
+                        size={18}
+                        color={theme.textMuted}
+                      />
+                      <Text style={styles.actionText}>Message</Text>
+                    </Pressable>
+                  ) : null}
                 </View>
               </View>
             </View>
@@ -377,6 +478,12 @@ export default function PostThreadScreen() {
 }
 
 const styles = StyleSheet.create({
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  headerDelete: { marginRight: 4 },
   headerSave: { marginRight: 8 },
   container: { flex: 1, backgroundColor: theme.bg },
   centered: {

@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import type { PoolClient } from "pg";
 import { pool } from "@vaara/db";
 import { generateAnonymousHandle } from "../lib/anonymity.js";
+import { defaultAvatarKeyForHandle } from "../lib/avatar.js";
 import { buildAuthResponse } from "../lib/auth-response.js";
 import { verifyGoogleIdToken } from "../lib/google-auth.js";
 
@@ -54,12 +55,13 @@ export function createAuthRoutes() {
       const handle = await generateUniqueHandle(client);
       const passwordHash = await bcrypt.hash(password, 10);
       const displayName = body.displayName?.trim() || null;
+      const avatarKey = defaultAvatarKeyForHandle(handle);
 
       const { rows } = await client.query(
-        `INSERT INTO users (email, password_hash, role, display_name, anonymous_handle)
-         VALUES ($1, $2, $3, $4, $5)
-         RETURNING id, email, role, display_name, anonymous_handle, onboarding_complete`,
-        [email, passwordHash, role, displayName, handle]
+        `INSERT INTO users (email, password_hash, role, display_name, anonymous_handle, avatar_key)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING id, email, role, display_name, anonymous_handle, onboarding_complete, avatar_key`,
+        [email, passwordHash, role, displayName, handle, avatarKey]
       );
 
       return c.json(await buildAuthResponse(rows[0]));
@@ -80,7 +82,7 @@ export function createAuthRoutes() {
     const client = await pool.connect();
     try {
       const { rows } = await client.query(
-        `SELECT id, email, role, display_name, anonymous_handle, onboarding_complete, password_hash
+        `SELECT id, email, role, display_name, anonymous_handle, onboarding_complete, avatar_key, password_hash
          FROM users WHERE email = $1`,
         [email]
       );
@@ -140,7 +142,7 @@ export function createAuthRoutes() {
     const client = await pool.connect();
     try {
       const byGoogle = await client.query(
-        `SELECT id, email, role, display_name, anonymous_handle, onboarding_complete
+        `SELECT id, email, role, display_name, anonymous_handle, onboarding_complete, avatar_key
          FROM users WHERE google_sub = $1`,
         [identity.sub]
       );
@@ -150,7 +152,7 @@ export function createAuthRoutes() {
       }
 
       const byEmail = await client.query(
-        `SELECT id, email, role, display_name, anonymous_handle, onboarding_complete, google_sub
+        `SELECT id, email, role, display_name, anonymous_handle, onboarding_complete, avatar_key, google_sub
          FROM users WHERE email = $1`,
         [identity.email]
       );
@@ -167,7 +169,7 @@ export function createAuthRoutes() {
                display_name = COALESCE(display_name, $3),
                updated_at = now()
            WHERE id = $1
-           RETURNING id, email, role, display_name, anonymous_handle, onboarding_complete`,
+           RETURNING id, email, role, display_name, anonymous_handle, onboarding_complete, avatar_key`,
           [existing.id, identity.sub, displayName]
         );
 
@@ -175,11 +177,12 @@ export function createAuthRoutes() {
       }
 
       const handle = await generateUniqueHandle(client);
+      const avatarKey = defaultAvatarKeyForHandle(handle);
       const { rows } = await client.query(
-        `INSERT INTO users (email, role, display_name, anonymous_handle, google_sub)
-         VALUES ($1, $2, $3, $4, $5)
-         RETURNING id, email, role, display_name, anonymous_handle, onboarding_complete`,
-        [identity.email, role, displayName, handle, identity.sub]
+        `INSERT INTO users (email, role, display_name, anonymous_handle, google_sub, avatar_key)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING id, email, role, display_name, anonymous_handle, onboarding_complete, avatar_key`,
+        [identity.email, role, displayName, handle, identity.sub, avatarKey]
       );
 
       return c.json(await buildAuthResponse(rows[0]), 201);

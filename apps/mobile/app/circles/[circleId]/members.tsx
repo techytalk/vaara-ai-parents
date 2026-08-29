@@ -30,7 +30,11 @@ function MemberCard({
 }) {
   return (
     <View style={[styles.memberCard, cardShadow()]}>
-      <AuthorAvatar handle={member.anonymousHandle} size={48} />
+      <AuthorAvatar
+        handle={member.anonymousHandle}
+        avatarKey={member.avatarKey}
+        size={48}
+      />
       <View style={styles.memberInfo}>
         <Text style={styles.memberHandle}>{member.anonymousHandle}</Text>
         {member.contextLabel ? (

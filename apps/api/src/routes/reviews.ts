@@ -57,7 +57,7 @@ export function createProviderReviewRoutes() {
 
       const { rows } = await client.query(
         `SELECT pr.id, pr.rating, pr.body, pr.engagement_verified, pr.created_at,
-                pr.author_id, u.anonymous_handle
+                pr.author_id, u.anonymous_handle, u.avatar_key
          FROM provider_reviews pr
          JOIN users u ON u.id = pr.author_id
          WHERE pr.provider_id = $1 AND pr.hidden = false
@@ -71,7 +71,8 @@ export function createProviderReviewRoutes() {
           const author = await buildReviewAuthorView(
             client,
             row.author_id,
-            row.anonymous_handle
+            row.anonymous_handle,
+            row.avatar_key
           );
           const reply = await client.query(
             `SELECT body, created_at FROM provider_review_replies

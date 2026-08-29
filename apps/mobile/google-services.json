@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "972040265185",
+    "project_id": "vaara-parents",
+    "storage_bucket": "vaara-parents.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:972040265185:android:b77c8098e26edf14d606a0",
+        "android_client_info": {
+          "package_name": "com.vaara.parents"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAQ8aLS2Db2-ghYjDFOnj0iXkle6gWPoMI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

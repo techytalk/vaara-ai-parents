@@ -9,6 +9,7 @@ import {
   View,
   type ViewStyle,
 } from "react-native";
+import { ParentAvatar } from "@/components/ParentAvatar";
 import {
   avatarPalette,
   colors,
@@ -114,29 +115,14 @@ export function cardShadow(style?: ViewStyle): ViewStyle {
 
 export function AuthorAvatar({
   handle,
+  avatarKey,
   size = 40,
 }: {
   handle: string;
+  avatarKey?: string | null;
   size?: number;
 }) {
-  const color = avatarColorForHandle(handle);
-  return (
-    <View
-      style={[
-        styles.avatar,
-        {
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          backgroundColor: color,
-        },
-      ]}
-    >
-      <Text style={[styles.avatarText, { fontSize: size * 0.34 }]}>
-        {initialsFromHandle(handle)}
-      </Text>
-    </View>
-  );
+  return <ParentAvatar handle={handle} avatarKey={avatarKey} size={size} />;
 }
 
 export function PostTagBadge({ tag, compact }: { tag: string; compact?: boolean }) {
@@ -259,11 +245,13 @@ export function PollCard({
 
 export function AuthorRow({
   handle,
+  avatarKey,
   contextLabel,
   timestamp,
   size = "md",
 }: {
   handle: string;
+  avatarKey?: string | null;
   contextLabel?: string;
   timestamp?: string;
   size?: "sm" | "md";
@@ -271,7 +259,7 @@ export function AuthorRow({
   const avatarSize = size === "sm" ? 32 : 40;
   return (
     <View style={styles.authorRow}>
-      <AuthorAvatar handle={handle} size={avatarSize} />
+      <AuthorAvatar handle={handle} avatarKey={avatarKey} size={avatarSize} />
       <View style={styles.authorMeta}>
         <Text style={[styles.authorHandle, size === "sm" && styles.authorHandleSm]}>
           {handle}

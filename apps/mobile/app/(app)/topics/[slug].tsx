@@ -112,6 +112,7 @@ export default function TopicFeedScreen() {
           <View style={styles.card}>
             <AuthorRow
               handle={item.author.anonymousHandle}
+              avatarKey={item.author.avatarKey}
               contextLabel={item.author.contextLabel}
               timestamp={item.createdAt}
             />

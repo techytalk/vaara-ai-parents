@@ -93,6 +93,11 @@ export default function SettingsScreen() {
 
       <View style={styles.menuGroup}>
         <MenuRow
+          icon="happy-outline"
+          label="Choose avatar"
+          onPress={() => router.push("/(app)/settings/avatar" as never)}
+        />
+        <MenuRow
           icon="notifications-outline"
           label="Notification Preferences"
           onPress={() => router.push("/(app)/settings/notifications" as never)}

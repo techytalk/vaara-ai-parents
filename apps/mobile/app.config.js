@@ -1,6 +1,7 @@
 const { config } = require("dotenv");
 const { resolve } = require("path");
 const appJson = require("./app.json");
+const withAndroidPostNotifications = require("./plugins/with-android-post-notifications");
 
 // Monorepo: load shared env from repo root (same file used by API/worker).
 config({ path: resolve(__dirname, "../../.env.local") });
@@ -11,6 +12,7 @@ module.exports = {
     ...appJson.expo,
     plugins: [
       ...(appJson.expo.plugins ?? []),
+      withAndroidPostNotifications,
       "@react-native-community/datetimepicker",
     ],
     owner: "raj-techy1s-team",

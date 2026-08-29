@@ -14,6 +14,7 @@ export type AuthUser = {
   displayName: string | null;
   anonymousHandle: string;
   onboardingComplete: boolean;
+  avatarKey?: string;
 };
 
 export type AuthResponse = {
@@ -86,6 +87,7 @@ export type CircleAuthor = {
   userId: string;
   anonymousHandle: string;
   contextLabel: string;
+  avatarKey: string;
 };
 
 export type CirclePostMedia = {
@@ -118,6 +120,7 @@ export type CirclePost = {
   poll: PollView | null;
   topics?: Array<{ slug: string; name: string; category: string | null }>;
   author: CircleAuthor;
+  authorId?: string;
   helpfulCount?: number;
   myHelpful?: boolean;
 };
@@ -140,6 +143,7 @@ export type PeerView = {
   userId: string;
   anonymousHandle: string;
   contextLabel: string;
+  avatarKey: string;
   disclosureLevel: 0 | 1 | 2 | 3;
   firstName?: string;
   blockOrFlat?: string;
@@ -170,6 +174,7 @@ export type SavedPost = {
   tag?: string;
   createdAt?: string;
   authorHandle?: string;
+  authorAvatarKey?: string;
   savedAt: string;
   unavailable?: boolean;
 };
@@ -247,6 +252,7 @@ export type ExpertSession = {
 export type PlaydateMatch = {
   userId: string;
   anonymousHandle: string;
+  avatarKey: string;
   ageBand: string;
 };
 
@@ -312,6 +318,7 @@ export type MessageableParent = {
   userId: string;
   anonymousHandle: string;
   contextLabel: string;
+  avatarKey: string;
   circleId: string;
   circleName: string;
   existingConversationId: string | null;
@@ -324,6 +331,7 @@ export type ParentConnectionRequest = {
     userId: string;
     anonymousHandle: string;
     contextLabel: string;
+    avatarKey: string;
   };
   introduction: string | null;
   status: "pending" | "accepted" | "declined" | "cancelled";
@@ -475,7 +483,11 @@ async function request<T>(
   const data = await res.json().catch(() => ({}));
 
   if (!res.ok) {
-    throw new Error(data.error ?? `Request failed (${res.status})`);
+    const message =
+      (typeof data.error === "string" && data.error) ||
+      (typeof data.message === "string" && data.message) ||
+      `Request failed (${res.status})`;
+    throw new Error(message);
   }
   return data as T;
 }
@@ -509,6 +521,13 @@ export const api = {
     }),
 
   me: (token: string) => request<AuthUser>("/v1/me", {}, token),
+
+  updateAvatar: (token: string, avatarKey: string) =>
+    request<{ avatarKey: string }>(
+      "/v1/me/avatar",
+      { method: "PATCH", body: JSON.stringify({ avatarKey }) },
+      token
+    ),
 
   getCurricula: () => request<Curriculum[]>("/v1/reference/curricula"),
 
@@ -767,6 +786,13 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ body }),
     }, token),
+
+  deletePost: (token: string, circleId: string, postId: string) =>
+    request<{ ok: boolean }>(
+      `/v1/circles/${circleId}/posts/${postId}`,
+      { method: "DELETE" },
+      token
+    ),
 
   getConversations: (token: string) =>
     request<ConversationPreview[]>("/v1/conversations", {}, token),

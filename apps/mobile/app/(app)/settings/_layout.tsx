@@ -8,6 +8,7 @@ export default function SettingsLayout() {
         name="notifications"
         options={{ title: "Notification Preferences" }}
       />
+      <Stack.Screen name="avatar" options={{ title: "Choose avatar" }} />
     </Stack>
   );
 }

@@ -259,7 +259,11 @@ export default function HomeScreen() {
   const listHeader = (
     <View style={styles.headerBlock}>
       <View style={styles.hero}>
-        <Avatar handle={user?.anonymousHandle ?? "Parent"} size={48} />
+        <Avatar
+          handle={user?.anonymousHandle ?? "Parent"}
+          avatarKey={user?.avatarKey}
+          size={48}
+        />
         <View style={styles.heroCopy}>
           <Text style={styles.greeting}>
             {greetingForHour(new Date().getHours())},
@@ -276,7 +280,11 @@ export default function HomeScreen() {
         onPress={() => openNewPost()}
         style={styles.composeCard}
       >
-        <Avatar handle={user?.anonymousHandle ?? "Parent"} size={36} />
+        <Avatar
+          handle={user?.anonymousHandle ?? "Parent"}
+          avatarKey={user?.avatarKey}
+          size={36}
+        />
         <Text style={styles.composePlaceholder}>What&apos;s on your mind?</Text>
       </Pressable>
 

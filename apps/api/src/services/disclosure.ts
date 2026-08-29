@@ -1,4 +1,5 @@
 import type { PoolClient } from "pg";
+import { resolveAvatarKey } from "../lib/avatar.js";
 import { buildReviewAuthorView } from "../lib/author.js";
 import { createNotification } from "./notifications.js";
 
@@ -8,6 +9,7 @@ export type PeerView = {
   userId: string;
   anonymousHandle: string;
   contextLabel: string;
+  avatarKey: string;
   disclosureLevel: DisclosureLevel;
   firstName?: string;
   blockOrFlat?: string;
@@ -87,7 +89,7 @@ export async function buildPeerView(
   if (!peerId) return null;
 
   const userRow = await client.query(
-    "SELECT anonymous_handle FROM users WHERE id = $1",
+    "SELECT anonymous_handle, avatar_key FROM users WHERE id = $1",
     [peerId]
   );
   if (userRow.rows.length === 0) return null;
@@ -95,7 +97,8 @@ export async function buildPeerView(
   const author = await buildReviewAuthorView(
     client,
     peerId,
-    userRow.rows[0].anonymous_handle
+    userRow.rows[0].anonymous_handle,
+    userRow.rows[0].avatar_key
   );
 
   const ownOffer = await getOfferedLevel(
@@ -114,6 +117,7 @@ export async function buildPeerView(
     userId: peerId,
     anonymousHandle: author.anonymousHandle,
     contextLabel: author.contextLabel,
+    avatarKey: author.avatarKey,
     disclosureLevel: effectiveLevel,
   };
 

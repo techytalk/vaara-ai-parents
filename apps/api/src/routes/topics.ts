@@ -109,7 +109,7 @@ export function createTopicsRoutes() {
 
       let query = `
         SELECT DISTINCT p.id, p.body, p.tag, p.reply_count, p.created_at,
-               p.author_id, u.anonymous_handle
+               p.author_id, u.anonymous_handle, u.avatar_key
         FROM circle_posts p
         JOIN post_topics pt ON pt.post_id = p.id
         JOIN circle_post_targets t ON t.post_id = p.id
@@ -138,7 +138,8 @@ export function createTopicsRoutes() {
             userId,
             row.author_id,
             row.id,
-            row.anonymous_handle
+            row.anonymous_handle,
+            row.avatar_key
           );
           return {
             id: row.id,

@@ -3,21 +3,13 @@ import { Tabs, useRouter } from "expo-router";
 import * as Notifications from "expo-notifications";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, typography } from "@/constants/theme";
-import { registerForPushNotifications } from "@/lib/push";
+import { setupPushNotifications } from "@/lib/push";
 
 type TabIconName = keyof typeof Ionicons.glyphMap;
 
-function tabIcon(
-  focused: boolean,
-  active: TabIconName,
-  inactive: TabIconName
-) {
-  return ({ color, size }: { color: string; size: number }) => (
-    <Ionicons
-      name={focused ? active : inactive}
-      size={size}
-      color={color}
-    />
+function tabIcon(active: TabIconName, inactive: TabIconName) {
+  return ({ focused, color, size }: { focused: boolean; color: string; size: number }) => (
+    <Ionicons name={focused ? active : inactive} size={size} color={color} />
   );
 }
 
@@ -25,7 +17,7 @@ export default function AppLayout() {
   const router = useRouter();
 
   useEffect(() => {
-    registerForPushNotifications().catch(() => {});
+    const stopPushRegistration = setupPushNotifications();
 
     function openNotification(data: Record<string, unknown>) {
       const type = String(data.type ?? "");
@@ -58,7 +50,10 @@ export default function AppLayout() {
       })
       .catch(() => {});
 
-    return () => subscription.remove();
+    return () => {
+      stopPushRegistration();
+      subscription.remove();
+    };
   }, [router]);
 
   return (
@@ -98,8 +93,7 @@ export default function AppLayout() {
         options={{
           title: "Home",
           tabBarLabel: "Home",
-          tabBarIcon: ({ focused, color, size }) =>
-            tabIcon(focused, "home", "home-outline")({ color, size }),
+          tabBarIcon: tabIcon("home", "home-outline"),
         }}
       />
       <Tabs.Screen
@@ -108,8 +102,7 @@ export default function AppLayout() {
           title: "Circles",
           tabBarLabel: "Circles",
           headerShown: false,
-          tabBarIcon: ({ focused, color, size }) =>
-            tabIcon(focused, "people", "people-outline")({ color, size }),
+          tabBarIcon: tabIcon("people-circle", "people-circle-outline"),
         }}
       />
       <Tabs.Screen
@@ -117,21 +110,24 @@ export default function AppLayout() {
         options={{
           title: "Discover",
           tabBarLabel: "Discover",
-          tabBarIcon: ({ focused, color, size }) =>
-            tabIcon(focused, "compass", "compass-outline")({ color, size }),
+          tabBarIcon: tabIcon("compass", "compass-outline"),
           headerShown: false,
+        }}
+      />
+      <Tabs.Screen
+        name="messages"
+        options={{
+          title: "Messages",
+          tabBarLabel: "Messages",
+          headerShown: false,
+          tabBarIcon: tabIcon("chatbubbles", "chatbubbles-outline"),
         }}
       />
       <Tabs.Screen
         name="schools"
         options={{
+          href: null,
           title: "Schools",
-          tabBarLabel: "Schools",
-          tabBarIcon: ({ focused, color, size }) =>
-            tabIcon(focused, "school", "school-outline")({
-              color,
-              size,
-            }),
           headerShown: false,
         }}
       />
@@ -147,14 +143,9 @@ export default function AppLayout() {
         options={{
           title: "More",
           tabBarLabel: "More",
-          tabBarIcon: ({ focused, color, size }) =>
-            tabIcon(focused, "grid", "grid-outline")({
-              color,
-              size,
-            }),
+          tabBarIcon: tabIcon("grid", "grid-outline"),
         }}
       />
-      <Tabs.Screen name="messages" options={{ href: null, headerShown: false }} />
       <Tabs.Screen name="market" options={{ href: null, headerShown: false }} />
       <Tabs.Screen
         name="reminders"

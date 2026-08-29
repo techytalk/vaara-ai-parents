@@ -18,6 +18,12 @@ export async function getToken(): Promise<string | null> {
   return SecureStore.getItemAsync(TOKEN_KEY);
 }
 
+export async function updateStoredUser(patch: Partial<AuthUser>) {
+  const current = await getStoredUser();
+  if (!current) return;
+  await SecureStore.setItemAsync(USER_KEY, JSON.stringify({ ...current, ...patch }));
+}
+
 export async function getStoredUser(): Promise<AuthUser | null> {
   const raw = await SecureStore.getItemAsync(USER_KEY);
   if (!raw) return null;

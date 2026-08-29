@@ -16,7 +16,8 @@
       },
       "android": {
         "buildType": "apk"
-      }
+      },
+      "prebuildCommand": "npx expo prebuild --platform android --clean"
     },
     "preview": {
       "distribution": "internal",
@@ -58,6 +59,31 @@
         "buildType": "app-bundle"
       },
       "prebuildCommand": "npx expo prebuild --platform android --clean"
+    },
+    "preview-ios": {
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://api.vaara.ai",
+        "EXPO_PUBLIC_REALTIME_URL": "wss://vaara-realtime.fly.dev/ws",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "375946640576-8eiut23u8r6kgpd460m19c5lh42ai9am.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "375946640576-p0lcqk5hb9gjj42s1tsl3u5j4ob9fds8.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_REDIRECT_URI": "https://auth.expo.io/@raj-techy1s-team/vaara-parents"
+      },
+      "ios": {
+        "simulator": false
+      },
+      "prebuildCommand": "npx expo prebuild --platform ios --clean"
+    },
+    "production-ios": {
+      "distribution": "store",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://api.vaara.ai",
+        "EXPO_PUBLIC_REALTIME_URL": "wss://vaara-realtime.fly.dev/ws",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "375946640576-8eiut23u8r6kgpd460m19c5lh42ai9am.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "375946640576-p0lcqk5hb9gjj42s1tsl3u5j4ob9fds8.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_REDIRECT_URI": "https://auth.expo.io/@raj-techy1s-team/vaara-parents"
+      },
+      "prebuildCommand": "npx expo prebuild --platform ios --clean"
     }
   }
 }

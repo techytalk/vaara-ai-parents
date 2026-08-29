@@ -27,7 +27,8 @@ async function mapRecommendation(
   const author = await buildReviewAuthorView(
     client,
     row.author_id as string,
-    row.anonymous_handle as string
+    row.anonymous_handle as string,
+    row.avatar_key as string | null
   );
   return {
     id: row.id,
@@ -41,6 +42,7 @@ async function mapRecommendation(
       contextLabel: SENSITIVE_CATEGORIES.has(category)
         ? ""
         : author.contextLabel,
+      avatarKey: author.avatarKey,
     },
   };
 }
@@ -174,7 +176,7 @@ export function createPractitionerRoutes() {
       const p = practitioner.rows[0];
 
       const recs = await client.query(
-        `SELECT pr.*, u.anonymous_handle
+        `SELECT pr.*, u.anonymous_handle, u.avatar_key
          FROM practitioner_recommendations pr
          JOIN users u ON u.id = pr.author_id
          WHERE pr.practitioner_id = $1 AND pr.hidden = false

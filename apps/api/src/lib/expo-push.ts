@@ -10,6 +10,8 @@ type ExpoPushMessage = {
   body: string;
   data: Record<string, unknown>;
   sound: "default";
+  channelId: string;
+  priority: "default" | "normal" | "high";
 };
 
 type ExpoPushResult = {
@@ -67,6 +69,8 @@ export async function sendExpoPushBatch(
     body: message.payload.body,
     data: message.payload.data ?? {},
     sound: "default",
+    channelId: "default",
+    priority: "high",
   }));
 
   try {

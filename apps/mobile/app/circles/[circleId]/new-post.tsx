@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ActivityIndicator,
+  Alert,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -68,6 +70,7 @@ export default function NewPostScreen() {
   }>();
   const router = useRouter();
   const navigation = useNavigation();
+  const queryClient = useQueryClient();
   const headerHeight = useHeaderHeight();
   const insets = useSafeAreaInsets();
   const [body, setBody] = useState("");
@@ -96,6 +99,11 @@ export default function NewPostScreen() {
   const [composeHandled, setComposeHandled] = useState(false);
   const [audienceOpen, setAudienceOpen] = useState(false);
   const [topicsOpen, setTopicsOpen] = useState(false);
+
+  function showSubmitError(message: string) {
+    setError(message);
+    Alert.alert("Could not post", message);
+  }
 
   useEffect(() => {
     getToken().then(async (token) => {
@@ -224,25 +232,49 @@ export default function NewPostScreen() {
   async function onSubmit() {
     const text = body.trim();
     const options = pollOptions.map((o) => o.trim()).filter(Boolean);
-    if (!text && media.length === 0 && !pollEnabled) {
-      setError("Write something, add a poll, or add a photo or video");
+    const hasContent =
+      text.length > 0 || media.length > 0 || pollEnabled;
+    if (!hasContent) {
+      showSubmitError("Write something, add a poll, or add a photo or video");
       return;
     }
     if (pollEnabled) {
       if (!pollQuestion.trim()) {
-        setError("Enter a poll question");
+        showSubmitError("Enter a poll question");
         return;
       }
       if (options.length < 2) {
-        setError("Polls need at least 2 options");
+        showSubmitError("Polls need at least 2 options");
         return;
       }
+    }
+    if (!circleId) {
+      showSubmitError("This circle is missing. Go back and open New post again.");
+      return;
     }
     setLoading(true);
     setError(null);
     try {
       const token = await getToken();
-      if (!token) return;
+      if (!token) {
+        showSubmitError("Your session expired. Please sign in again.");
+        return;
+      }
+      const circleList = await api.getCircles(token);
+      setCircles(circleList);
+      const memberIds = new Set(circleList.map((circle) => circle.id));
+      if (!memberIds.has(circleId)) {
+        showSubmitError(
+          "You are not in this circle. Open Circles, refresh, and try again."
+        );
+        return;
+      }
+      if (additionalCircleIds.some((id) => !memberIds.has(id))) {
+        showSubmitError(
+          "One of the selected audience circles is no longer available."
+        );
+        return;
+      }
       const uploadedMedia = await uploadMedia(token);
       setUploadProgress("Publishing post…");
       await api.createPost(token, circleId, {
@@ -259,9 +291,14 @@ export default function NewPostScreen() {
         topicSlugs:
           selectedTopicSlugs.length > 0 ? selectedTopicSlugs : undefined,
       });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["circleFeed", circleId] }),
+        queryClient.invalidateQueries({ queryKey: ["homeFeed"] }),
+        queryClient.invalidateQueries({ queryKey: ["circles"] }),
+      ]);
       router.back();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to post");
+      showSubmitError(e instanceof Error ? e.message : "Failed to post");
     } finally {
       setUploadProgress(null);
       setLoading(false);
@@ -284,7 +321,7 @@ export default function NewPostScreen() {
           hitSlop={8}
           style={[styles.postBtn, (!canPost || loading) && styles.postBtnOff]}
           onPress={() => void submitRef.current()}
-          disabled={!canPost || loading}
+          disabled={loading}
         >
           {loading ? (
             <ActivityIndicator size="small" color="#fff" />

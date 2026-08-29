@@ -151,7 +151,11 @@ export default function MessagesInboxScreen() {
                   />
                 </View>
               ) : (
-                <Avatar handle={name} size={48} />
+                <Avatar
+                  handle={name}
+                  avatarKey={item.peer.avatarKey}
+                  size={48}
+                />
               )}
               <View style={styles.rowMain}>
                 <View style={styles.rowTop}>

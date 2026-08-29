@@ -26,22 +26,26 @@ import {
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import { useRealtimeChannel } from "@/hooks/useRealtimeChannel";
 import { api, type CirclePost } from "@/lib/api";
-import { getToken } from "@/lib/session";
+import { getStoredUser, getToken } from "@/lib/session";
 
 function PostCard({
   post,
   circleId,
   saved,
+  isOwnPost,
   onToggleSave,
   onPress,
   onPollVote,
+  onDelete,
 }: {
   post: CirclePost;
   circleId: string;
   saved?: boolean;
+  isOwnPost?: boolean;
   onToggleSave?: () => void;
   onPress: () => void;
   onPollVote: (postId: string, optionId: string) => void;
+  onDelete?: () => void;
 }) {
   return (
     <Pressable
@@ -50,6 +54,7 @@ function PostCard({
     >
       <AuthorRow
         handle={post.author.anonymousHandle}
+        avatarKey={post.author.avatarKey}
         contextLabel={post.author.contextLabel}
         timestamp={post.createdAt}
       />
@@ -90,6 +95,12 @@ function PostCard({
             </Text>
           </Pressable>
         ) : null}
+        {isOwnPost && onDelete ? (
+          <Pressable style={styles.footerStat} onPress={onDelete} hitSlop={8}>
+            <Ionicons name="trash-outline" size={14} color={theme.error} />
+            <Text style={[styles.footerStatText, styles.deleteText]}>Delete</Text>
+          </Pressable>
+        ) : null}
         <Text style={styles.footerTime}>{formatPostTime(post.createdAt)}</Text>
       </View>
     </Pressable>
@@ -105,6 +116,7 @@ export default function CircleFeedScreen() {
   const navigation = useNavigation();
   const queryClient = useQueryClient();
   const [savedPostIds, setSavedPostIds] = useState<Set<string>>(new Set());
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [muted, setMuted] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -119,6 +131,8 @@ export default function CircleFeedScreen() {
     queryFn: async () => {
       const token = await getToken();
       if (!token) throw new Error("Not signed in");
+      const user = await getStoredUser();
+      setCurrentUserId(user?.id ?? null);
       const [feed, members, saved, mutes] = await Promise.all([
         api.getCircleFeed(token, circleId, { scope: "local" }),
         api.getCircleMembers(token, circleId),
@@ -152,6 +166,7 @@ export default function CircleFeedScreen() {
   useFocusEffect(
     useCallback(() => {
       if (!circleId) return;
+      refreshFeed();
       void (async () => {
         const token = await getToken();
         if (!token) return;
@@ -162,7 +177,7 @@ export default function CircleFeedScreen() {
           // ignore mark-read errors
         }
       })();
-    }, [circleId, queryClient])
+    }, [circleId, queryClient, refreshFeed])
   );
 
   const posts = feedQuery.data?.posts ?? [];
@@ -249,6 +264,46 @@ export default function CircleFeedScreen() {
       }
     } catch {
       // ignore save errors in feed
+    }
+  }
+
+  function confirmDeletePost(postId: string) {
+    Alert.alert(
+      "Delete post?",
+      "This will permanently remove your post and its comments.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => void onDeletePost(postId),
+        },
+      ]
+    );
+  }
+
+  async function onDeletePost(postId: string) {
+    const token = await getToken();
+    if (!token) return;
+    try {
+      await api.deletePost(token, circleId, postId);
+      queryClient.setQueryData(
+        ["circleFeed", circleId],
+        (current: { posts: CirclePost[]; memberCount: number } | undefined) =>
+          current
+            ? {
+                ...current,
+                posts: current.posts.filter((post) => post.id !== postId),
+              }
+            : current
+      );
+      setSavedPostIds((current) => {
+        const next = new Set(current);
+        next.delete(postId);
+        return next;
+      });
+    } catch {
+      Alert.alert("Could not delete post", "Please try again.");
     }
   }
 
@@ -357,8 +412,10 @@ export default function CircleFeedScreen() {
             post={item}
             circleId={circleId}
             saved={savedPostIds.has(item.id)}
+            isOwnPost={currentUserId === item.author.userId}
             onToggleSave={() => toggleSave(item.id)}
             onPollVote={onPollVote}
+            onDelete={() => confirmDeletePost(item.id)}
             onPress={() =>
               router.push({
                 pathname: "/circles/[circleId]/posts/[postId]",
@@ -566,6 +623,7 @@ const styles = StyleSheet.create({
     fontFamily: typography.semibold,
     color: theme.textMuted,
   },
+  deleteText: { color: theme.error },
   footerTime: {
     ...typography.caption,
     fontFamily: typography.regular,

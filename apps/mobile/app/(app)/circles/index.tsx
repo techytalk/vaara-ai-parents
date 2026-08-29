@@ -352,7 +352,11 @@ export default function CirclesScreen() {
       >
         <View style={styles.topBar}>
           <View style={styles.hero}>
-            <Avatar handle={user?.anonymousHandle ?? "Parent"} size={44} />
+            <Avatar
+              handle={user?.anonymousHandle ?? "Parent"}
+              avatarKey={user?.avatarKey}
+              size={44}
+            />
             <View style={styles.heroCopy}>
               <Text style={styles.eyebrow}>Your parent network</Text>
               <Text style={styles.title}>My Circles</Text>

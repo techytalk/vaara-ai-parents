@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { pool } from "@vaara/db";
 import { isBlocked } from "../lib/author.js";
+import { resolveAvatarKey } from "../lib/avatar.js";
 import { authMiddleware, type AuthVariables } from "../middleware/auth.js";
 
 const AGE_BANDS = ["0_2", "2_4", "4_6", "6_8", "8_12", "12_plus"] as const;
@@ -34,7 +35,7 @@ export function createPlaydateRoutes() {
 
       const opt = mine.rows[0];
       const { rows } = await client.query(
-        `SELECT DISTINCT u.id, u.anonymous_handle, po.age_band
+        `SELECT DISTINCT u.id, u.anonymous_handle, u.avatar_key, po.age_band
          FROM playdate_optins po
          JOIN users u ON u.id = po.user_id
          WHERE po.active = true
@@ -62,6 +63,7 @@ export function createPlaydateRoutes() {
         matches: rows.map((row) => ({
           userId: row.id,
           anonymousHandle: row.anonymous_handle,
+          avatarKey: resolveAvatarKey(row.avatar_key, row.anonymous_handle),
           ageBand: row.age_band,
         })),
       });
@@ -191,7 +193,7 @@ export function createPlaydateRoutes() {
       }
 
       const peer = await client.query(
-        `SELECT anonymous_handle FROM users WHERE id = $1`,
+        `SELECT anonymous_handle, avatar_key FROM users WHERE id = $1`,
         [peerUserId]
       );
 
@@ -200,6 +202,10 @@ export function createPlaydateRoutes() {
         peer: {
           userId: peerUserId,
           anonymousHandle: peer.rows[0]?.anonymous_handle ?? "Parent",
+          avatarKey: resolveAvatarKey(
+            peer.rows[0]?.avatar_key,
+            peer.rows[0]?.anonymous_handle ?? "Parent"
+          ),
         },
       });
     } finally {

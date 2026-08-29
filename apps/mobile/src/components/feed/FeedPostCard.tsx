@@ -71,6 +71,7 @@ export function FeedPostCard({
       ) : null}
       <AuthorRow
         handle={post.author.anonymousHandle}
+        avatarKey={post.author.avatarKey}
         contextLabel={post.author.contextLabel}
         timestamp={post.createdAt}
       />
@@ -87,10 +88,12 @@ export function FeedPostCard({
       ) : null}
       <View style={styles.actions}>
         <Pressable
-          style={styles.action}
+          style={styles.helpfulAction}
           onPress={onToggleHelpful}
           hitSlop={8}
           disabled={!onToggleHelpful}
+          accessibilityRole="button"
+          accessibilityLabel="Mark as helpful"
         >
           <Ionicons
             name={post.myHelpful ? "thumbs-up" : "thumbs-up-outline"}
@@ -106,34 +109,50 @@ export function FeedPostCard({
             Helpful
           </Text>
         </Pressable>
-        <Pressable style={styles.action} onPress={onComment ?? onPress} hitSlop={8}>
-          <Ionicons
-            name="chatbubble-outline"
-            size={18}
-            color={theme.textMuted}
-          />
-          <Text style={styles.actionText}>
-            {post.replyCount > 0 ? `Comment (${post.replyCount})` : "Comment"}
-          </Text>
-        </Pressable>
-        <Pressable
-          style={styles.action}
-          onPress={onShare}
-          hitSlop={8}
-          disabled={!onShare}
-        >
-          <Ionicons name="share-outline" size={18} color={theme.textMuted} />
-          <Text style={styles.actionText}>Share</Text>
-        </Pressable>
-        {onToggleSave ? (
-          <Pressable style={styles.action} onPress={onToggleSave} hitSlop={8}>
+        <View style={styles.iconActions}>
+          <Pressable
+            style={styles.iconAction}
+            onPress={onComment ?? onPress}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={
+              post.replyCount > 0
+                ? `Comment, ${post.replyCount} replies`
+                : "Comment"
+            }
+          >
             <Ionicons
-              name={saved ? "bookmark" : "bookmark-outline"}
-              size={18}
-              color={saved ? theme.primary : theme.textMuted}
+              name="chatbubble-outline"
+              size={20}
+              color={theme.textMuted}
             />
           </Pressable>
-        ) : null}
+          <Pressable
+            style={styles.iconAction}
+            onPress={onShare}
+            hitSlop={8}
+            disabled={!onShare}
+            accessibilityRole="button"
+            accessibilityLabel="Share"
+          >
+            <Ionicons name="share-outline" size={20} color={theme.textMuted} />
+          </Pressable>
+          {onToggleSave ? (
+            <Pressable
+              style={styles.iconAction}
+              onPress={onToggleSave}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={saved ? "Unsave post" : "Save post"}
+            >
+              <Ionicons
+                name={saved ? "bookmark" : "bookmark-outline"}
+                size={20}
+                color={saved ? theme.primary : theme.textMuted}
+              />
+            </Pressable>
+          ) : null}
+        </View>
       </View>
       <Text style={styles.time}>{formatPostTime(post.createdAt)}</Text>
     </Pressable>
@@ -189,13 +208,23 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
-  action: {
-    flex: 1,
+  helpfulAction: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
     gap: 5,
     minHeight: 36,
+    paddingRight: spacing.sm,
+  },
+  iconActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  iconAction: {
+    width: 40,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
   },
   actionText: {
     ...typography.caption,

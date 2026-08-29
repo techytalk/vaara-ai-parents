@@ -1,4 +1,5 @@
 import { signToken } from "./jwt.js";
+import { resolveAvatarKey } from "./avatar.js";
 
 type UserAuthRow = {
   id: string;
@@ -7,6 +8,7 @@ type UserAuthRow = {
   display_name: string | null;
   anonymous_handle: string;
   onboarding_complete: boolean;
+  avatar_key?: string | null;
 };
 
 export async function buildAuthResponse(user: UserAuthRow) {
@@ -25,6 +27,7 @@ export async function buildAuthResponse(user: UserAuthRow) {
       displayName: user.display_name,
       anonymousHandle: user.anonymous_handle,
       onboardingComplete: user.onboarding_complete,
+      avatarKey: resolveAvatarKey(user.avatar_key, user.anonymous_handle),
     },
   };
 }

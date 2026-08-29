@@ -112,8 +112,24 @@ export default function ProfileScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.profileCard}>
-        <Avatar handle={user?.anonymousHandle ?? "Parent"} size={72} />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Change avatar"
+          onPress={() => router.push("/(app)/settings/avatar" as never)}
+        >
+          <Avatar
+            handle={user?.anonymousHandle ?? "Parent"}
+            avatarKey={user?.avatarKey}
+            size={72}
+          />
+        </Pressable>
         <Text style={styles.handle}>{user?.anonymousHandle ?? "Parent"}</Text>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => router.push("/(app)/settings/avatar" as never)}
+        >
+          <Text style={styles.changeAvatar}>Change avatar</Text>
+        </Pressable>
         <Text style={styles.childSummary}>{childSummary}</Text>
       </View>
 
@@ -232,6 +248,13 @@ const styles = StyleSheet.create({
     color: colors.textInverse,
     fontFamily: typography.bold,
     marginTop: spacing.sm,
+  },
+  changeAvatar: {
+    ...typography.caption,
+    color: colors.primaryLight,
+    fontFamily: typography.semibold,
+    marginTop: 4,
+    textDecorationLine: "underline",
   },
   childSummary: {
     ...typography.supporting,
