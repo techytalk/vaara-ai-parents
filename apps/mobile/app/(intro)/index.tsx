@@ -30,8 +30,8 @@ type IntroScene = {
 const scenes: IntroScene[] = [
   {
     key: "welcome",
-    title: "Connect with parents from the same school, same class and more.",
-    accent: "same school, same class and more.",
+    title: "Connect with parents from the same school, same class and same locality.",
+    accent: "same school, same class and same locality.",
     description:
       "Plus discover verified tutors, trusted schools, activities and everything your child needs to grow.",
     image: require("../../assets/illustrations/family-welcome.png"),
@@ -39,8 +39,8 @@ const scenes: IntroScene[] = [
   {
     key: "circles",
     eyebrow: "Your trusted parent network",
-    title: "Connect with parents from the same school and class",
-    accent: "same school and class",
+    title: "Connect with parents from the same school, class and locality",
+    accent: "same school, class and locality",
     description:
       "Automatically join circles with parents in your child's school, class, curriculum and locality.",
     image: require("../../assets/illustrations/school-community.png"),
@@ -48,20 +48,21 @@ const scenes: IntroScene[] = [
   {
     key: "tutors",
     eyebrow: "Local and accountable",
-    title: "Discover verified tutors and trainers",
-    accent: "verified tutors and trainers",
+    title: "Discover verified tutors and trainers in your locality",
+    accent: "verified tutors and trainers in your locality",
     description:
       "Connect with reviewed teachers, trainers and institutions serving your area.",
     image: require("../../assets/illustrations/verified-tutor.png"),
   },
   {
-    key: "schools",
+    key: "curriculum",
     eyebrow: "Decisions with context",
-    title: "Find trusted schools and make better decisions",
-    accent: "trusted schools",
+    title:
+      "Connect with IB, IGCSE and Cambridge parents and make better decisions",
+    accent: "IB, IGCSE and Cambridge parents",
     description:
-      "Explore school reviews, fee insights and real parent experiences before you choose.",
-    image: require("../../assets/illustrations/trusted-schools.png"),
+      "Explore curriculum-specific advice, parent experiences and local recommendations from families on the same board.",
+    image: require("../../assets/illustrations/curriculum-parents.png"),
   },
   {
     key: "community",

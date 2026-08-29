@@ -10,7 +10,8 @@ import {
   View,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { api, type Activity } from "@/lib/api";
+import { ACTIVITY_CATEGORY_OPTIONS } from "@/constants/activities";
+import { api, type Activity, type ActivityCategory } from "@/lib/api";
 import { getToken } from "@/lib/session";
 
 export default function EditActivityScreen() {
@@ -19,6 +20,7 @@ export default function EditActivityScreen() {
   const [activity, setActivity] = useState<Activity | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [category, setCategory] = useState<ActivityCategory>("other");
   const [pinCodesText, setPinCodesText] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -37,6 +39,7 @@ export default function EditActivityScreen() {
         setActivity(found);
         setTitle(found.title);
         setDescription(found.description);
+        setCategory(found.category);
         setPinCodesText(found.pinCodes.join(", "));
       } finally {
         setLoading(false);
@@ -57,6 +60,7 @@ export default function EditActivityScreen() {
       await api.updateProviderActivity(token, id, {
         title: title.trim(),
         description: description.trim(),
+        category,
         pinCodes: pins,
         status: status ?? activity?.status,
       });
@@ -112,6 +116,28 @@ export default function EditActivityScreen() {
         value={description}
         onChangeText={setDescription}
       />
+      <Text style={styles.label}>Category</Text>
+      <View style={styles.chipRow}>
+        {ACTIVITY_CATEGORY_OPTIONS.map((option) => (
+          <Pressable
+            key={option.value}
+            style={[
+              styles.chip,
+              category === option.value && styles.chipActive,
+            ]}
+            onPress={() => setCategory(option.value)}
+          >
+            <Text
+              style={[
+                styles.chipText,
+                category === option.value && styles.chipTextActive,
+              ]}
+            >
+              {option.label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
       <TextInput
         style={styles.input}
         value={pinCodesText}
@@ -161,6 +187,24 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   multiline: { minHeight: 120 },
+  label: { fontSize: 13, color: "#5c5c7a", marginBottom: 8 },
+  chipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 16,
+  },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#e2e4ef",
+    backgroundColor: "#fff",
+  },
+  chipActive: { backgroundColor: "#4f46e5", borderColor: "#4f46e5" },
+  chipText: { fontSize: 13, color: "#1a1a2e" },
+  chipTextActive: { color: "#fff", fontWeight: "600" },
   button: {
     backgroundColor: "#4f46e5",
     borderRadius: 12,

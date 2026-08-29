@@ -21,6 +21,12 @@ export type RealtimeEvent =
       type: "poll.vote";
       circleId: string;
       postId: string;
+    }
+  | {
+      type: "reply.new";
+      circleId: string;
+      postId: string;
+      replyId: string;
     };
 
 async function publish(channel: string, event: RealtimeEvent): Promise<void> {
@@ -36,7 +42,7 @@ async function publish(channel: string, event: RealtimeEvent): Promise<void> {
 
 export async function publishCircleEvent(
   circleId: string,
-  event: Extract<RealtimeEvent, { type: "post.new" | "poll.vote" }>
+  event: Extract<RealtimeEvent, { type: "post.new" | "poll.vote" | "reply.new" }>
 ): Promise<void> {
   await publish(circleChannel(circleId), event);
 }

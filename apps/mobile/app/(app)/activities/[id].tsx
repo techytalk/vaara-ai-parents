@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   Pressable,
   ScrollView,
@@ -10,6 +9,16 @@ import {
   View,
 } from "react-native";
 import { useLocalSearchParams } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import {
+  Avatar,
+  Button,
+  Card,
+  InlineError,
+  ScreenLoader,
+  SectionHeader,
+} from "@/components/ui";
+import { colors, radii, spacing, typography } from "@/constants/theme";
 import { api, type Activity, type ProviderReview } from "@/lib/api";
 import { getToken } from "@/lib/session";
 
@@ -33,13 +42,16 @@ export default function ActivityDetailScreen() {
         const detail = await api.getActivity(token, id);
         setActivity(detail);
         if (detail.providerId) {
-          const reviewData = await api.getProviderReviews(token, detail.providerId);
+          const reviewData = await api.getProviderReviews(
+            token,
+            detail.providerId
+          );
           setReviews(reviewData.reviews);
           setRatingAvg(reviewData.provider.ratingAvg);
           setRatingCount(reviewData.provider.ratingCount);
         }
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to load");
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : "Failed to load");
       } finally {
         setLoading(false);
       }
@@ -62,8 +74,8 @@ export default function ActivityDetailScreen() {
         activityId: activity.id,
       });
       Alert.alert("Reminder set", fireAt.toLocaleString());
-    } catch (e) {
-      Alert.alert("Error", e instanceof Error ? e.message : "Failed");
+    } catch (cause) {
+      Alert.alert("Error", cause instanceof Error ? cause.message : "Failed");
     } finally {
       setSavingReminder(false);
     }
@@ -101,149 +113,141 @@ export default function ActivityDetailScreen() {
         rating: reviewRating,
         reviewBody: reviewBody.trim() || undefined,
       });
-      const reviewData = await api.getProviderReviews(token, activity.providerId);
+      const reviewData = await api.getProviderReviews(
+        token,
+        activity.providerId
+      );
       setReviews(reviewData.reviews);
       setRatingAvg(reviewData.provider.ratingAvg);
       setRatingCount(reviewData.provider.ratingCount);
       setReviewBody("");
       Alert.alert("Thanks", "Your review was saved.");
-    } catch (e) {
-      Alert.alert("Error", e instanceof Error ? e.message : "Failed");
+    } catch (cause) {
+      Alert.alert("Error", cause instanceof Error ? cause.message : "Failed");
     } finally {
       setSubmittingReview(false);
     }
   }
 
-  if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
-  }
+  if (loading) return <ScreenLoader />;
 
   if (!activity) {
     return (
       <View style={styles.centered}>
-        <Text>{error ?? "Not found"}</Text>
+        <InlineError message={error ?? "Activity not found"} />
       </View>
     );
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.org}>
-        {activity.provider?.orgName}
-        {activity.provider?.verified ? " · Verified" : ""}
-      </Text>
-      <Text style={styles.type}>{activity.provider?.providerType}</Text>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+      <View style={styles.hero}>
+        <Avatar handle={activity.provider?.orgName ?? "Provider"} size={64} />
+        <View style={styles.heroCopy}>
+          <Text style={styles.org}>
+            {activity.provider?.orgName}
+            {activity.provider?.verified ? " · Verified" : ""}
+          </Text>
+          <Text style={styles.type}>
+            {activity.provider?.providerType ?? "Provider"}
+          </Text>
+        </View>
+      </View>
+
       <Text style={styles.title}>{activity.title}</Text>
 
       {ratingAvg != null ? (
-        <Text style={styles.rating}>
-          {ratingAvg.toFixed(1)} ★ ({ratingCount} reviews)
-        </Text>
+        <View style={styles.ratingRow}>
+          <Ionicons name="star" size={16} color={colors.amber} />
+          <Text style={styles.rating}>
+            {ratingAvg.toFixed(1)} ({ratingCount} reviews)
+          </Text>
+        </View>
       ) : null}
 
-      {activity.provider?.feeMin != null || activity.provider?.feeMax != null ? (
-        <Text style={styles.fee}>
-          Fee range: ₹{activity.provider?.feeMin ?? "—"} – ₹
-          {activity.provider?.feeMax ?? "—"}
-        </Text>
-      ) : null}
-
-      {activity.feeAmount != null && (
-        <Text style={styles.fee}>
-          ₹{activity.feeAmount} {activity.feeCurrency}
-        </Text>
-      )}
-
-      {activity.startsAt && (
+      {activity.startsAt ? (
         <Text style={styles.meta}>
-          Starts: {new Date(activity.startsAt).toLocaleString()}
+          Starts {new Date(activity.startsAt).toLocaleString()}
         </Text>
-      )}
+      ) : null}
+      {activity.locationText ? (
+        <Text style={styles.meta}>{activity.locationText}</Text>
+      ) : null}
+      {activity.pinCodes.length > 0 ? (
+        <Text style={styles.meta}>Serves pin {activity.pinCodes.join(", ")}</Text>
+      ) : null}
 
-      {activity.locationText && (
-        <Text style={styles.meta}>Location: {activity.locationText}</Text>
-      )}
+      <SectionHeader title="About" />
+      <Text style={styles.body}>{activity.description}</Text>
 
-      <Text style={styles.meta}>Pin codes: {activity.pinCodes.join(", ")}</Text>
-
-      <Text style={styles.section}>Reminders</Text>
+      <SectionHeader title="Reminders" />
       <View style={styles.reminderRow}>
-        <Pressable
-          style={styles.reminderBtn}
+        <Button
+          label="1 day before"
+          variant="secondary"
           onPress={onRemind1Day}
           disabled={savingReminder}
-        >
-          <Text style={styles.reminderBtnText}>1 day before</Text>
-        </Pressable>
-        <Pressable
           style={styles.reminderBtn}
+        />
+        <Button
+          label="1 hour before"
+          variant="secondary"
           onPress={onRemind1Hour}
           disabled={savingReminder}
-        >
-          <Text style={styles.reminderBtnText}>1 hour before</Text>
-        </Pressable>
+          style={styles.reminderBtn}
+        />
       </View>
-
-      <Text style={styles.section}>About</Text>
-      <Text style={styles.body}>{activity.description}</Text>
 
       {activity.providerId ? (
         <>
-          <Text style={styles.section}>Parent reviews</Text>
+          <SectionHeader title="Parent reviews" />
           {reviews.length === 0 ? (
-            <Text style={styles.meta}>No reviews yet.</Text>
+            <Text style={styles.meta}>No reviews yet. Be the first to share.</Text>
           ) : (
             reviews.map((review) => (
-              <View key={review.id} style={styles.reviewCard}>
+              <Card key={review.id} style={styles.reviewCard}>
                 <Text style={styles.reviewAuthor}>
                   {review.author.anonymousHandle}
                   {review.author.contextLabel
                     ? ` · ${review.author.contextLabel}`
                     : ""}
                 </Text>
-                <Text style={styles.reviewRating}>{review.rating} ★</Text>
+                <View style={styles.reviewRatingRow}>
+                  <Ionicons name="star" size={14} color={colors.amber} />
+                  <Text style={styles.reviewRating}>{review.rating}</Text>
+                </View>
                 {review.body ? (
                   <Text style={styles.reviewBody}>{review.body}</Text>
                 ) : null}
-              </View>
+              </Card>
             ))
           )}
 
-          <Text style={styles.section}>Write a review</Text>
+          <SectionHeader title="Write a review" />
           <View style={styles.starRow}>
             {[1, 2, 3, 4, 5].map((star) => (
               <Pressable key={star} onPress={() => setReviewRating(star)}>
-                <Text
-                  style={[
-                    styles.star,
-                    star <= reviewRating && styles.starActive,
-                  ]}
-                >
-                  ★
-                </Text>
+                <Ionicons
+                  name={star <= reviewRating ? "star" : "star-outline"}
+                  size={28}
+                  color={colors.amber}
+                />
               </Pressable>
             ))}
           </View>
           <TextInput
             style={styles.reviewInput}
-            placeholder="What was helpful? Batch size, teaching style, punctuality…"
+            placeholder="What was helpful? Teaching style, punctuality, batch size…"
             value={reviewBody}
             onChangeText={setReviewBody}
             multiline
+            placeholderTextColor={colors.textSubtle}
           />
-          <Pressable
-            style={styles.submitReview}
+          <Button
+            label={submittingReview ? "Saving…" : "Submit review"}
             onPress={submitReview}
-            disabled={submittingReview}
-          >
-            <Text style={styles.submitReviewText}>
-              {submittingReview ? "Saving…" : "Submit review"}
-            </Text>
-          </Pressable>
+            loading={submittingReview}
+          />
         </>
       ) : null}
     </ScrollView>
@@ -251,68 +255,100 @@ export default function ActivityDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f8f9fc" },
-  content: { padding: 20, paddingBottom: 40 },
-  centered: { flex: 1, justifyContent: "center", alignItems: "center" },
-  org: { fontSize: 15, fontWeight: "600", color: "#4f46e5" },
-  type: {
-    fontSize: 13,
-    color: "#5c5c7a",
-    marginTop: 2,
-    textTransform: "capitalize",
-  },
-  title: { fontSize: 22, fontWeight: "700", color: "#1a1a2e", marginTop: 8 },
-  rating: { fontSize: 15, color: "#047857", marginTop: 8, fontWeight: "700" },
-  fee: { fontSize: 16, color: "#1a1a2e", marginTop: 10 },
-  meta: { fontSize: 14, color: "#5c5c7a", marginTop: 6 },
-  section: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#1a1a2e",
-    marginTop: 24,
-    marginBottom: 8,
-  },
-  reminderRow: { flexDirection: "row", gap: 8 },
-  reminderBtn: {
+  screen: { flex: 1, backgroundColor: colors.bg },
+  content: { padding: spacing.lg, paddingBottom: spacing.xxxl },
+  centered: {
     flex: 1,
-    backgroundColor: "#eef2ff",
-    borderRadius: 10,
-    padding: 12,
     alignItems: "center",
+    justifyContent: "center",
+    padding: spacing.lg,
   },
-  reminderBtnText: { color: "#4f46e5", fontWeight: "600", fontSize: 13 },
-  body: { fontSize: 15, color: "#1a1a2e", lineHeight: 24 },
-  reviewCard: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#e2e4ef",
-    padding: 12,
-    marginBottom: 8,
+  hero: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
   },
-  reviewAuthor: { fontSize: 13, fontWeight: "700", color: "#1a1a2e" },
-  reviewRating: { fontSize: 13, color: "#047857", marginTop: 4 },
-  reviewBody: { fontSize: 14, color: "#1a1a2e", marginTop: 6, lineHeight: 20 },
-  starRow: { flexDirection: "row", gap: 8, marginBottom: 10 },
-  star: { fontSize: 28, color: "#d4d4d8" },
-  starActive: { color: "#f59e0b" },
+  heroCopy: { flex: 1 },
+  org: {
+    ...typography.body,
+    color: colors.primaryDark,
+    fontFamily: typography.bold,
+  },
+  type: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontFamily: typography.medium,
+    textTransform: "capitalize",
+    marginTop: 2,
+  },
+  title: {
+    ...typography.screenTitle,
+    color: colors.text,
+    fontFamily: typography.bold,
+  },
+  ratingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: spacing.xs,
+  },
+  rating: {
+    ...typography.supporting,
+    color: colors.text,
+    fontFamily: typography.semibold,
+  },
+  meta: {
+    ...typography.supporting,
+    color: colors.textMuted,
+    fontFamily: typography.regular,
+    marginTop: 6,
+  },
+  body: {
+    ...typography.body,
+    color: colors.text,
+    fontFamily: typography.regular,
+    lineHeight: 23,
+    marginBottom: spacing.md,
+  },
+  reminderRow: { flexDirection: "row", gap: spacing.xs, marginBottom: spacing.md },
+  reminderBtn: { flex: 1 },
+  reviewCard: { marginBottom: spacing.xs },
+  reviewAuthor: {
+    ...typography.supporting,
+    color: colors.text,
+    fontFamily: typography.bold,
+  },
+  reviewRatingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 4,
+  },
+  reviewRating: {
+    ...typography.supporting,
+    color: colors.text,
+    fontFamily: typography.semibold,
+  },
+  reviewBody: {
+    ...typography.body,
+    color: colors.text,
+    fontFamily: typography.regular,
+    marginTop: 6,
+    lineHeight: 22,
+  },
+  starRow: { flexDirection: "row", gap: 8, marginBottom: spacing.sm },
   reviewInput: {
-    backgroundColor: "#fff",
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: "#e2e4ef",
-    borderRadius: 12,
-    padding: 12,
-    minHeight: 90,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    padding: spacing.sm,
+    minHeight: 96,
     textAlignVertical: "top",
     fontSize: 15,
-    color: "#1a1a2e",
+    fontFamily: typography.regular,
+    color: colors.text,
+    marginBottom: spacing.sm,
   },
-  submitReview: {
-    marginTop: 10,
-    backgroundColor: "#4f46e5",
-    borderRadius: 10,
-    padding: 14,
-    alignItems: "center",
-  },
-  submitReviewText: { color: "#fff", fontWeight: "700" },
 });

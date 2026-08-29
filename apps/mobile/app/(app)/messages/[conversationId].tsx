@@ -1,6 +1,5 @@
 import { useCallback, useLayoutEffect, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   FlatList,
   KeyboardAvoidingView,
@@ -14,7 +13,10 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useNavigation } from "@react-navigation/native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Ionicons } from "@expo/vector-icons";
 import { DisclosurePrompt } from "@/components/DisclosurePrompt";
+import { InlineError, ScreenLoader } from "@/components/ui";
+import { colors, radii, spacing, typography } from "@/constants/theme";
 import { useRealtimeChannel } from "@/hooks/useRealtimeChannel";
 import {
   api,
@@ -91,34 +93,33 @@ export default function ChatScreen() {
         level,
         purpose: level === 3 ? "carpool" : "marketplace",
       });
-      queryClient.setQueryData(["conversation", conversationId], (current: {
-        messages: DirectMessage[];
-        peer: PeerView | null;
-        disclosure: DisclosureState;
-      } | undefined) =>
-        current
-          ? {
-              ...current,
-              disclosure: result,
-              peer: result.peer ?? current.peer,
-            }
-          : current
+      queryClient.setQueryData(
+        ["conversation", conversationId],
+        (current: {
+          messages: DirectMessage[];
+          peer: PeerView | null;
+          disclosure: DisclosureState;
+        } | undefined) =>
+          current
+            ? {
+                ...current,
+                disclosure: result,
+                peer: result.peer ?? current.peer,
+              }
+            : current
       );
       setPromptLevel(null);
-    } catch (e) {
-      const message = e instanceof Error ? e.message : "Could not share identity";
+    } catch (cause) {
+      const message =
+        cause instanceof Error ? cause.message : "Could not share identity";
       if (message.includes("first name")) {
-        Alert.alert(
-          "Contact details needed",
-          message,
-          [
-            { text: "Cancel", style: "cancel" },
-            {
-              text: "Add details",
-              onPress: () => router.push("/(app)/contact-details"),
-            },
-          ]
-        );
+        Alert.alert("Contact details needed", message, [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Add details",
+            onPress: () => router.push("/(app)/contact-details"),
+          },
+        ]);
       } else {
         setError(message);
       }
@@ -136,39 +137,33 @@ export default function ChatScreen() {
       const token = await getToken();
       if (!token) return;
       const msg = await api.sendMessage(token, conversationId, body);
-      queryClient.setQueryData(["conversation", conversationId], (current: {
-        messages: DirectMessage[];
-        peer: PeerView | null;
-        disclosure: DisclosureState | null;
-      } | undefined) =>
-        current
-          ? { ...current, messages: [...current.messages, msg] }
-          : current
+      queryClient.setQueryData(
+        ["conversation", conversationId],
+        (current: {
+          messages: DirectMessage[];
+          peer: PeerView | null;
+          disclosure: DisclosureState | null;
+        } | undefined) =>
+          current
+            ? { ...current, messages: [...current.messages, msg] }
+            : current
       );
       setText("");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to send");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Failed to send");
     } finally {
       setSending(false);
     }
   }
 
-  if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
-  }
+  if (loading) return <ScreenLoader label="Loading conversation" />;
 
   const needsAccept =
     disclosure &&
     disclosure.peerOffer > disclosure.ownOffer &&
     disclosure.peerOffer >= 2;
   const canOfferHandover =
-    disclosure &&
-    disclosure.effectiveLevel < 2 &&
-    disclosure.ownOffer < 2;
+    disclosure && disclosure.effectiveLevel < 2 && disclosure.ownOffer < 2;
 
   return (
     <KeyboardAvoidingView
@@ -187,11 +182,6 @@ export default function ChatScreen() {
           ) : null}
           {peer.disclosureLevel >= 3 && peer.contactPhone ? (
             <Text style={styles.peerDetail}>Phone: {peer.contactPhone}</Text>
-          ) : null}
-          {peer.disclosureLevel >= 3 && peer.vehicleDescription ? (
-            <Text style={styles.peerDetail}>
-              Vehicle: {peer.vehicleDescription}
-            </Text>
           ) : null}
         </View>
       ) : null}
@@ -230,14 +220,11 @@ export default function ChatScreen() {
               item.isMine ? styles.bubbleMine : styles.bubbleTheir,
             ]}
           >
-            {!item.isMine && (
+            {!item.isMine ? (
               <Text style={styles.bubbleHandle}>{item.senderHandle}</Text>
-            )}
+            ) : null}
             <Text
-              style={[
-                styles.bubbleText,
-                item.isMine && styles.bubbleTextMine,
-              ]}
+              style={[styles.bubbleText, item.isMine && styles.bubbleTextMine]}
             >
               {item.body}
             </Text>
@@ -245,21 +232,22 @@ export default function ChatScreen() {
         )}
       />
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {error ? <InlineError message={error} /> : null}
 
       <View style={styles.inputRow}>
         <TextInput
           style={styles.input}
           placeholder="Type a message…"
+          placeholderTextColor={colors.textSubtle}
           value={text}
           onChangeText={setText}
         />
-        <Pressable style={styles.sendBtn} onPress={onSend} disabled={sending}>
-          {sending ? (
-            <ActivityIndicator color="#fff" size="small" />
-          ) : (
-            <Text style={styles.sendBtnText}>Send</Text>
-          )}
+        <Pressable
+          style={[styles.sendBtn, sending && styles.sendBtnDisabled]}
+          onPress={onSend}
+          disabled={sending}
+        >
+          <Ionicons name="send" size={18} color="#fff" />
         </Pressable>
       </View>
 
@@ -275,85 +263,123 @@ export default function ChatScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f8f9fc" },
-  centered: { flex: 1, justifyContent: "center", alignItems: "center" },
+  container: { flex: 1, backgroundColor: colors.bg },
   peerCard: {
-    backgroundColor: "#fff",
-    marginHorizontal: 12,
-    marginTop: 8,
-    padding: 12,
-    borderRadius: 12,
+    backgroundColor: colors.card,
+    marginHorizontal: spacing.md,
+    marginTop: spacing.xs,
+    padding: spacing.sm,
+    borderRadius: radii.lg,
     borderWidth: 1,
-    borderColor: "#e2e4ef",
+    borderColor: colors.border,
   },
-  peerName: { fontSize: 16, fontWeight: "700", color: "#1a1a2e" },
-  peerContext: { fontSize: 13, color: "#5c5c7a", marginTop: 4 },
-  peerDetail: { fontSize: 14, color: "#1a1a2e", marginTop: 6 },
+  peerName: {
+    ...typography.body,
+    color: colors.text,
+    fontFamily: typography.bold,
+  },
+  peerContext: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontFamily: typography.regular,
+    marginTop: 4,
+  },
+  peerDetail: {
+    ...typography.supporting,
+    color: colors.text,
+    fontFamily: typography.regular,
+    marginTop: 6,
+  },
   banner: {
-    marginHorizontal: 12,
-    marginTop: 8,
-    backgroundColor: "#eef2ff",
-    borderRadius: 12,
-    padding: 12,
+    marginHorizontal: spacing.md,
+    marginTop: spacing.xs,
+    backgroundColor: colors.primarySoft,
+    borderRadius: radii.md,
+    padding: spacing.sm,
     borderWidth: 1,
-    borderColor: "#c7d2fe",
+    borderColor: colors.primaryLight,
   },
-  bannerTitle: { fontWeight: "700", color: "#312e81", fontSize: 14 },
-  bannerBody: { color: "#4338ca", fontSize: 13, marginTop: 4, lineHeight: 18 },
+  bannerTitle: {
+    ...typography.supporting,
+    color: colors.navy,
+    fontFamily: typography.bold,
+  },
+  bannerBody: {
+    ...typography.caption,
+    color: colors.primaryDark,
+    fontFamily: typography.regular,
+    marginTop: 4,
+    lineHeight: 18,
+  },
   bannerSecondary: {
-    marginHorizontal: 12,
-    marginTop: 8,
-    padding: 10,
+    marginHorizontal: spacing.md,
+    marginTop: spacing.xs,
+    padding: spacing.xs,
     alignItems: "center",
   },
   bannerSecondaryText: {
-    color: "#4f46e5",
-    fontWeight: "600",
-    fontSize: 13,
+    ...typography.supporting,
+    color: colors.primaryDark,
+    fontFamily: typography.semibold,
     textAlign: "center",
   },
-  list: { padding: 12, paddingBottom: 8 },
+  list: { padding: spacing.md, paddingBottom: spacing.xs },
   bubble: {
     maxWidth: "85%",
-    borderRadius: 14,
-    padding: 12,
-    marginBottom: 8,
+    borderRadius: radii.lg,
+    padding: spacing.sm,
+    marginBottom: spacing.xs,
   },
   bubbleMine: {
     alignSelf: "flex-end",
-    backgroundColor: "#4f46e5",
+    backgroundColor: colors.primary,
   },
   bubbleTheir: {
     alignSelf: "flex-start",
-    backgroundColor: "#fff",
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: "#e2e4ef",
+    borderColor: colors.border,
   },
-  bubbleHandle: { fontSize: 11, color: "#4f46e5", marginBottom: 4 },
-  bubbleText: { fontSize: 15, color: "#1a1a2e", lineHeight: 22 },
-  bubbleTextMine: { color: "#fff" },
-  error: { color: "#dc2626", paddingHorizontal: 12 },
+  bubbleHandle: {
+    ...typography.caption,
+    color: colors.primaryDark,
+    fontFamily: typography.semibold,
+    marginBottom: 4,
+  },
+  bubbleText: {
+    ...typography.body,
+    color: colors.text,
+    fontFamily: typography.regular,
+    lineHeight: 22,
+  },
+  bubbleTextMine: { color: colors.textInverse },
   inputRow: {
     flexDirection: "row",
-    padding: 10,
-    gap: 8,
+    padding: spacing.sm,
+    gap: spacing.xs,
     borderTopWidth: 1,
-    borderTopColor: "#e2e4ef",
-    backgroundColor: "#fff",
+    borderTopColor: colors.border,
+    backgroundColor: colors.card,
   },
   input: {
     flex: 1,
-    backgroundColor: "#f8f9fc",
-    borderRadius: 10,
-    paddingHorizontal: 12,
+    backgroundColor: colors.bg,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.sm,
     paddingVertical: 10,
     fontSize: 15,
+    fontFamily: typography.regular,
+    color: colors.text,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   sendBtn: {
-    backgroundColor: "#4f46e5",
-    borderRadius: 10,
-    paddingHorizontal: 16,
+    width: 44,
+    height: 44,
+    borderRadius: radii.md,
+    backgroundColor: colors.primary,
+    alignItems: "center",
     justifyContent: "center",
   },
-  sendBtnText: { color: "#fff", fontWeight: "600" },
+  sendBtnDisabled: { opacity: 0.6 },
 });

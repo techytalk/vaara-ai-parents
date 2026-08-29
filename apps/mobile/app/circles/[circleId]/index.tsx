@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import {
   AuthorRow,
@@ -141,12 +142,28 @@ export default function CircleFeedScreen() {
   useRealtimeChannel({
     channel: circleId ? `circle:${circleId}` : null,
     onEvent: (event) => {
-      if (event.type === "post.new") {
+      if (event.type === "post.new" || event.type === "reply.new") {
         refreshFeed();
       }
     },
     onPollFallback: refreshFeed,
   });
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!circleId) return;
+      void (async () => {
+        const token = await getToken();
+        if (!token) return;
+        try {
+          await api.markCircleRead(token, circleId);
+          queryClient.invalidateQueries({ queryKey: ["circles"] });
+        } catch {
+          // ignore mark-read errors
+        }
+      })();
+    }, [circleId, queryClient])
+  );
 
   const posts = feedQuery.data?.posts ?? [];
   const memberCount = feedQuery.data?.memberCount ?? 0;

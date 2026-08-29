@@ -74,6 +74,7 @@ export type Circle = {
   displayName: string;
   metadata: Record<string, unknown>;
   memberCount: number;
+  newPostCount?: number;
 };
 
 export type CircleAuthor = {
@@ -111,6 +112,20 @@ export type CirclePost = {
   media: CirclePostMedia[];
   poll: PollView | null;
   topics?: Array<{ slug: string; name: string; category: string | null }>;
+  author: CircleAuthor;
+  helpfulCount?: number;
+  myHelpful?: boolean;
+};
+
+export type HomeFeedPost = CirclePost & {
+  circleId: string;
+  circleName: string;
+};
+
+export type PostComment = {
+  id: string;
+  body: string;
+  createdAt: string;
   author: CircleAuthor;
 };
 
@@ -294,10 +309,19 @@ export type DirectMessage = {
   senderHandle: string;
 };
 
+export type ActivityCategory =
+  | "tutoring"
+  | "coaching"
+  | "classes"
+  | "arts"
+  | "sports"
+  | "other";
+
 export type Activity = {
   id: string;
   title: string;
   description: string;
+  category: ActivityCategory;
   status: string;
   startsAt: string | null;
   endsAt: string | null;
@@ -536,6 +560,35 @@ export const api = {
   getCircles: (token: string) =>
     request<Circle[]>("/v1/circles", {}, token),
 
+  markCircleRead: (token: string, circleId: string) =>
+    request<{ ok: boolean }>(
+      `/v1/circles/${circleId}/mark-read`,
+      { method: "POST" },
+      token
+    ),
+
+  getHomeFeed: (
+    token: string,
+    params?: { cursor?: string; limit?: number }
+  ) => {
+    const qs = new URLSearchParams();
+    if (params?.cursor) qs.set("cursor", params.cursor);
+    if (params?.limit) qs.set("limit", String(params.limit));
+    const q = qs.toString();
+    return request<{ posts: HomeFeedPost[]; nextCursor: string | null }>(
+      `/v1/me/feed${q ? `?${q}` : ""}`,
+      {},
+      token
+    );
+  },
+
+  togglePostHelpful: (token: string, postId: string) =>
+    request<{ helpful: boolean; helpfulCount: number }>(
+      `/v1/me/posts/${postId}/helpful`,
+      { method: "POST" },
+      token
+    ),
+
   getCircleMembers: (token: string, circleId: string) =>
     request<CircleMember[]>(`/v1/circles/${circleId}/members`, {}, token),
 
@@ -630,12 +683,7 @@ export const api = {
   getPost: (token: string, circleId: string, postId: string) =>
     request<{
       post: CirclePost;
-      replies: Array<{
-        id: string;
-        body: string;
-        createdAt: string;
-        author: CircleAuthor;
-      }>;
+      replies: PostComment[];
     }>(`/v1/circles/${circleId}/posts/${postId}`, {}, token),
 
   addReply: (
@@ -644,12 +692,7 @@ export const api = {
     postId: string,
     body: string
   ) =>
-    request<{
-      id: string;
-      body: string;
-      createdAt: string;
-      author: CircleAuthor;
-    }>(`/v1/circles/${circleId}/posts/${postId}/replies`, {
+    request<PostComment>(`/v1/circles/${circleId}/posts/${postId}/replies`, {
       method: "POST",
       body: JSON.stringify({ body }),
     }, token),
@@ -778,6 +821,7 @@ export const api = {
     body: Partial<Activity> & {
       title: string;
       description: string;
+      category: ActivityCategory;
       pinCodes: string[];
       curriculumIds?: string[];
       status?: string;
@@ -809,6 +853,8 @@ export const api = {
       pin?: string;
       curriculum?: string;
       q?: string;
+      providerType?: "teacher" | "trainer" | "institution";
+      category?: ActivityCategory;
       verifiedOnly?: boolean;
       sort?: "recent" | "rating" | "fee_low";
     }
@@ -817,6 +863,8 @@ export const api = {
     if (params?.pin) qs.set("pin", params.pin);
     if (params?.curriculum) qs.set("curriculum", params.curriculum);
     if (params?.q) qs.set("q", params.q);
+    if (params?.providerType) qs.set("providerType", params.providerType);
+    if (params?.category) qs.set("category", params.category);
     if (params?.verifiedOnly) qs.set("verifiedOnly", "true");
     if (params?.sort) qs.set("sort", params.sort);
     const q = qs.toString();

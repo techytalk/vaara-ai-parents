@@ -1,15 +1,9 @@
 import { useState } from "react";
-import {
-  Alert,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { colors } from "@/constants/theme";
+import { Ionicons } from "@expo/vector-icons";
+import { Button } from "@/components/ui";
+import { colors, radii, spacing, typography } from "@/constants/theme";
 import { api } from "@/lib/api";
 import { getToken } from "@/lib/session";
 
@@ -26,10 +20,9 @@ export default function SchoolReviewScreen() {
       const token = await getToken();
       if (!token) return;
       await api.submitSchoolReview(token, id, { rating, reviewBody: body });
-      Alert.alert("Thanks", "Your review was saved.");
       router.back();
-    } catch (e) {
-      Alert.alert("Error", e instanceof Error ? e.message : "Could not save");
+    } catch {
+      // Button shows loading state; user can retry
     } finally {
       setSubmitting(false);
     }
@@ -37,16 +30,25 @@ export default function SchoolReviewScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <Text style={styles.title}>Write a review</Text>
+      <Text style={styles.hint}>
+        Share your experience in your own words. You can mention fees, culture,
+        academics, or anything that would help other parents.
+      </Text>
+
       <Text style={styles.label}>Rating</Text>
       <View style={styles.stars}>
         {[1, 2, 3, 4, 5].map((value) => (
           <Pressable key={value} onPress={() => setRating(value)}>
-            <Text style={[styles.star, value <= rating && styles.starActive]}>
-              ★
-            </Text>
+            <Ionicons
+              name={value <= rating ? "star" : "star-outline"}
+              size={32}
+              color={colors.amber}
+            />
           </Pressable>
         ))}
       </View>
+
       <Text style={styles.label}>Your experience (optional)</Text>
       <TextInput
         style={styles.input}
@@ -54,45 +56,53 @@ export default function SchoolReviewScreen() {
         onChangeText={setBody}
         multiline
         placeholder="What should other parents know?"
+        placeholderTextColor={colors.textSubtle}
       />
-      <Pressable
-        style={[styles.btn, submitting && styles.btnDisabled]}
+
+      <Button
+        label={submitting ? "Saving…" : "Submit review"}
         onPress={onSubmit}
-        disabled={submitting}
-      >
-        <Text style={styles.btnText}>
-          {submitting ? "Saving…" : "Submit review"}
-        </Text>
-      </Pressable>
+        loading={submitting}
+      />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 16 },
-  label: { fontSize: 14, fontWeight: "600", color: colors.textMuted, marginTop: 12 },
-  stars: { flexDirection: "row", gap: 8, marginTop: 8 },
-  star: { fontSize: 32, color: colors.border },
-  starActive: { color: "#f59e0b" },
+  content: { padding: spacing.lg, paddingBottom: spacing.xxxl },
+  title: {
+    ...typography.screenTitle,
+    color: colors.text,
+    fontFamily: typography.bold,
+  },
+  hint: {
+    ...typography.body,
+    color: colors.textMuted,
+    fontFamily: typography.regular,
+    marginTop: spacing.xs,
+    marginBottom: spacing.md,
+    lineHeight: 22,
+  },
+  label: {
+    ...typography.supporting,
+    color: colors.textMuted,
+    fontFamily: typography.semibold,
+    marginTop: spacing.sm,
+  },
+  stars: { flexDirection: "row", gap: 8, marginTop: spacing.xs },
   input: {
-    marginTop: 8,
+    marginTop: spacing.xs,
     backgroundColor: colors.card,
-    borderRadius: 12,
+    borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 12,
+    padding: spacing.sm,
     minHeight: 120,
     textAlignVertical: "top",
     fontSize: 15,
+    fontFamily: typography.regular,
+    color: colors.text,
+    marginBottom: spacing.md,
   },
-  btn: {
-    marginTop: 20,
-    backgroundColor: colors.primary,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
-  btnDisabled: { opacity: 0.6 },
-  btnText: { color: "#fff", fontWeight: "700" },
 });

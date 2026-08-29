@@ -1,16 +1,17 @@
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useCallback, useLayoutEffect, useState } from "react";
 import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  Share,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useNavigation } from "@react-navigation/native";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import {
   AuthorRow,
@@ -22,29 +23,25 @@ import {
   ScreenLoader,
   theme,
 } from "@/components/circles/ui";
-import { api, type CircleAuthor, type CirclePost } from "@/lib/api";
+import { useRealtimeChannel } from "@/hooks/useRealtimeChannel";
+import { api, type CirclePost, type PostComment } from "@/lib/api";
 import { getToken } from "@/lib/session";
 
-type Reply = {
-  id: string;
-  body: string;
-  createdAt: string;
-  author: CircleAuthor;
-};
-
-function ReplyCard({ reply }: { reply: Reply }) {
+function CommentCard({ comment }: { comment: PostComment }) {
   return (
-    <View style={styles.replyRow}>
-      <View style={styles.replyLine} />
-      <View style={[styles.replyCard, cardShadow()]}>
+    <View style={styles.commentRow}>
+      <View style={styles.commentLine} />
+      <View style={[styles.commentCard, cardShadow()]}>
         <AuthorRow
-          handle={reply.author.anonymousHandle}
-          contextLabel={reply.author.contextLabel}
-          timestamp={reply.createdAt}
+          handle={comment.author.anonymousHandle}
+          contextLabel={comment.author.contextLabel}
+          timestamp={comment.createdAt}
           size="sm"
         />
-        <Text style={styles.replyBody}>{reply.body}</Text>
-        <Text style={styles.replyTime}>{formatPostTime(reply.createdAt)}</Text>
+        <Text style={styles.commentBody}>{comment.body}</Text>
+        <Text style={styles.commentTime}>
+          {formatPostTime(comment.createdAt)}
+        </Text>
       </View>
     </View>
   );
@@ -58,34 +55,50 @@ export default function PostThreadScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const [post, setPost] = useState<CirclePost | null>(null);
-  const [replies, setReplies] = useState<Reply[]>([]);
+  const [comments, setComments] = useState<PostComment[]>([]);
   const [saved, setSaved] = useState(false);
-  const [replyText, setReplyText] = useState("");
+  const [commentText, setCommentText] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    getToken().then(async (token) => {
-      if (!token) return;
-      try {
-        const [data, savedData] = await Promise.all([
-          api.getPost(token, circleId, postId),
-          api.getSaved(token),
-        ]);
-        setPost(data.post);
-        setReplies(data.replies);
-        setSaved(savedData.posts.some((item) => item.id === postId));
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to load");
-      } finally {
-        setLoading(false);
-      }
-    });
+  const load = useCallback(async () => {
+    const token = await getToken();
+    if (!token) return;
+    try {
+      const [data, savedData] = await Promise.all([
+        api.getPost(token, circleId, postId),
+        api.getSaved(token).catch(() => ({ posts: [] })),
+      ]);
+      setPost(data.post);
+      setComments(data.replies);
+      setSaved(savedData.posts.some((item) => item.id === postId));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Failed to load");
+    } finally {
+      setLoading(false);
+    }
   }, [circleId, postId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
+
+  useRealtimeChannel({
+    channel: circleId ? `circle:${circleId}` : null,
+    onEvent: (event) => {
+      if (event.type === "reply.new" && event.postId === postId) {
+        load();
+      }
+    },
+    onPollFallback: load,
+  });
 
   useLayoutEffect(() => {
     navigation.setOptions({
+      title: "Post",
       headerRight: () => (
         <Pressable onPress={toggleSave} hitSlop={8} style={styles.headerSave}>
           <Ionicons
@@ -109,26 +122,60 @@ export default function PostThreadScreen() {
         await api.saveItem(token, { itemType: "post", itemId: postId });
         setSaved(true);
       }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not update save");
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Could not update save"
+      );
     }
   }
 
-  async function onReply() {
-    const text = replyText.trim();
+  async function toggleHelpful() {
+    const token = await getToken();
+    if (!token || !post) return;
+    try {
+      const result = await api.togglePostHelpful(token, postId);
+      setPost({
+        ...post,
+        myHelpful: result.helpful,
+        helpfulCount: result.helpfulCount,
+      });
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Could not update helpful"
+      );
+    }
+  }
+
+  async function onComment() {
+    const text = commentText.trim();
     if (!text) return;
     setSubmitting(true);
     setError(null);
     try {
       const token = await getToken();
       if (!token) return;
-      const reply = await api.addReply(token, circleId, postId, text);
-      setReplies((prev) => [...prev, reply]);
-      setReplyText("");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to reply");
+      const comment = await api.addReply(token, circleId, postId, text);
+      setComments((prev) => [...prev, comment]);
+      setCommentText("");
+      setPost((current) =>
+        current
+          ? { ...current, replyCount: current.replyCount + 1 }
+          : current
+      );
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Failed to comment");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function onSharePost() {
+    if (!post) return;
+    const preview = post.body.trim() || post.poll?.question || "A parent post";
+    try {
+      await Share.share({ message: `${preview}\n\n— via Vaara Parents` });
+    } catch {
+      // user dismissed the share sheet
     }
   }
 
@@ -149,8 +196,8 @@ export default function PostThreadScreen() {
           peerHandle: conv.peer.anonymousHandle,
         },
       });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not message");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not message");
     }
   }
 
@@ -160,8 +207,8 @@ export default function PostThreadScreen() {
     try {
       const { poll } = await api.votePoll(token, circleId, postId, optionId);
       if (poll) setPost({ ...post, poll });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not vote");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not vote");
     }
   }
 
@@ -177,6 +224,8 @@ export default function PostThreadScreen() {
     );
   }
 
+  const helpfulCount = post.helpfulCount ?? 0;
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -184,9 +233,10 @@ export default function PostThreadScreen() {
       keyboardVerticalOffset={90}
     >
       <FlatList
-        data={replies}
+        data={comments}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
+        keyboardShouldPersistTaps="handled"
         ListHeaderComponent={
           <>
             <View style={[styles.postCard, cardShadow()]}>
@@ -207,42 +257,85 @@ export default function PostThreadScreen() {
                   <PollCard poll={post.poll} onVote={onPollVote} />
                 ) : null}
                 <PostMediaGallery media={post.media ?? []} />
-                <Pressable style={styles.messageBtn} onPress={onMessageAuthor}>
-                  <Ionicons
-                    name="chatbubble-ellipses-outline"
-                    size={16}
-                    color={theme.primary}
-                  />
-                  <Text style={styles.messageBtnText}>Message parent</Text>
-                </Pressable>
+
+                {helpfulCount > 0 ? (
+                  <Text style={styles.engagement}>
+                    {helpfulCount} parent{helpfulCount === 1 ? "" : "s"} found
+                    this helpful
+                  </Text>
+                ) : null}
+
+                <View style={styles.actions}>
+                  <Pressable
+                    style={styles.action}
+                    onPress={toggleHelpful}
+                    hitSlop={8}
+                  >
+                    <Ionicons
+                      name={post.myHelpful ? "thumbs-up" : "thumbs-up-outline"}
+                      size={18}
+                      color={post.myHelpful ? theme.primary : theme.textMuted}
+                    />
+                    <Text
+                      style={[
+                        styles.actionText,
+                        post.myHelpful && styles.actionTextActive,
+                      ]}
+                    >
+                      Helpful
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.action}
+                    onPress={onSharePost}
+                    hitSlop={8}
+                  >
+                    <Ionicons
+                      name="share-outline"
+                      size={18}
+                      color={theme.textMuted}
+                    />
+                    <Text style={styles.actionText}>Share</Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.action}
+                    onPress={onMessageAuthor}
+                    hitSlop={8}
+                  >
+                    <Ionicons
+                      name="chatbubble-ellipses-outline"
+                      size={18}
+                      color={theme.textMuted}
+                    />
+                    <Text style={styles.actionText}>Message</Text>
+                  </Pressable>
+                </View>
               </View>
             </View>
 
-            <View style={styles.repliesHeader}>
-              <Text style={styles.repliesTitle}>
-                Replies
-                {replies.length > 0 ? ` (${replies.length})` : ""}
+            <View style={styles.commentsHeader}>
+              <Text style={styles.commentsTitle}>
+                Comments
+                {comments.length > 0 ? ` (${comments.length})` : ""}
               </Text>
-              {replies.length === 0 ? (
-                <Text style={styles.repliesHint}>
+              {comments.length === 0 ? (
+                <Text style={styles.commentsHint}>
                   Be the first to respond to this post
                 </Text>
               ) : null}
             </View>
           </>
         }
-        renderItem={({ item }) => <ReplyCard reply={item} />}
+        renderItem={({ item }) => <CommentCard comment={item} />}
         ListEmptyComponent={
-          replies.length === 0 ? (
-            <View style={styles.noReplies}>
-              <Ionicons
-                name="chatbubble-outline"
-                size={28}
-                color={theme.textMuted}
-              />
-              <Text style={styles.noRepliesText}>No replies yet</Text>
-            </View>
-          ) : null
+          <View style={styles.noComments}>
+            <Ionicons
+              name="chatbubble-outline"
+              size={28}
+              color={theme.textMuted}
+            />
+            <Text style={styles.noCommentsText}>No comments yet</Text>
+          </View>
         }
       />
 
@@ -255,20 +348,22 @@ export default function PostThreadScreen() {
       <View style={[styles.composer, cardShadow()]}>
         <TextInput
           style={styles.composerInput}
-          placeholder="Write a helpful reply…"
+          placeholder="Write a helpful comment…"
           placeholderTextColor={theme.textMuted}
-          value={replyText}
-          onChangeText={setReplyText}
+          value={commentText}
+          onChangeText={setCommentText}
           multiline
           maxLength={2000}
         />
         <Pressable
           style={[
             styles.sendBtn,
-            (!replyText.trim() || submitting) && styles.sendBtnDisabled,
+            (!commentText.trim() || submitting) && styles.sendBtnDisabled,
           ]}
-          onPress={onReply}
-          disabled={submitting || !replyText.trim()}
+          onPress={onComment}
+          disabled={submitting || !commentText.trim()}
+          accessibilityRole="button"
+          accessibilityLabel="Post comment"
         >
           {submitting ? (
             <Ionicons name="hourglass-outline" size={20} color="#fff" />
@@ -314,47 +409,59 @@ const styles = StyleSheet.create({
     color: theme.text,
     lineHeight: 26,
   },
-  messageBtn: {
+  engagement: {
+    fontSize: 12,
+    color: theme.textMuted,
+    marginTop: 14,
+    fontWeight: "600",
+  },
+  actions: {
     flexDirection: "row",
     alignItems: "center",
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: theme.border,
+  },
+  action: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     gap: 6,
-    marginTop: 16,
-    alignSelf: "flex-start",
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 20,
-    backgroundColor: theme.primaryLight,
+    minHeight: 40,
   },
-  messageBtnText: {
-    color: theme.primary,
+  actionText: {
+    fontSize: 12,
+    color: theme.textMuted,
     fontWeight: "600",
-    fontSize: 14,
   },
-  repliesHeader: {
+  actionTextActive: { color: theme.primary },
+  commentsHeader: {
     marginBottom: 12,
   },
-  repliesTitle: {
+  commentsTitle: {
     fontSize: 16,
     fontWeight: "700",
     color: theme.text,
   },
-  repliesHint: {
+  commentsHint: {
     fontSize: 13,
     color: theme.textMuted,
     marginTop: 4,
   },
-  replyRow: {
+  commentRow: {
     flexDirection: "row",
     marginBottom: 10,
   },
-  replyLine: {
+  commentLine: {
     width: 3,
     backgroundColor: theme.border,
     marginLeft: 8,
     marginRight: 12,
     borderRadius: 2,
   },
-  replyCard: {
+  commentCard: {
     flex: 1,
     backgroundColor: theme.card,
     borderRadius: 14,
@@ -362,23 +469,23 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.border,
   },
-  replyBody: {
+  commentBody: {
     fontSize: 15,
     color: theme.text,
     marginTop: 10,
     lineHeight: 22,
   },
-  replyTime: {
+  commentTime: {
     fontSize: 11,
     color: theme.textMuted,
     marginTop: 8,
   },
-  noReplies: {
+  noComments: {
     alignItems: "center",
     paddingVertical: 24,
     gap: 8,
   },
-  noRepliesText: {
+  noCommentsText: {
     fontSize: 14,
     color: theme.textMuted,
   },

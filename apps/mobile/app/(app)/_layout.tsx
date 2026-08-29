@@ -69,8 +69,9 @@ export default function AppLayout() {
       <Tabs.Screen
         name="circles"
         options={{
-          title: "My Circles",
+          title: "Circles",
           tabBarLabel: "Circles",
+          headerShown: false,
           tabBarIcon: ({ focused, color, size }) =>
             tabIcon(focused, "people", "people-outline")({ color, size }),
         }}
@@ -78,8 +79,8 @@ export default function AppLayout() {
       <Tabs.Screen
         name="activities"
         options={{
-          title: "Activities",
-          tabBarLabel: "Activities",
+          title: "Discover",
+          tabBarLabel: "Discover",
           tabBarIcon: ({ focused, color, size }) =>
             tabIcon(focused, "compass", "compass-outline")({ color, size }),
           headerShown: false,

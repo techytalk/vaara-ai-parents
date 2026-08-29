@@ -34,17 +34,26 @@ type PendingMedia = {
 };
 
 export default function NewPostScreen() {
-  const { circleId, title } = useLocalSearchParams<{
+  const { circleId, title, compose, tag: tagParam } = useLocalSearchParams<{
     circleId: string;
     title?: string;
+    compose?: string;
+    tag?: string;
   }>();
   const router = useRouter();
   const [body, setBody] = useState("");
-  const [tag, setTag] = useState<PostTagValue>("general");
+  const [tag, setTag] = useState<PostTagValue>(() => {
+    if (tagParam === "recommendation" || tagParam === "question" || tagParam === "heads_up" || tagParam === "general") {
+      return tagParam;
+    }
+    if (compose === "recommendation") return "recommendation";
+    if (compose === "question") return "question";
+    return "general";
+  });
   const [circles, setCircles] = useState<Circle[]>([]);
   const [additionalCircleIds, setAdditionalCircleIds] = useState<string[]>([]);
   const [media, setMedia] = useState<PendingMedia[]>([]);
-  const [pollEnabled, setPollEnabled] = useState(false);
+  const [pollEnabled, setPollEnabled] = useState(compose === "poll");
   const [pollQuestion, setPollQuestion] = useState("");
   const [pollOptions, setPollOptions] = useState(["", ""]);
   const [mediaEnabled, setMediaEnabled] = useState<boolean | null>(null);
@@ -55,6 +64,7 @@ export default function NewPostScreen() {
     Array<{ slug: string; name: string }>
   >([]);
   const [selectedTopicSlugs, setSelectedTopicSlugs] = useState<string[]>([]);
+  const [composeHandled, setComposeHandled] = useState(false);
 
   useEffect(() => {
     getToken().then(async (token) => {
@@ -150,6 +160,12 @@ export default function NewPostScreen() {
     setMedia((current) => [...current, ...selected].slice(0, 4));
     setError(null);
   }
+
+  useEffect(() => {
+    if (compose !== "photo" || composeHandled || mediaEnabled !== true) return;
+    setComposeHandled(true);
+    void pickMedia();
+  }, [compose, composeHandled, mediaEnabled]);
 
   async function uploadMedia(token: string) {
     const uploaded: Array<{

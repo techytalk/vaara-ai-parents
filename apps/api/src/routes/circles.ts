@@ -3,7 +3,9 @@ import { pool } from "@vaara/db";
 import {
   feedCacheKey,
   getCachedJson,
+  invalidateCircleFeedCache,
   isRedisEnabled,
+  publishCircleEvent,
   setCachedJson,
 } from "@vaara/redis";
 import type { PoolClient } from "pg";
@@ -138,20 +140,29 @@ export function createCirclesRoutes() {
       await syncCircleMembership(client, userId);
       const { rows } = await client.query(
         `SELECT c.id, c.circle_type, c.key, c.display_name, c.metadata,
-                COUNT(cm_all.user_id)::int AS member_count
+                COUNT(cm_all.user_id)::int AS member_count,
+                COALESCE((
+                  SELECT COUNT(*)::int
+                  FROM circle_posts p
+                  JOIN circle_post_targets pct
+                    ON pct.post_id = p.id AND pct.circle_id = c.id
+                  WHERE p.created_at > COALESCE(cm.last_read_at, cm.joined_at)
+                    AND p.author_id != $1
+                ), 0) AS new_post_count
          FROM circle_members cm
          JOIN circles c ON c.id = cm.circle_id
          JOIN circle_members cm_all ON cm_all.circle_id = c.id
          WHERE cm.user_id = $1
-         GROUP BY c.id
+         GROUP BY c.id, c.circle_type, c.key, c.display_name, c.metadata,
+                  cm.last_read_at, cm.joined_at
          ORDER BY
            CASE c.circle_type
-             WHEN 'curriculum' THEN 1
-             WHEN 'locality' THEN 2
-             WHEN 'school_class' THEN 3
-             WHEN 'class' THEN 4
-             WHEN 'school' THEN 5
-             WHEN 'community' THEN 6
+             WHEN 'school_class' THEN 1
+             WHEN 'class' THEN 2
+             WHEN 'school' THEN 3
+             WHEN 'community' THEN 4
+             WHEN 'locality' THEN 5
+             WHEN 'curriculum' THEN 6
            END,
            c.display_name`,
         [userId]
@@ -166,11 +177,33 @@ export function createCirclesRoutes() {
           displayName: row.display_name,
           metadata: row.metadata,
           memberCount: row.member_count,
+          newPostCount: row.new_post_count,
         }))
       );
     } catch (e) {
       await client.query("ROLLBACK");
       throw e;
+    } finally {
+      client.release();
+    }
+  });
+
+  app.post("/:circleId/mark-read", async (c) => {
+    const userId = c.get("user").sub;
+    const circleId = c.req.param("circleId");
+    const client = await pool.connect();
+    try {
+      const circle = await assertCircleMember(client, circleId, userId);
+      if (!circle) {
+        return c.json({ error: "Circle not found" }, 404);
+      }
+      await client.query(
+        `UPDATE circle_members
+         SET last_read_at = now()
+         WHERE circle_id = $1 AND user_id = $2`,
+        [circleId, userId]
+      );
+      return c.json({ ok: true });
     } finally {
       client.release();
     }
@@ -618,13 +651,26 @@ export function createCirclesRoutes() {
         })
       );
 
+      const helpfulResult = await client.query(
+        `SELECT
+           COUNT(*)::int AS count,
+           BOOL_OR(user_id = $2) AS mine
+         FROM post_helpful_marks
+         WHERE post_id = $1`,
+        [postId, userId]
+      );
+
       return c.json({
-        post: mapPost(
-          postRow,
-          postAuthor,
-          mediaByPost.get(postId) ?? [],
-          pollsByPost.get(postId)
-        ),
+        post: {
+          ...mapPost(
+            postRow,
+            postAuthor,
+            mediaByPost.get(postId) ?? [],
+            pollsByPost.get(postId)
+          ),
+          helpfulCount: helpfulResult.rows[0]?.count ?? 0,
+          myHelpful: helpfulResult.rows[0]?.mine ?? false,
+        },
         replies,
       });
     } finally {
@@ -696,6 +742,22 @@ export function createCirclesRoutes() {
         replierId: userId,
         replyPreview: text,
       });
+
+      const targetResult = await client.query(
+        `SELECT circle_id FROM circle_post_targets WHERE post_id = $1`,
+        [postId]
+      );
+      await Promise.all(
+        targetResult.rows.map(async (target) => {
+          await invalidateCircleFeedCache(target.circle_id);
+          await publishCircleEvent(target.circle_id, {
+            type: "reply.new",
+            circleId: target.circle_id,
+            postId,
+            replyId: rows[0].id,
+          });
+        })
+      );
 
       return c.json(
         {

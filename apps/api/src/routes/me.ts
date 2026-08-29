@@ -6,6 +6,10 @@ import {
   evaluateOnboardingComplete,
   syncCircleMembership,
 } from "../services/circle-sync.js";
+import {
+  loadHomeFeed,
+  togglePostHelpful,
+} from "../services/feed.js";
 import { authMiddleware, type AuthVariables } from "../middleware/auth.js";
 import {
   mergeNotificationPrefs,
@@ -983,6 +987,25 @@ export function createMeRoutes() {
     } finally {
       client.release();
     }
+  });
+
+  app.get("/feed", async (c) => {
+    const userId = c.get("user").sub;
+    const cursor = c.req.query("cursor");
+    const limit = Math.min(Number(c.req.query("limit") ?? 20), 50);
+    const result = await loadHomeFeed({ userId, cursor, limit });
+    return c.json(result);
+  });
+
+  app.post("/posts/:postId/helpful", async (c) => {
+    const userId = c.get("user").sub;
+    const postId = c.req.param("postId");
+    const result = await togglePostHelpful({ userId, postId });
+    if ("error" in result) {
+      const status = result.error === "not_found" ? 404 : 403;
+      return c.json({ error: result.error }, status);
+    }
+    return c.json(result);
   });
 
   return app;

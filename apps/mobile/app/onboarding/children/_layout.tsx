@@ -5,7 +5,7 @@ export default function ChildrenLayout() {
     <Stack screenOptions={{ headerShown: true }}>
       <Stack.Screen
         name="index"
-        options={{ title: "Your children", headerBackVisible: false }}
+        options={{ headerShown: false }}
       />
       <Stack.Screen name="add" options={{ title: "Add child" }} />
       <Stack.Screen name="edit/[id]" options={{ title: "Edit child" }} />

@@ -10,6 +10,14 @@ import { authMiddleware, type AuthVariables } from "../middleware/auth.js";
 
 const PROVIDER_TYPES = ["teacher", "trainer", "institution"] as const;
 const ACTIVITY_STATUSES = ["draft", "published", "archived"] as const;
+const ACTIVITY_CATEGORIES = [
+  "tutoring",
+  "coaching",
+  "classes",
+  "arts",
+  "sports",
+  "other",
+] as const;
 
 async function requireProvider(
   client: import("pg").PoolClient,
@@ -176,6 +184,7 @@ export function createProviderRoutes() {
     const body = await c.req.json<{
       title?: string;
       description?: string;
+      category?: string;
       startsAt?: string;
       endsAt?: string;
       feeAmount?: number;
@@ -192,6 +201,15 @@ export function createProviderRoutes() {
     const description = body.description?.trim();
     if (!title || !description) {
       return c.json({ error: "title and description are required" }, 400);
+    }
+    const category = body.category;
+    if (
+      !category ||
+      !ACTIVITY_CATEGORIES.includes(
+        category as (typeof ACTIVITY_CATEGORIES)[number]
+      )
+    ) {
+      return c.json({ error: "A valid activity category is required" }, 400);
     }
 
     const pinCodes = (body.pinCodes ?? []).map((p) => p.trim()).filter(Boolean);
@@ -212,14 +230,15 @@ export function createProviderRoutes() {
 
       const { rows } = await client.query(
         `INSERT INTO activities (
-           provider_id, title, description, status, starts_at, ends_at,
+           provider_id, title, description, category, status, starts_at, ends_at,
            fee_amount, fee_currency, min_grade_id, max_grade_id, location_text
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
          RETURNING *`,
         [
           userId,
           title,
           description,
+          category,
           status,
           body.startsAt ?? null,
           body.endsAt ?? null,
@@ -282,6 +301,19 @@ export function createProviderRoutes() {
       if (body.description !== undefined) {
         fields.push(`description = $${i++}`);
         values.push(String(body.description).trim());
+      }
+      if (body.category !== undefined) {
+        const category = String(body.category);
+        if (
+          !ACTIVITY_CATEGORIES.includes(
+            category as (typeof ACTIVITY_CATEGORIES)[number]
+          )
+        ) {
+          await client.query("ROLLBACK");
+          return c.json({ error: "Invalid activity category" }, 400);
+        }
+        fields.push(`category = $${i++}`);
+        values.push(category);
       }
       if (body.startsAt !== undefined) {
         fields.push(`starts_at = $${i++}`);
@@ -399,8 +431,25 @@ export function createActivitiesRoutes() {
     const pin = c.req.query("pin");
     const curriculumId = c.req.query("curriculum");
     const search = c.req.query("q");
+    const providerType = c.req.query("providerType");
+    const category = c.req.query("category");
     const verifiedOnly = c.req.query("verifiedOnly") === "true";
     const sort = c.req.query("sort") ?? "recent";
+
+    if (
+      providerType &&
+      !PROVIDER_TYPES.includes(providerType as (typeof PROVIDER_TYPES)[number])
+    ) {
+      return c.json({ error: "Invalid providerType" }, 400);
+    }
+    if (
+      category &&
+      !ACTIVITY_CATEGORIES.includes(
+        category as (typeof ACTIVITY_CATEGORIES)[number]
+      )
+    ) {
+      return c.json({ error: "Invalid activity category" }, 400);
+    }
 
     const client = await pool.connect();
     try {
@@ -430,6 +479,16 @@ export function createActivitiesRoutes() {
 
       if (verifiedOnly) {
         query += ` AND p.verified = true`;
+      }
+      if (providerType) {
+        query += ` AND p.provider_type = $${idx}`;
+        params.push(providerType);
+        idx++;
+      }
+      if (category) {
+        query += ` AND a.category = $${idx}`;
+        params.push(category);
+        idx++;
       }
 
       if (curriculumId) {

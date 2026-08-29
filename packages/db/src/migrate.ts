@@ -27,6 +27,9 @@ const MIGRATIONS = [
   { version: "019_carpool", file: "019_carpool.sql" },
   { version: "020_notification_digest", file: "020_notification_digest.sql" },
   { version: "021_google_auth", file: "021_google_auth.sql" },
+  { version: "022_post_helpful", file: "022_post_helpful.sql" },
+  { version: "023_circle_read_state", file: "023_circle_read_state.sql" },
+  { version: "024_activity_categories", file: "024_activity_categories.sql" },
 ];
 
 async function isMigrationApplied(

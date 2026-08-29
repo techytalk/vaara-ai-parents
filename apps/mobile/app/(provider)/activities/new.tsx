@@ -9,7 +9,15 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { api, type Curriculum } from "@/lib/api";
+import {
+  ACTIVITY_CATEGORY_OPTIONS,
+  defaultCategoryForProvider,
+} from "@/constants/activities";
+import {
+  api,
+  type ActivityCategory,
+  type Curriculum,
+} from "@/lib/api";
 import { getToken } from "@/lib/session";
 
 export default function NewActivityScreen() {
@@ -17,6 +25,7 @@ export default function NewActivityScreen() {
   const [curricula, setCurricula] = useState<Curriculum[]>([]);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [category, setCategory] = useState<ActivityCategory>("classes");
   const [locationText, setLocationText] = useState("");
   const [pinCodesText, setPinCodesText] = useState("");
   const [feeAmount, setFeeAmount] = useState("");
@@ -31,6 +40,7 @@ export default function NewActivityScreen() {
     getToken().then(async (token) => {
       if (!token) return;
       const profile = await api.getProviderProfile(token);
+      setCategory(defaultCategoryForProvider(profile?.providerType));
       if (profile?.servicePinCodes?.length) {
         setPinCodesText(profile.servicePinCodes.join(", "));
       }
@@ -48,8 +58,8 @@ export default function NewActivityScreen() {
       .split(/[,;\s]+/)
       .map((p) => p.trim())
       .filter(Boolean);
-    if (!title.trim() || !description.trim() || pins.length === 0) {
-      setError("Title, description, and pin codes are required");
+    if (!title.trim() || !description.trim() || !category || pins.length === 0) {
+      setError("Title, description, category, and pin codes are required");
       return;
     }
 
@@ -61,6 +71,7 @@ export default function NewActivityScreen() {
       await api.createProviderActivity(token, {
         title: title.trim(),
         description: description.trim(),
+        category,
         locationText: locationText.trim() || undefined,
         pinCodes: pins,
         curriculumIds: selectedCurricula,
@@ -88,6 +99,28 @@ export default function NewActivityScreen() {
         value={description}
         onChangeText={setDescription}
       />
+      <Text style={styles.label}>Category</Text>
+      <View style={styles.chipRow}>
+        {ACTIVITY_CATEGORY_OPTIONS.map((option) => (
+          <Pressable
+            key={option.value}
+            style={[
+              styles.chip,
+              category === option.value && styles.chipActive,
+            ]}
+            onPress={() => setCategory(option.value)}
+          >
+            <Text
+              style={[
+                styles.chipText,
+                category === option.value && styles.chipTextActive,
+              ]}
+            >
+              {option.label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
       <TextInput
         style={styles.input}
         placeholder="Location (e.g. near metro, sector 2)"

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  ActivityIndicator,
   FlatList,
   Pressable,
   RefreshControl,
@@ -9,11 +8,38 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { formatPostTime } from "@/components/circles/ui";
+import { Avatar, EmptyState, ScreenLoader } from "@/components/ui";
+import { colors, radii, spacing, typography } from "@/constants/theme";
 import { api, peerDisplayName, type ConversationPreview } from "@/lib/api";
 import { getToken } from "@/lib/session";
 
+function formatInboxTime(iso: string | undefined) {
+  if (!iso) return "";
+  const date = new Date(iso);
+  const now = new Date();
+  const sameDay =
+    date.getDate() === now.getDate() &&
+    date.getMonth() === now.getMonth() &&
+    date.getFullYear() === now.getFullYear();
+  if (sameDay) {
+    return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  }
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const isYesterday =
+    date.getDate() === yesterday.getDate() &&
+    date.getMonth() === yesterday.getMonth() &&
+    date.getFullYear() === yesterday.getFullYear();
+  if (isYesterday) return "Yesterday";
+  return formatPostTime(iso);
+}
+
 export default function MessagesInboxScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [conversations, setConversations] = useState<ConversationPreview[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -41,80 +67,170 @@ export default function MessagesInboxScreen() {
   }
 
   if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
+    return <ScreenLoader label="Loading messages" />;
   }
 
   return (
-    <FlatList
-      style={styles.container}
-      data={conversations}
-      keyExtractor={(item) => item.id}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-      }
-      contentContainerStyle={
-        conversations.length === 0 ? styles.emptyContainer : undefined
-      }
-      ListEmptyComponent={
-        <Text style={styles.empty}>
-          No messages yet. Message a parent from a circle member list or post
-          thread.
-        </Text>
-      }
-      renderItem={({ item }) => (
+    <View style={styles.screen}>
+      <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
+        <Text style={styles.title}>Messages</Text>
         <Pressable
-          style={styles.row}
+          accessibilityRole="button"
+          accessibilityLabel="New message"
+          hitSlop={8}
           onPress={() =>
-            router.push({
-              pathname: "/(app)/messages/[conversationId]",
-              params: {
-                conversationId: item.id,
-                peerHandle: peerDisplayName(item.peer),
-              },
-            })
+            router.push("/(app)/circles" as never)
           }
         >
-          <View style={styles.rowMain}>
-            <Text style={styles.handle}>{peerDisplayName(item.peer)}</Text>
-            <Text style={styles.preview} numberOfLines={1}>
-              {item.lastMessage?.body ?? "Start chatting"}
-            </Text>
-          </View>
-          {item.unread ? <View style={styles.unreadDot} /> : null}
+          <Ionicons name="add-circle-outline" size={28} color={colors.primaryDark} />
         </Pressable>
-      )}
-    />
+      </View>
+
+      <FlatList
+        data={conversations}
+        keyExtractor={(item) => item.id}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            tintColor={colors.primary}
+            onRefresh={onRefresh}
+          />
+        }
+        contentContainerStyle={[
+          styles.list,
+          conversations.length === 0 && styles.listEmpty,
+        ]}
+        ListEmptyComponent={
+          <EmptyState
+            icon="chatbubbles-outline"
+            title="No messages yet"
+            message="Message a parent from a circle member list or post thread."
+            actionLabel="Open circles"
+            onAction={() => router.push("/(app)/circles" as never)}
+          />
+        }
+        renderItem={({ item }) => {
+          const name = peerDisplayName(item.peer);
+          const isSupport = name.toLowerCase().includes("support");
+          return (
+            <Pressable
+              style={styles.row}
+              onPress={() =>
+                router.push({
+                  pathname: "/(app)/messages/[conversationId]",
+                  params: {
+                    conversationId: item.id,
+                    peerHandle: name,
+                  },
+                })
+              }
+            >
+              {isSupport ? (
+                <View style={styles.supportAvatar}>
+                  <Ionicons
+                    name="shield-checkmark"
+                    size={22}
+                    color={colors.coral}
+                  />
+                </View>
+              ) : (
+                <Avatar handle={name} size={48} />
+              )}
+              <View style={styles.rowMain}>
+                <View style={styles.rowTop}>
+                  <Text style={styles.handle} numberOfLines={1}>
+                    {name}
+                  </Text>
+                  <Text style={styles.time}>
+                    {formatInboxTime(item.lastMessage?.createdAt)}
+                  </Text>
+                </View>
+                <Text style={styles.preview} numberOfLines={1}>
+                  {item.lastMessage?.body ?? "Start chatting"}
+                </Text>
+              </View>
+              {item.unread ? (
+                <View style={styles.unreadBadge}>
+                  <Text style={styles.unreadText}>•</Text>
+                </View>
+              ) : null}
+            </Pressable>
+          );
+        }}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f8f9fc" },
-  centered: { flex: 1, justifyContent: "center", alignItems: "center" },
-  emptyContainer: { flexGrow: 1, justifyContent: "center", padding: 24 },
-  empty: { textAlign: "center", color: "#5c5c7a", fontSize: 15, lineHeight: 22 },
+  screen: { flex: 1, backgroundColor: colors.bg },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
+  title: {
+    ...typography.screenTitle,
+    color: colors.text,
+    fontFamily: typography.bold,
+  },
+  list: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xxxl,
+    gap: spacing.xs,
+  },
+  listEmpty: { flexGrow: 1, justifyContent: "center" },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#fff",
-    marginHorizontal: 12,
-    marginTop: 10,
-    padding: 14,
-    borderRadius: 12,
+    gap: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: radii.lg,
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: "#e2e4ef",
+    borderColor: colors.border,
   },
-  rowMain: { flex: 1 },
-  handle: { fontSize: 15, fontWeight: "600", color: "#4f46e5" },
-  preview: { fontSize: 14, color: "#5c5c7a", marginTop: 4 },
-  unreadDot: {
+  supportAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.accentLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  rowMain: { flex: 1, minWidth: 0 },
+  rowTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.xs,
+  },
+  handle: {
+    ...typography.body,
+    color: colors.text,
+    fontFamily: typography.semibold,
+    flex: 1,
+  },
+  time: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontFamily: typography.regular,
+  },
+  preview: {
+    ...typography.supporting,
+    color: colors.textMuted,
+    fontFamily: typography.regular,
+    marginTop: 3,
+  },
+  unreadBadge: {
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: "#4f46e5",
-    marginLeft: 8,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
   },
+  unreadText: { color: colors.primary, fontSize: 10 },
 });

@@ -20,6 +20,7 @@ export function mapActivity(
     id: row.id,
     title: row.title,
     description: row.description,
+    category: row.category,
     status: row.status,
     startsAt: row.starts_at,
     endsAt: row.ends_at,

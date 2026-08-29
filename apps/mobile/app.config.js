@@ -18,10 +18,17 @@ module.exports = {
       apiUrl:
         process.env.EXPO_PUBLIC_API_URL?.trim() ||
         "https://api.vaara.ai",
+      realtimeUrl:
+        process.env.EXPO_PUBLIC_REALTIME_URL?.trim() ||
+        "wss://vaara-realtime.fly.dev/ws",
       googleWebClientId:
         process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim() ||
         appJson.expo.extra.googleWebClientId ||
         "",
+      googleAndroidClientId:
+        process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID?.trim() || "",
+      googleRedirectUri:
+        process.env.EXPO_PUBLIC_GOOGLE_REDIRECT_URI?.trim() || "",
     },
   },
 };

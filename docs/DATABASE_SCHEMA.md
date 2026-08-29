@@ -387,6 +387,8 @@ CREATE TABLE activities (
   provider_id uuid NOT NULL REFERENCES providers(user_id) ON DELETE CASCADE,
   title text NOT NULL,
   description text NOT NULL,
+  category text NOT NULL DEFAULT 'other'
+    CHECK (category IN ('tutoring', 'coaching', 'classes', 'arts', 'sports', 'other')),
   status activity_status NOT NULL DEFAULT 'draft',
   starts_at timestamptz,
   ends_at timestamptz,
@@ -404,6 +406,8 @@ CREATE TABLE activities (
 CREATE INDEX idx_activities_provider ON activities(provider_id);
 CREATE INDEX idx_activities_status_starts ON activities(status, starts_at) WHERE status = 'published';
 CREATE INDEX idx_activities_search ON activities USING GIN(search_vector);
+CREATE INDEX idx_activities_published_category ON activities(category, created_at DESC)
+  WHERE status = 'published';
 ```
 
 ### `activity_pin_codes`
