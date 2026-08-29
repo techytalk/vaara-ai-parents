@@ -1,15 +1,15 @@
 import { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
-import { colors } from "@/constants/theme";
+import { SafetyNotice } from "@/components/SafetyNotice";
+import { Button, ScreenLoader } from "@/components/ui";
+import { colors, radii, spacing, typography } from "@/constants/theme";
 import { api } from "@/lib/api";
 import { getToken } from "@/lib/session";
 
@@ -61,19 +61,15 @@ export default function ContactDetailsScreen() {
   }
 
   if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
+    return <ScreenLoader label="Loading contact details" />;
   }
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.hint}>
-        These details are only shared when you explicitly agree in a 1:1 chat.
-        They are never shown in circles or the marketplace listing itself.
-      </Text>
+      <SafetyNotice
+        tone="info"
+        message="These details are only shared when you explicitly agree in a 1:1 chat. They are never shown in circles or marketplace listings."
+      />
 
       <Text style={styles.label}>First name</Text>
       <TextInput
@@ -81,7 +77,9 @@ export default function ContactDetailsScreen() {
         value={firstName}
         onChangeText={setFirstName}
         placeholder="e.g. Meera"
+        placeholderTextColor={colors.textSubtle}
         autoCapitalize="words"
+        accessibilityLabel="First name"
       />
 
       <Text style={styles.label}>Flat / block number</Text>
@@ -90,6 +88,8 @@ export default function ContactDetailsScreen() {
         value={blockOrFlat}
         onChangeText={setBlockOrFlat}
         placeholder="e.g. C-1203"
+        placeholderTextColor={colors.textSubtle}
+        accessibilityLabel="Flat or block number"
       />
 
       <Text style={styles.label}>Phone (for carpool only)</Text>
@@ -98,7 +98,9 @@ export default function ContactDetailsScreen() {
         value={contactPhone}
         onChangeText={setContactPhone}
         placeholder="10-digit mobile"
+        placeholderTextColor={colors.textSubtle}
         keyboardType="phone-pad"
+        accessibilityLabel="Contact phone"
       />
 
       <Text style={styles.label}>Vehicle (for carpool only)</Text>
@@ -107,57 +109,40 @@ export default function ContactDetailsScreen() {
         value={vehicleDescription}
         onChangeText={setVehicleDescription}
         placeholder="e.g. White Innova · KA-01-AB-1234"
+        placeholderTextColor={colors.textSubtle}
+        accessibilityLabel="Vehicle description"
       />
 
-      <Pressable
-        style={[styles.saveBtn, saving && styles.saveBtnDisabled]}
+      <Button
+        label="Save contact details"
         onPress={onSave}
-        disabled={saving}
-      >
-        {saving ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.saveBtnText}>Save contact details</Text>
-        )}
-      </Pressable>
+        loading={saving}
+        style={styles.cta}
+      />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 24, paddingBottom: 40 },
-  centered: { flex: 1, justifyContent: "center", alignItems: "center" },
-  hint: {
-    fontSize: 14,
-    color: colors.textMuted,
-    lineHeight: 20,
-    marginBottom: 20,
-  },
+  content: { padding: spacing.lg, paddingBottom: spacing.xxxl, gap: spacing.xs },
   label: {
-    fontSize: 13,
-    fontWeight: "600",
+    ...typography.supporting,
     color: colors.textMuted,
-    marginBottom: 6,
-    marginTop: 12,
+    fontFamily: typography.semibold,
+    marginTop: spacing.xs,
   },
   input: {
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 16,
+    borderRadius: radii.lg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    ...typography.body,
     color: colors.text,
+    fontFamily: typography.regular,
+    minHeight: 44,
   },
-  saveBtn: {
-    marginTop: 28,
-    backgroundColor: colors.primary,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
-  saveBtnDisabled: { opacity: 0.6 },
-  saveBtnText: { color: "#fff", fontWeight: "700", fontSize: 15 },
+  cta: { marginTop: spacing.lg },
 });

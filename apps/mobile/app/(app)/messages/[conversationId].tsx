@@ -80,8 +80,52 @@ export default function ChatScreen() {
 
   useLayoutEffect(() => {
     const name = peer ? peerDisplayName(peer) : peerHandle ?? "Parent";
-    navigation.setOptions({ title: name });
+    navigation.setOptions({
+      title: name,
+      headerRight: peer
+        ? () => (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Conversation safety options"
+              hitSlop={8}
+              onPress={showSafetyActions}
+            >
+              <Ionicons
+                name="ellipsis-horizontal"
+                size={22}
+                color={colors.text}
+              />
+            </Pressable>
+          )
+        : undefined,
+    });
   }, [navigation, peer, peerHandle]);
+
+  function showSafetyActions() {
+    if (!peer) return;
+    Alert.alert(peerDisplayName(peer), "Choose a safety action.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Report conversation",
+        onPress: async () => {
+          const token = await getToken();
+          if (!token) return;
+          await api.reportConversation(token, conversationId);
+          Alert.alert("Reported", "Thank you. Our safety team can review it.");
+        },
+      },
+      {
+        text: "Block parent",
+        style: "destructive",
+        onPress: async () => {
+          const token = await getToken();
+          if (!token) return;
+          await api.blockUser(token, peer.userId);
+          router.back();
+        },
+      },
+    ]);
+  }
 
   async function confirmDisclosure(level: 2 | 3) {
     setDisclosing(true);

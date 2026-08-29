@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   FlatList,
   Pressable,
@@ -8,11 +8,13 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { formatPostTime } from "@/components/circles/ui";
 import { Avatar, EmptyState, ScreenLoader } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
+import { useRealtimeChannel } from "@/hooks/useRealtimeChannel";
 import { api, peerDisplayName, type ConversationPreview } from "@/lib/api";
 import { getToken } from "@/lib/session";
 
@@ -41,21 +43,38 @@ export default function MessagesInboxScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [conversations, setConversations] = useState<ConversationPreview[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     const token = await getToken();
     if (!token) return;
-    const list = await api.getConversations(token);
+    const [list, me] = await Promise.all([
+      api.getConversations(token),
+      api.me(token),
+    ]);
     setConversations(list);
+    setUserId(me.id);
   }, []);
 
-  useEffect(() => {
-    load()
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      load()
+        .catch(() => {})
+        .finally(() => setLoading(false));
+    }, [load])
+  );
+
+  useRealtimeChannel({
+    channel: userId ? `user:${userId}:inbox` : null,
+    onEvent: (event) => {
+      if (event.type === "inbox.updated") {
+        load().catch(() => {});
+      }
+    },
+    onPollFallback: () => load().catch(() => {}),
+  });
 
   async function onRefresh() {
     setRefreshing(true);
@@ -78,9 +97,7 @@ export default function MessagesInboxScreen() {
           accessibilityRole="button"
           accessibilityLabel="New message"
           hitSlop={8}
-          onPress={() =>
-            router.push("/(app)/circles" as never)
-          }
+          onPress={() => router.push("/(app)/messages/new")}
         >
           <Ionicons name="add-circle-outline" size={28} color={colors.primaryDark} />
         </Pressable>
@@ -104,9 +121,9 @@ export default function MessagesInboxScreen() {
           <EmptyState
             icon="chatbubbles-outline"
             title="No messages yet"
-            message="Message a parent from a circle member list or post thread."
-            actionLabel="Open circles"
-            onAction={() => router.push("/(app)/circles" as never)}
+            message="Start with a parent from your circles or connect using their exact anonymous handle."
+            actionLabel="New message"
+            onAction={() => router.push("/(app)/messages/new")}
           />
         }
         renderItem={({ item }) => {
@@ -149,9 +166,11 @@ export default function MessagesInboxScreen() {
                   {item.lastMessage?.body ?? "Start chatting"}
                 </Text>
               </View>
-              {item.unread ? (
+              {item.unreadCount > 0 ? (
                 <View style={styles.unreadBadge}>
-                  <Text style={styles.unreadText}>•</Text>
+                  <Text style={styles.unreadText}>
+                    {item.unreadCount > 99 ? "99+" : item.unreadCount}
+                  </Text>
                 </View>
               ) : null}
             </Pressable>
@@ -225,12 +244,13 @@ const styles = StyleSheet.create({
     marginTop: 3,
   },
   unreadBadge: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
     backgroundColor: colors.primary,
     alignItems: "center",
     justifyContent: "center",
+    paddingHorizontal: 6,
   },
-  unreadText: { color: colors.primary, fontSize: 10 },
+  unreadText: { color: "#fff", fontSize: 10, fontWeight: "700" },
 });

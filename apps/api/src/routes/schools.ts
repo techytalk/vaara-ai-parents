@@ -10,6 +10,7 @@ import {
 import {
   buildSchoolNormalizedKey,
   formatSchoolLabel,
+  mapSchoolListRow,
   mapSchoolRow,
 } from "../lib/school.js";
 import { authMiddleware, type AuthVariables } from "../middleware/auth.js";
@@ -81,6 +82,7 @@ export function createSchoolsRoutes() {
     const q = c.req.query("q")?.trim() ?? "";
     const city = c.req.query("city")?.trim();
     const pin = c.req.query("pin")?.trim();
+    const sort = c.req.query("sort") === "rating" ? "rating" : "relevance";
     const limit = Math.min(Number(c.req.query("limit") ?? 15), 30);
 
     if (q.length < 2) {
@@ -92,8 +94,16 @@ export function createSchoolsRoutes() {
       const pattern = `%${q}%`;
       const prefix = `${q}%`;
 
+      const orderBy =
+        sort === "rating"
+          ? `CASE WHEN pin_code = $5 THEN 0 ELSE 1 END,
+             CASE WHEN rating_count >= 3 THEN rating_avg END DESC NULLS LAST,
+             rating_count DESC, rank_bucket, sm DESC, name`
+          : `rank_bucket, sm DESC,
+             CASE WHEN pin_code = $5 THEN 0 ELSE 1 END, name`;
       const { rows } = await client.query(
         `SELECT id, name, branch, city, state, pin_code, verified,
+                rating_avg, rating_count,
                 CASE
                   WHEN name ILIKE $2 THEN 0
                   WHEN branch ILIKE $2 THEN 1
@@ -107,13 +117,93 @@ export function createSchoolsRoutes() {
              name ILIKE $1 OR branch ILIKE $1 OR city ILIKE $1
              OR name % $3 OR branch % $3
            )
-           AND ($4::text IS NULL OR city ILIKE $4 OR pin_code = $5)
-         ORDER BY rank_bucket, sm DESC, name
+           AND (
+             ($4::text IS NULL AND $5::text IS NULL)
+             OR city ILIKE $4
+             OR pin_code = $5
+           )
+         ORDER BY ${orderBy}
          LIMIT $6`,
         [pattern, prefix, q, city ?? null, pin ?? null, limit]
       );
 
-      return c.json(rows.map(mapSchoolRow));
+      return c.json(rows.map(mapSchoolListRow));
+    } finally {
+      client.release();
+    }
+  });
+
+  app.get("/nearby", async (c) => {
+    const userId = c.get("user").sub;
+    const requestedPin = c.req.query("pin")?.trim();
+    const requestedCity = c.req.query("city")?.trim();
+    const sort = c.req.query("sort") === "rating" ? "rating" : "nearby";
+    const limit = Math.min(Number(c.req.query("limit") ?? 20), 30);
+    const client = await pool.connect();
+    try {
+      let pin = requestedPin;
+      let city = requestedCity;
+
+      if (!pin || !city) {
+        const location = await client.query(
+          `SELECT pin_code, city
+           FROM user_locations
+           WHERE user_id = $1`,
+          [userId]
+        );
+        pin ||= location.rows[0]?.pin_code?.trim();
+        city ||= location.rows[0]?.city?.trim();
+      }
+
+      if (!city) {
+        const childSchool = await client.query(
+          `SELECT s.city
+           FROM children ch
+           JOIN schools s ON s.id = ch.school_id
+           WHERE ch.user_id = $1
+             AND s.normalized_key <> $2
+             AND s.city <> 'Unknown'
+           ORDER BY ch.created_at
+           LIMIT 1`,
+          [userId, PLACEHOLDER_SCHOOL_KEY]
+        );
+        city = childSchool.rows[0]?.city?.trim();
+      }
+
+      if (!pin && !city) {
+        return c.json(
+          {
+            error: "Add your pin code or city to discover nearby schools",
+            code: "LOCATION_REQUIRED",
+          },
+          400
+        );
+      }
+
+      const ratingOrder =
+        sort === "rating"
+          ? `CASE WHEN rating_count >= 3 THEN rating_avg END DESC NULLS LAST,
+             rating_count DESC, verified DESC, name`
+          : `verified DESC,
+             CASE WHEN rating_count >= 3 THEN rating_avg END DESC NULLS LAST,
+             name`;
+      const { rows } = await client.query(
+        `SELECT id, name, branch, city, state, pin_code, verified,
+                rating_avg, rating_count
+         FROM schools
+         WHERE normalized_key <> $1
+           AND (
+             ($2::text IS NOT NULL AND pin_code = $2)
+             OR ($3::text IS NOT NULL AND city ILIKE $3)
+           )
+         ORDER BY
+           CASE WHEN pin_code = $2 THEN 0 ELSE 1 END,
+           ${ratingOrder}
+         LIMIT $4`,
+        [PLACEHOLDER_SCHOOL_KEY, pin ?? null, city ?? null, limit]
+      );
+
+      return c.json(rows.map(mapSchoolListRow));
     } finally {
       client.release();
     }

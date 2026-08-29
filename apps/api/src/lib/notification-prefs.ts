@@ -62,6 +62,7 @@ export const PREF_KEY_BY_NOTIFICATION_TYPE: Partial<
   circle_post: "circle_posts",
   circle_reply: "circle_replies",
   direct_message: "direct_messages",
+  connection_request: "direct_messages",
   reminder: "reminders",
   activity_nearby: "activity_nearby",
   topic_digest: "topics",

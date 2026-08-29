@@ -6,16 +6,16 @@
     "orientation": "portrait",
     "scheme": "vaara-parents",
     "userInterfaceStyle": "light",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/adaptive-icon.png",
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/adaptive-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#FFFCF7"
     },
     "newArchEnabled": false,
     "ios": {
       "supportsTablet": true,
-      "icon": "./assets/icon.png",
+      "icon": "./assets/adaptive-icon.png",
       "bundleIdentifier": "com.vaara.parents"
     },
     "android": {

@@ -10,10 +10,13 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import * as FileSystem from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";
-import { PrimaryButton, theme } from "@/components/circles/ui";
-import { colors } from "@/constants/theme";
+import { SafetyNotice } from "@/components/SafetyNotice";
+import { Button, Chip, InlineError, SectionHeader } from "@/components/ui";
+import { colors, radii, spacing, typography } from "@/constants/theme";
+import { trackEvent } from "@/lib/analytics";
 import { api } from "@/lib/api";
 import { getToken } from "@/lib/session";
 
@@ -56,6 +59,7 @@ export default function NewListingScreen() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    trackEvent("circle_post_started", { surface: "market_new" });
     getToken().then(async (token) => {
       if (!token) return;
       const status = await api.getMediaStatus(token).catch(() => ({
@@ -106,10 +110,14 @@ export default function NewListingScreen() {
     }> = [];
 
     for (const photo of photos) {
-      const info = await FileSystem.getInfoAsync(photo.uri);
+      const info = await FileSystem.getInfoAsync(photo.uri, { size: true });
       const sizeBytes =
+        (info.exists && "size" in info ? Number(info.size) : 0) ||
         photo.fileSize ||
-        (info.exists && "size" in info ? Number(info.size) : 0);
+        0;
+      if (!sizeBytes) {
+        throw new Error(`Could not read file size for ${photo.fileName}`);
+      }
       const upload = await api.createMediaUpload(token, {
         fileName: photo.fileName,
         mediaType: "image",
@@ -157,6 +165,7 @@ export default function NewListingScreen() {
           kind === "for_sale" ? Number(price.replace(/[^\d.]/g, "")) : undefined,
         media,
       });
+      trackEvent("market_listing_posted", { kind, category });
       Alert.alert("Posted", "Your listing is live in your community.");
       router.replace("/(app)/market");
     } catch (e) {
@@ -168,44 +177,33 @@ export default function NewListingScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.label}>Type</Text>
+      <SafetyNotice
+        tone="info"
+        message="Listings are visible to parents in your community. Contact details are shared only after both sides agree in chat."
+      />
+
+      <SectionHeader title="Listing type" />
       <View style={styles.chipRow}>
         {KINDS.map((item) => (
-          <Pressable
+          <Chip
             key={item.value}
-            style={[styles.chip, kind === item.value && styles.chipActive]}
+            label={item.label}
+            selected={kind === item.value}
             onPress={() => setKind(item.value)}
-          >
-            <Text
-              style={[
-                styles.chipText,
-                kind === item.value && styles.chipTextActive,
-              ]}
-            >
-              {item.label}
-            </Text>
-          </Pressable>
+          />
         ))}
       </View>
 
-      <Text style={styles.label}>Category</Text>
+      <SectionHeader title="Category" />
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
         <View style={styles.chipRow}>
           {CATEGORIES.map((value) => (
-            <Pressable
+            <Chip
               key={value}
-              style={[styles.chip, category === value && styles.chipActive]}
+              label={value}
+              selected={category === value}
               onPress={() => setCategory(value)}
-            >
-              <Text
-                style={[
-                  styles.chipText,
-                  category === value && styles.chipTextActive,
-                ]}
-              >
-                {value}
-              </Text>
-            </Pressable>
+            />
           ))}
         </View>
       </ScrollView>
@@ -216,7 +214,9 @@ export default function NewListingScreen() {
         value={title}
         onChangeText={setTitle}
         placeholder="e.g. CBSE Class 5 maths workbook"
+        placeholderTextColor={colors.textSubtle}
         maxLength={120}
+        accessibilityLabel="Listing title"
       />
 
       {kind === "for_sale" ? (
@@ -228,6 +228,8 @@ export default function NewListingScreen() {
             onChangeText={setPrice}
             keyboardType="numeric"
             placeholder="500"
+            placeholderTextColor={colors.textSubtle}
+            accessibilityLabel="Listing price"
           />
         </>
       ) : null}
@@ -239,6 +241,8 @@ export default function NewListingScreen() {
         onChangeText={setDescription}
         multiline
         placeholder="Condition, pickup notes, etc."
+        placeholderTextColor={colors.textSubtle}
+        accessibilityLabel="Listing description"
       />
 
       <Text style={styles.label}>Photos (optional)</Text>
@@ -248,19 +252,27 @@ export default function NewListingScreen() {
             <Image key={photo.uri} source={{ uri: photo.uri }} style={styles.photo} />
           ))}
           {photos.length < 5 ? (
-            <Pressable style={styles.addPhoto} onPress={pickPhotos}>
-              <Text style={styles.addPhotoText}>+ Add</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Add listing photos"
+              style={styles.addPhoto}
+              onPress={pickPhotos}
+            >
+              <Ionicons name="add" size={24} color={colors.coral} />
+              <Text style={styles.addPhotoText}>Add</Text>
             </Pressable>
           ) : null}
         </View>
       </ScrollView>
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {error ? <InlineError message={error} /> : null}
 
-      <PrimaryButton
-        label={loading ? "Posting…" : "Post listing"}
+      <Button
+        label="Post listing"
+        variant="coral"
         onPress={onSubmit}
         loading={loading}
+        style={styles.cta}
       />
     </ScrollView>
   );
@@ -268,53 +280,44 @@ export default function NewListingScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 16, paddingBottom: 32 },
+  content: { padding: spacing.lg, paddingBottom: spacing.xxxl, gap: spacing.sm },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
   label: {
-    fontSize: 13,
-    fontWeight: "600",
+    ...typography.supporting,
     color: colors.textMuted,
-    marginTop: 14,
-    marginBottom: 8,
+    fontFamily: typography.semibold,
+    marginTop: spacing.xs,
   },
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  chipActive: {
-    backgroundColor: theme.primaryLight,
-    borderColor: theme.primary,
-  },
-  chipText: { fontSize: 13, fontWeight: "600", color: colors.textMuted },
-  chipTextActive: { color: theme.primary },
   input: {
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
+    borderRadius: radii.lg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    ...typography.body,
     color: colors.text,
+    fontFamily: typography.regular,
   },
-  textArea: { minHeight: 90, textAlignVertical: "top" },
-  photoRow: { flexDirection: "row", gap: 8 },
-  photo: { width: 72, height: 72, borderRadius: 10 },
+  textArea: { minHeight: 100, textAlignVertical: "top" },
+  photoRow: { flexDirection: "row", gap: spacing.xs },
+  photo: { width: 80, height: 80, borderRadius: radii.md },
   addPhoto: {
-    width: 72,
-    height: 72,
-    borderRadius: 10,
+    width: 80,
+    height: 80,
+    borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,
     borderStyle: "dashed",
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.card,
+    gap: 2,
   },
-  addPhotoText: { color: colors.primary, fontWeight: "600" },
-  error: { color: "#dc2626", marginTop: 12 },
+  addPhotoText: {
+    ...typography.caption,
+    color: colors.coral,
+    fontFamily: typography.semibold,
+  },
+  cta: { marginTop: spacing.md },
 });

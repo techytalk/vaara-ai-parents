@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   Pressable,
   ScrollView,
@@ -10,7 +9,10 @@ import {
   View,
 } from "react-native";
 import { useLocalSearchParams } from "expo-router";
-import { colors } from "@/constants/theme";
+import { Ionicons } from "@expo/vector-icons";
+import { SafetyNotice } from "@/components/SafetyNotice";
+import { Button, ScreenLoader } from "@/components/ui";
+import { colors, radii, spacing, typography } from "@/constants/theme";
 import { api } from "@/lib/api";
 import { getToken } from "@/lib/session";
 
@@ -21,6 +23,7 @@ export default function ExpertSessionDetailScreen() {
   > | null>(null);
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
   const load = async () => {
     const token = await getToken();
@@ -35,6 +38,7 @@ export default function ExpertSessionDetailScreen() {
   async function onAsk() {
     const text = question.trim();
     if (!text) return;
+    setSubmitting(true);
     try {
       const token = await getToken();
       if (!token) return;
@@ -43,15 +47,13 @@ export default function ExpertSessionDetailScreen() {
       await load();
     } catch (e) {
       Alert.alert("Error", e instanceof Error ? e.message : "Could not submit");
+    } finally {
+      setSubmitting(false);
     }
   }
 
   if (loading || !session) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
+    return <ScreenLoader label="Loading session" />;
   }
 
   return (
@@ -64,6 +66,11 @@ export default function ExpertSessionDetailScreen() {
         <Text style={styles.body}>{session.description}</Text>
       ) : null}
 
+      <SafetyNotice
+        tone="info"
+        message="Questions are anonymous to other parents. Upvote helpful questions so the expert can prioritize them."
+      />
+
       {session.questions.map((q) => (
         <View key={q.id} style={styles.qCard}>
           <Text style={styles.qHandle}>{q.askerHandle}</Text>
@@ -72,6 +79,9 @@ export default function ExpertSessionDetailScreen() {
             <Text style={styles.answer}>Answer: {q.answerBody}</Text>
           ) : null}
           <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Upvote question, ${q.upvoteCount} votes`}
+            style={styles.upvoteBtn}
             onPress={async () => {
               const token = await getToken();
               if (!token) return;
@@ -79,60 +89,107 @@ export default function ExpertSessionDetailScreen() {
               await load();
             }}
           >
-            <Text style={styles.upvote}>▲ {q.upvoteCount}</Text>
+            <Ionicons name="caret-up" size={16} color={colors.primary} />
+            <Text style={styles.upvote}>{q.upvoteCount}</Text>
           </Pressable>
         </View>
       ))}
 
+      <Text style={styles.label}>Your question</Text>
       <TextInput
         style={styles.input}
         value={question}
         onChangeText={setQuestion}
         placeholder="Ask anonymously…"
+        placeholderTextColor={colors.textSubtle}
         multiline
+        accessibilityLabel="Expert question"
       />
-      <Pressable style={styles.btn} onPress={onAsk}>
-        <Text style={styles.btnText}>Submit question</Text>
-      </Pressable>
+      <Button
+        label="Submit question"
+        onPress={onAsk}
+        loading={submitting}
+        style={styles.cta}
+      />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 16, paddingBottom: 32 },
-  centered: { flex: 1, justifyContent: "center", alignItems: "center" },
-  title: { fontSize: 20, fontWeight: "700", color: colors.text },
-  expert: { fontSize: 14, color: colors.primary, marginTop: 6 },
-  body: { fontSize: 15, lineHeight: 22, marginTop: 12, color: colors.text },
+  content: { padding: spacing.lg, paddingBottom: spacing.xxxl, gap: spacing.sm },
+  title: {
+    ...typography.screenTitle,
+    color: colors.text,
+    fontFamily: typography.bold,
+  },
+  expert: {
+    ...typography.supporting,
+    color: colors.primary,
+    fontFamily: typography.semibold,
+  },
+  body: {
+    ...typography.body,
+    lineHeight: 22,
+    color: colors.text,
+    fontFamily: typography.regular,
+  },
   qCard: {
-    marginTop: 14,
     backgroundColor: colors.card,
-    borderRadius: 12,
-    padding: 12,
+    borderRadius: radii.lg,
+    padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  qHandle: { fontWeight: "600", color: colors.primary },
-  qBody: { marginTop: 6, fontSize: 15, lineHeight: 22 },
-  answer: { marginTop: 8, fontSize: 14, color: colors.text },
-  upvote: { marginTop: 8, color: colors.textMuted, fontWeight: "600" },
-  input: {
-    marginTop: 20,
-    backgroundColor: colors.card,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 12,
-    minHeight: 80,
-    textAlignVertical: "top",
+  qHandle: {
+    ...typography.supporting,
+    fontFamily: typography.semibold,
+    color: colors.primary,
   },
-  btn: {
-    marginTop: 12,
-    backgroundColor: colors.primary,
-    borderRadius: 12,
-    paddingVertical: 14,
+  qBody: {
+    ...typography.body,
+    marginTop: spacing.xs,
+    lineHeight: 22,
+    color: colors.text,
+    fontFamily: typography.regular,
+  },
+  answer: {
+    ...typography.supporting,
+    marginTop: spacing.xs,
+    color: colors.text,
+    fontFamily: typography.regular,
+  },
+  upvoteBtn: {
+    flexDirection: "row",
     alignItems: "center",
+    gap: 4,
+    marginTop: spacing.xs,
+    alignSelf: "flex-start",
+    minHeight: 44,
+    justifyContent: "center",
   },
-  btnText: { color: "#fff", fontWeight: "700" },
+  upvote: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontFamily: typography.semibold,
+  },
+  label: {
+    ...typography.supporting,
+    color: colors.textMuted,
+    fontFamily: typography.semibold,
+    marginTop: spacing.xs,
+  },
+  input: {
+    backgroundColor: colors.card,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    minHeight: 88,
+    textAlignVertical: "top",
+    ...typography.body,
+    color: colors.text,
+    fontFamily: typography.regular,
+  },
+  cta: { marginTop: spacing.xs },
 });

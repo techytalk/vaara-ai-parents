@@ -1,7 +1,5 @@
 import { useState } from "react";
 import {
-  ActivityIndicator,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -9,6 +7,8 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { Button, Chip, InlineError, SectionHeader } from "@/components/ui";
+import { colors, radii, spacing, typography } from "@/constants/theme";
 import { api } from "@/lib/api";
 import { getStoredUser, getToken, saveSession } from "@/lib/session";
 
@@ -74,98 +74,90 @@ export default function ProviderOnboardingScreen() {
         name is shown on activities — parent identities stay private.
       </Text>
 
-      <Text style={styles.label}>Type</Text>
+      <SectionHeader title="Provider type" />
       <View style={styles.chipRow}>
         {PROVIDER_TYPES.map((t) => (
-          <Pressable
+          <Chip
             key={t.value}
-            style={[
-              styles.chip,
-              providerType === t.value && styles.chipActive,
-            ]}
+            label={t.label}
+            selected={providerType === t.value}
             onPress={() => setProviderType(t.value)}
-          >
-            <Text
-              style={[
-                styles.chipText,
-                providerType === t.value && styles.chipTextActive,
-              ]}
-            >
-              {t.label}
-            </Text>
-          </Pressable>
+          />
         ))}
       </View>
 
+      <Text style={styles.label}>Organization / business name</Text>
       <TextInput
         style={styles.input}
         placeholder="Organization / business name"
+        placeholderTextColor={colors.textSubtle}
         value={orgName}
         onChangeText={setOrgName}
+        accessibilityLabel="Organization name"
       />
+
+      <Text style={styles.label}>Description (optional)</Text>
       <TextInput
         style={[styles.input, styles.multiline]}
-        placeholder="Short description (optional)"
+        placeholder="Short description"
+        placeholderTextColor={colors.textSubtle}
         multiline
         numberOfLines={3}
         textAlignVertical="top"
         value={description}
         onChangeText={setDescription}
+        accessibilityLabel="Provider description"
       />
+
+      <Text style={styles.label}>Service pin codes</Text>
       <TextInput
         style={styles.input}
-        placeholder="Service pin codes (comma separated)"
+        placeholder="Comma separated pin codes"
+        placeholderTextColor={colors.textSubtle}
         value={pinCodesText}
         onChangeText={setPinCodesText}
+        accessibilityLabel="Service pin codes"
       />
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {error ? <InlineError message={error} /> : null}
 
-      <Pressable style={styles.button} onPress={onFinish} disabled={loading}>
-        {loading ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.buttonText}>Finish setup</Text>
-        )}
-      </Pressable>
+      <Button
+        label="Finish setup"
+        onPress={onFinish}
+        loading={loading}
+        style={styles.cta}
+      />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f8f9fc" },
-  content: { padding: 20 },
-  lead: { fontSize: 15, color: "#5c5c7a", lineHeight: 22, marginBottom: 20 },
-  label: { fontSize: 13, color: "#5c5c7a", marginBottom: 8 },
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 },
-  chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#e2e4ef",
-    backgroundColor: "#fff",
+  container: { flex: 1, backgroundColor: colors.bg },
+  content: { padding: spacing.lg, paddingBottom: spacing.xxxl, gap: spacing.sm },
+  lead: {
+    ...typography.body,
+    color: colors.textMuted,
+    lineHeight: 22,
+    fontFamily: typography.regular,
   },
-  chipActive: { backgroundColor: "#4f46e5", borderColor: "#4f46e5" },
-  chipText: { fontSize: 13, color: "#1a1a2e" },
-  chipTextActive: { color: "#fff", fontWeight: "600" },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
+  label: {
+    ...typography.supporting,
+    color: colors.textMuted,
+    fontFamily: typography.semibold,
+    marginTop: spacing.xs,
+  },
   input: {
-    backgroundColor: "#fff",
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: "#e2e4ef",
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 12,
-    fontSize: 16,
+    borderColor: colors.border,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    ...typography.body,
+    color: colors.text,
+    fontFamily: typography.regular,
+    minHeight: 44,
   },
   multiline: { minHeight: 90 },
-  button: {
-    backgroundColor: "#4f46e5",
-    borderRadius: 12,
-    padding: 16,
-    alignItems: "center",
-    marginTop: 8,
-  },
-  buttonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
-  error: { color: "#dc2626", marginBottom: 8 },
+  cta: { marginTop: spacing.sm },
 });

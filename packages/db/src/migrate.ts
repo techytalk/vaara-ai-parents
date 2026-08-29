@@ -30,6 +30,7 @@ const MIGRATIONS = [
   { version: "022_post_helpful", file: "022_post_helpful.sql" },
   { version: "023_circle_read_state", file: "023_circle_read_state.sql" },
   { version: "024_activity_categories", file: "024_activity_categories.sql" },
+  { version: "025_parent_connection_requests", file: "025_parent_connection_requests.sql" },
 ];
 
 async function isMigrationApplied(

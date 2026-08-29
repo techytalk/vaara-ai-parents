@@ -2,6 +2,7 @@ import {
   circleChannel,
   conversationChannel,
   topicChannel,
+  userInboxChannel,
 } from "./channels.js";
 import { getRedis, isRedisEnabled } from "./client.js";
 
@@ -27,6 +28,13 @@ export type RealtimeEvent =
       circleId: string;
       postId: string;
       replyId: string;
+    }
+  | {
+      type: "inbox.updated";
+      userId: string;
+      reason: "message" | "request" | "request_response";
+      conversationId?: string;
+      requestId?: string;
     };
 
 async function publish(channel: string, event: RealtimeEvent): Promise<void> {
@@ -52,6 +60,13 @@ export async function publishConversationEvent(
   event: Extract<RealtimeEvent, { type: "message.new" }>
 ): Promise<void> {
   await publish(conversationChannel(conversationId), event);
+}
+
+export async function publishUserInboxEvent(
+  userId: string,
+  event: Extract<RealtimeEvent, { type: "inbox.updated" }>
+): Promise<void> {
+  await publish(userInboxChannel(userId), event);
 }
 
 export async function publishTopicEvent(

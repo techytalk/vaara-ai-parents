@@ -8,11 +8,13 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "build:apk": "npx eas-cli build -p android --profile preview",
+    "build:apk:production": "npx eas-cli build -p android --profile production-apk",
     "build:apk:dev": "npx eas-cli build -p android --profile development"
   },
   "dependencies": {
     "@expo-google-fonts/plus-jakarta-sans": "^0.4.2",
     "@expo/vector-icons": "~14.0.4",
+    "@react-native-community/datetimepicker": "8.2.0",
     "@react-native-google-signin/google-signin": "^16.1.4",
     "@react-navigation/native": "^7.0.14",
     "@tanstack/react-query": "^5.62.8",

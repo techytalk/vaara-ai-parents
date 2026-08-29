@@ -1,5 +1,6 @@
 import { useEffect } from "react";
-import { Tabs } from "expo-router";
+import { Tabs, useRouter } from "expo-router";
+import * as Notifications from "expo-notifications";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, typography } from "@/constants/theme";
 import { registerForPushNotifications } from "@/lib/push";
@@ -21,9 +22,44 @@ function tabIcon(
 }
 
 export default function AppLayout() {
+  const router = useRouter();
+
   useEffect(() => {
     registerForPushNotifications().catch(() => {});
-  }, []);
+
+    function openNotification(data: Record<string, unknown>) {
+      const type = String(data.type ?? "");
+      if (type === "connection_request") {
+        router.push("/(app)/messages/new");
+        return;
+      }
+      if (
+        data.conversationId &&
+        (type === "direct_message" ||
+          type === "disclosure_request" ||
+          type === "disclosure_accepted")
+      ) {
+        router.push({
+          pathname: "/(app)/messages/[conversationId]",
+          params: { conversationId: String(data.conversationId) },
+        });
+      }
+    }
+
+    const subscription =
+      Notifications.addNotificationResponseReceivedListener((response) => {
+        openNotification(response.notification.request.content.data);
+      });
+    Notifications.getLastNotificationResponseAsync()
+      .then((response) => {
+        if (response) {
+          openNotification(response.notification.request.content.data);
+        }
+      })
+      .catch(() => {});
+
+    return () => subscription.remove();
+  }, [router]);
 
   return (
     <Tabs
@@ -138,6 +174,8 @@ export default function AppLayout() {
       <Tabs.Screen name="experts" options={{ href: null, headerShown: false }} />
       <Tabs.Screen name="playdates" options={{ href: null, title: "Playdates" }} />
       <Tabs.Screen name="carpool" options={{ href: null, headerShown: false }} />
+      <Tabs.Screen name="settings" options={{ href: null, headerShown: false }} />
+      <Tabs.Screen name="support" options={{ href: null, title: "Help & Support" }} />
     </Tabs>
   );
 }

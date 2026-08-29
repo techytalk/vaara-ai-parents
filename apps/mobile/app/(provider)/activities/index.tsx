@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  ActivityIndicator,
   FlatList,
   Pressable,
   RefreshControl,
@@ -9,6 +8,8 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { Button, EmptyState, ScreenLoader } from "@/components/ui";
+import { colors, radii, spacing, typography } from "@/constants/theme";
 import { api, type Activity } from "@/lib/api";
 import { getToken } from "@/lib/session";
 
@@ -32,21 +33,18 @@ export default function ProviderActivitiesList() {
   }, [load]);
 
   if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
+    return <ScreenLoader label="Loading activities" />;
   }
 
   return (
     <View style={styles.container}>
-      <Pressable
-        style={styles.createBtn}
-        onPress={() => router.push("/(provider)/activities/new")}
-      >
-        <Text style={styles.createBtnText}>+ New activity</Text>
-      </Pressable>
+      <View style={styles.header}>
+        <Button
+          label="New activity"
+          icon="add"
+          onPress={() => router.push("/(provider)/activities/new")}
+        />
+      </View>
 
       <FlatList
         data={activities}
@@ -54,19 +52,32 @@ export default function ProviderActivitiesList() {
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
+            tintColor={colors.primary}
             onRefresh={async () => {
               setRefreshing(true);
-              await load();
-              setRefreshing(false);
+              try {
+                await load();
+              } finally {
+                setRefreshing(false);
+              }
             }}
           />
         }
+        contentContainerStyle={
+          activities.length === 0 ? styles.emptyContainer : styles.list
+        }
         ListEmptyComponent={
-          <Text style={styles.empty}>No activities yet. Create your first one.</Text>
+          <EmptyState
+            icon="calendar-outline"
+            title="No activities yet"
+            message="Create your first class, camp, or workshop for nearby parents."
+            actionLabel="Create activity"
+            onAction={() => router.push("/(provider)/activities/new")}
+          />
         }
         renderItem={({ item }) => (
           <Pressable
-            style={styles.card}
+            style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
             onPress={() =>
               router.push({
                 pathname: "/(provider)/activities/[id]",
@@ -76,9 +87,7 @@ export default function ProviderActivitiesList() {
           >
             <Text style={styles.title}>{item.title}</Text>
             <Text style={styles.status}>{item.status}</Text>
-            <Text style={styles.meta}>
-              Pins: {item.pinCodes.join(", ")}
-            </Text>
+            <Text style={styles.meta}>Pins: {item.pinCodes.join(", ")}</Text>
           </Pressable>
         )}
       />
@@ -87,32 +96,35 @@ export default function ProviderActivitiesList() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f8f9fc" },
-  centered: { flex: 1, justifyContent: "center", alignItems: "center" },
-  createBtn: {
-    margin: 12,
-    backgroundColor: "#4f46e5",
-    borderRadius: 12,
-    padding: 14,
-    alignItems: "center",
-  },
-  createBtnText: { color: "#fff", fontWeight: "600" },
-  empty: { textAlign: "center", color: "#5c5c7a", padding: 24 },
+  container: { flex: 1, backgroundColor: colors.bg },
+  header: { padding: spacing.lg, paddingBottom: spacing.sm },
+  list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxxl },
+  emptyContainer: { flexGrow: 1, padding: spacing.lg },
   card: {
-    backgroundColor: "#fff",
-    marginHorizontal: 12,
-    marginBottom: 10,
-    padding: 14,
-    borderRadius: 12,
+    backgroundColor: colors.card,
+    marginBottom: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radii.lg,
     borderWidth: 1,
-    borderColor: "#e2e4ef",
+    borderColor: colors.border,
   },
-  title: { fontSize: 16, fontWeight: "600", color: "#1a1a2e" },
+  cardPressed: { backgroundColor: colors.surfaceMuted },
+  title: {
+    ...typography.body,
+    color: colors.text,
+    fontFamily: typography.semibold,
+  },
   status: {
-    fontSize: 12,
-    color: "#4f46e5",
+    ...typography.caption,
+    color: colors.primary,
+    fontFamily: typography.semibold,
     marginTop: 4,
     textTransform: "capitalize",
   },
-  meta: { fontSize: 13, color: "#5c5c7a", marginTop: 6 },
+  meta: {
+    ...typography.supporting,
+    color: colors.textMuted,
+    fontFamily: typography.regular,
+    marginTop: 6,
+  },
 });

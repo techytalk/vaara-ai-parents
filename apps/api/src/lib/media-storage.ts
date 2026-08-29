@@ -93,7 +93,6 @@ export async function createMediaUpload(params: {
     Bucket: bucket,
     Key: storageKey,
     ContentType: params.mimeType,
-    ContentLength: params.sizeBytes,
     Metadata: {
       owner: params.userId,
       mediaType: params.mediaType,
@@ -160,7 +159,6 @@ export async function createListingMediaUpload(params: {
     Bucket: bucket,
     Key: storageKey,
     ContentType: params.mimeType,
-    ContentLength: params.sizeBytes,
     Metadata: {
       owner: params.userId,
       mediaType: "image",

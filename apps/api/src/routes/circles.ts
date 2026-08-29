@@ -6,6 +6,7 @@ import {
   invalidateCircleFeedCache,
   isRedisEnabled,
   publishCircleEvent,
+  publishUserInboxEvent,
   setCachedJson,
 } from "@vaara/redis";
 import type { PoolClient } from "pg";
@@ -29,6 +30,7 @@ import {
   type DisclosureLevel,
 } from "../services/disclosure.js";
 import {
+  createNotification,
   notifyCircleReply,
 } from "../services/notifications.js";
 import {
@@ -876,6 +878,48 @@ export function createCirclesRoutes() {
   return app;
 }
 
+async function getOrCreateParentConversation(
+  client: PoolClient,
+  userId: string,
+  peerUserId: string,
+  context?: { circleId?: string; postId?: string }
+): Promise<string> {
+  const inserted = await client.query(
+    `INSERT INTO conversations (
+       user_a_id, user_b_id, initiated_from_circle_id, initiated_from_post_id
+     )
+     VALUES (
+       LEAST($1::uuid, $2::uuid),
+       GREATEST($1::uuid, $2::uuid),
+       $3,
+       $4
+     )
+     ON CONFLICT (user_a_id, user_b_id)
+     DO UPDATE SET user_a_id = EXCLUDED.user_a_id
+     RETURNING id`,
+    [
+      userId,
+      peerUserId,
+      context?.circleId ?? null,
+      context?.postId ?? null,
+    ]
+  );
+  const conversationId = String(inserted.rows[0].id);
+  await client.query(
+    `INSERT INTO conversation_participants (conversation_id, user_id)
+     VALUES ($1, $2), ($1, $3)
+     ON CONFLICT DO NOTHING`,
+    [conversationId, userId, peerUserId]
+  );
+  await client.query(
+    `UPDATE conversation_participants
+     SET hidden = false
+     WHERE conversation_id = $1 AND user_id = ANY($2::uuid[])`,
+    [conversationId, [userId, peerUserId]]
+  );
+  return conversationId;
+}
+
 export function createConversationsRoutes() {
   const app = new Hono<{ Variables: AuthVariables }>();
   app.use("*", authMiddleware);
@@ -884,6 +928,370 @@ export function createConversationsRoutes() {
     prefix: "direct-message",
     limit: 50,
     windowSeconds: 3600,
+  });
+  const connectionRequestRateLimit = rateLimitMiddleware({
+    prefix: "parent-connection-request",
+    limit: 10,
+    windowSeconds: 86_400,
+  });
+
+  app.get("/suggestions", async (c) => {
+    const userId = c.get("user").sub;
+    const search = c.req.query("q")?.trim();
+    const limit = Math.min(Number(c.req.query("limit") ?? 50), 100);
+    const client = await pool.connect();
+    try {
+      const params: unknown[] = [userId, limit];
+      let searchClause = "";
+      if (search) {
+        params.push(`%${search}%`);
+        searchClause = `AND peer.anonymous_handle ILIKE $3`;
+      }
+      const { rows } = await client.query(
+        `SELECT DISTINCT ON (peer.id)
+                peer.id AS peer_id,
+                peer.anonymous_handle,
+                c.id AS circle_id,
+                c.circle_type,
+                c.key,
+                c.display_name,
+                c.metadata,
+                conv.id AS existing_conversation_id
+         FROM circle_members mine
+         JOIN circle_members theirs
+           ON theirs.circle_id = mine.circle_id
+          AND theirs.user_id <> mine.user_id
+         JOIN users peer
+           ON peer.id = theirs.user_id
+          AND peer.role = 'parent'
+         JOIN circles c ON c.id = mine.circle_id
+         LEFT JOIN conversations conv
+           ON conv.user_a_id = LEAST($1::uuid, peer.id)
+          AND conv.user_b_id = GREATEST($1::uuid, peer.id)
+         WHERE mine.user_id = $1
+           ${searchClause}
+           AND NOT EXISTS (
+             SELECT 1 FROM user_blocks ub
+             WHERE (ub.blocker_id = $1 AND ub.blocked_id = peer.id)
+                OR (ub.blocker_id = peer.id AND ub.blocked_id = $1)
+           )
+         ORDER BY peer.id,
+           CASE c.circle_type
+             WHEN 'school_class' THEN 1
+             WHEN 'class' THEN 2
+             WHEN 'school' THEN 3
+             WHEN 'community' THEN 4
+             WHEN 'locality' THEN 5
+             WHEN 'curriculum' THEN 6
+           END
+         LIMIT $2`,
+        params
+      );
+
+      const suggestions = await Promise.all(
+        rows.map(async (row) => {
+          const author = await buildAuthorView(
+            client,
+            String(row.peer_id),
+            String(row.anonymous_handle),
+            {
+              id: row.circle_id,
+              circle_type: row.circle_type,
+              key: row.key,
+              display_name: row.display_name,
+              metadata: row.metadata,
+            }
+          );
+          return {
+            ...author,
+            circleId: row.circle_id,
+            circleName: row.display_name,
+            existingConversationId: row.existing_conversation_id ?? null,
+          };
+        })
+      );
+      return c.json(suggestions);
+    } finally {
+      client.release();
+    }
+  });
+
+  app.get("/requests", async (c) => {
+    const userId = c.get("user").sub;
+    const client = await pool.connect();
+    try {
+      const { rows } = await client.query(
+        `SELECT r.id, r.sender_id, r.recipient_id, r.introduction,
+                r.status, r.conversation_id, r.created_at, r.responded_at,
+                peer.anonymous_handle AS peer_handle
+         FROM parent_connection_requests r
+         JOIN users peer ON peer.id = CASE
+           WHEN r.sender_id = $1 THEN r.recipient_id
+           ELSE r.sender_id
+         END
+         WHERE (r.sender_id = $1 OR r.recipient_id = $1)
+           AND r.status = 'pending'
+         ORDER BY r.created_at DESC`,
+        [userId]
+      );
+      const mapped = rows.map((row) => ({
+        id: row.id,
+        direction: row.sender_id === userId ? "outgoing" : "incoming",
+        peer: {
+          userId:
+            row.sender_id === userId ? row.recipient_id : row.sender_id,
+          anonymousHandle: row.peer_handle,
+          contextLabel: "",
+        },
+        introduction: row.introduction,
+        status: row.status,
+        conversationId: row.conversation_id,
+        createdAt: row.created_at,
+        respondedAt: row.responded_at,
+      }));
+      return c.json({
+        incoming: mapped.filter((item) => item.direction === "incoming"),
+        outgoing: mapped.filter((item) => item.direction === "outgoing"),
+      });
+    } finally {
+      client.release();
+    }
+  });
+
+  app.post("/requests", connectionRequestRateLimit, async (c) => {
+    const userId = c.get("user").sub;
+    const body = await c.req.json<{
+      anonymousHandle?: string;
+      introduction?: string;
+    }>();
+    const anonymousHandle = body.anonymousHandle?.trim();
+    const introduction = body.introduction?.trim() || null;
+    if (!anonymousHandle) {
+      return c.json({ error: "Exact anonymous handle is required" }, 400);
+    }
+    if (introduction && introduction.length > 280) {
+      return c.json({ error: "Introduction must be 280 characters or less" }, 400);
+    }
+
+    const client = await pool.connect();
+    try {
+      const peerResult = await client.query(
+        `SELECT id, anonymous_handle, push_token, notification_prefs
+         FROM users
+         WHERE lower(anonymous_handle) = lower($1)
+           AND role = 'parent'
+           AND onboarding_complete = true`,
+        [anonymousHandle]
+      );
+      if (peerResult.rows.length === 0) {
+        return c.json({ error: "No parent found with that exact handle" }, 404);
+      }
+      const peer = peerResult.rows[0];
+      const peerUserId = String(peer.id);
+      if (peerUserId === userId) {
+        return c.json({ error: "You cannot message yourself" }, 400);
+      }
+      if (await isBlocked(client, userId, peerUserId)) {
+        return c.json({ error: "Cannot contact this parent" }, 403);
+      }
+
+      if (await assertSharedCircle(client, userId, peerUserId)) {
+        const conversationId = await getOrCreateParentConversation(
+          client,
+          userId,
+          peerUserId
+        );
+        return c.json({
+          kind: "conversation",
+          conversation: {
+            id: conversationId,
+            peer: (await buildPeerView(client, {
+              conversationId,
+              viewerId: userId,
+            })) ?? {
+              userId: peerUserId,
+              anonymousHandle: peer.anonymous_handle,
+              contextLabel: "",
+              disclosureLevel: 0,
+            },
+          },
+        });
+      }
+
+      const inserted = await client.query(
+        `INSERT INTO parent_connection_requests (
+           sender_id, recipient_id, introduction
+         )
+         VALUES ($1, $2, $3)
+         ON CONFLICT DO NOTHING
+         RETURNING id, created_at`,
+        [userId, peerUserId, introduction]
+      );
+      if (inserted.rows.length === 0) {
+        return c.json(
+          { error: "A connection request is already pending" },
+          409
+        );
+      }
+      const requestId = String(inserted.rows[0].id);
+      const sender = await client.query(
+        "SELECT anonymous_handle FROM users WHERE id = $1",
+        [userId]
+      );
+      await createNotification(client, {
+        userId: peerUserId,
+        type: "connection_request",
+        title: "New parent connection request",
+        body: `${sender.rows[0]?.anonymous_handle ?? "A parent"} wants to connect`,
+        data: { requestId },
+        pushToken: peer.push_token,
+        notificationPrefs: peer.notification_prefs,
+      });
+      await publishUserInboxEvent(peerUserId, {
+        type: "inbox.updated",
+        userId: peerUserId,
+        reason: "request",
+        requestId,
+      });
+      return c.json(
+        {
+          kind: "request",
+          request: {
+            id: requestId,
+            direction: "outgoing",
+            peer: {
+              userId: peerUserId,
+              anonymousHandle: peer.anonymous_handle,
+              contextLabel: "",
+            },
+            introduction,
+            status: "pending",
+            conversationId: null,
+            createdAt: inserted.rows[0].created_at,
+            respondedAt: null,
+          },
+        },
+        201
+      );
+    } finally {
+      client.release();
+    }
+  });
+
+  app.patch("/requests/:requestId", async (c) => {
+    const userId = c.get("user").sub;
+    const requestId = c.req.param("requestId");
+    const body = await c.req.json<{
+      action?: "accept" | "decline" | "cancel";
+    }>();
+    if (!body.action) {
+      return c.json({ error: "action is required" }, 400);
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const request = await client.query(
+        `SELECT * FROM parent_connection_requests
+         WHERE id = $1
+         FOR UPDATE`,
+        [requestId]
+      );
+      if (request.rows.length === 0 || request.rows[0].status !== "pending") {
+        await client.query("ROLLBACK");
+        return c.json({ error: "Pending request not found" }, 404);
+      }
+      const row = request.rows[0];
+      const isRecipient = row.recipient_id === userId;
+      const isSender = row.sender_id === userId;
+      if (
+        (body.action === "cancel" && !isSender) ||
+        (body.action !== "cancel" && !isRecipient)
+      ) {
+        await client.query("ROLLBACK");
+        return c.json({ error: "Not allowed" }, 403);
+      }
+
+      let conversationId: string | null = null;
+      let status: "accepted" | "declined" | "cancelled";
+      if (body.action === "accept") {
+        if (await isBlocked(client, row.sender_id, row.recipient_id)) {
+          await client.query("ROLLBACK");
+          return c.json({ error: "Cannot accept this request" }, 403);
+        }
+        conversationId = await getOrCreateParentConversation(
+          client,
+          row.sender_id,
+          row.recipient_id
+        );
+        status = "accepted";
+      } else {
+        status = body.action === "decline" ? "declined" : "cancelled";
+      }
+
+      await client.query(
+        `UPDATE parent_connection_requests
+         SET status = $2, conversation_id = $3, responded_at = now()
+         WHERE id = $1`,
+        [requestId, status, conversationId]
+      );
+      await client.query("COMMIT");
+
+      await Promise.all([
+        publishUserInboxEvent(String(row.sender_id), {
+          type: "inbox.updated",
+          userId: String(row.sender_id),
+          reason: "request_response",
+          requestId,
+          conversationId: conversationId ?? undefined,
+        }),
+        publishUserInboxEvent(String(row.recipient_id), {
+          type: "inbox.updated",
+          userId: String(row.recipient_id),
+          reason: "request_response",
+          requestId,
+          conversationId: conversationId ?? undefined,
+        }),
+      ]);
+      return c.json({ ok: true, status, conversationId });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  });
+
+  app.post("/requests/:requestId/report", async (c) => {
+    const userId = c.get("user").sub;
+    const requestId = c.req.param("requestId");
+    const body = await c.req.json<{ reason?: string }>();
+    const reason = body.reason?.trim() || "Unwanted connection request";
+    const client = await pool.connect();
+    try {
+      const { rows } = await client.query(
+        `SELECT sender_id, recipient_id
+         FROM parent_connection_requests
+         WHERE id = $1
+           AND (sender_id = $2 OR recipient_id = $2)`,
+        [requestId, userId]
+      );
+      if (rows.length === 0) {
+        return c.json({ error: "Request not found" }, 404);
+      }
+      const peerId =
+        rows[0].sender_id === userId
+          ? rows[0].recipient_id
+          : rows[0].sender_id;
+      await client.query(
+        `INSERT INTO reports (reporter_id, target_user_id, reason)
+         VALUES ($1, $2, $3)`,
+        [userId, peerId, reason]
+      );
+      return c.json({ ok: true });
+    } finally {
+      client.release();
+    }
   });
 
   app.get("/", async (c) => {
@@ -899,7 +1307,15 @@ export function createConversationsRoutes() {
                 peer.id AS peer_id,
                 peer.anonymous_handle AS peer_handle,
                 dm.body AS last_body,
-                dm.created_at AS last_message_created
+                dm.created_at AS last_message_created,
+                (
+                  SELECT COUNT(*)::int
+                  FROM direct_messages unread_dm
+                  WHERE unread_dm.conversation_id = conv.id
+                    AND unread_dm.sender_id <> $1
+                    AND unread_dm.created_at >
+                      COALESCE(cp.last_read_at, 'epoch'::timestamptz)
+                ) AS unread_count
          FROM conversations conv
          JOIN conversation_participants cp
            ON cp.conversation_id = conv.id AND cp.user_id = $1
@@ -919,10 +1335,7 @@ export function createConversationsRoutes() {
 
       const conversations = await Promise.all(
         rows.map(async (row) => {
-          const unread =
-            row.last_message_created &&
-            (!row.last_read_at ||
-              new Date(row.last_message_created) > new Date(row.last_read_at));
+          const unreadCount = Number(row.unread_count ?? 0);
           const peer = await buildPeerView(client, {
             conversationId: row.id,
             viewerId: userId,
@@ -938,7 +1351,8 @@ export function createConversationsRoutes() {
             lastMessage: row.last_body
               ? { body: row.last_body, createdAt: row.last_message_created }
               : null,
-            unread: Boolean(unread),
+            unreadCount,
+            unread: unreadCount > 0,
           };
         })
       );
@@ -994,39 +1408,12 @@ export function createConversationsRoutes() {
         return c.json({ error: "User not found" }, 404);
       }
 
-      const [userA, userB] =
-        userId < peerUserId ? [userId, peerUserId] : [peerUserId, userId];
-
-      let convId: string;
-      const existing = await client.query(
-        `SELECT id FROM conversations
-         WHERE user_a_id = LEAST($1::uuid, $2::uuid)
-           AND user_b_id = GREATEST($1::uuid, $2::uuid)`,
-        [userId, peerUserId]
+      const convId = await getOrCreateParentConversation(
+        client,
+        userId,
+        peerUserId,
+        { circleId: body.circleId, postId: body.postId }
       );
-
-      if (existing.rows.length > 0) {
-        convId = existing.rows[0].id;
-        await client.query(
-          `UPDATE conversation_participants SET hidden = false
-           WHERE conversation_id = $1 AND user_id = ANY($2::uuid[])`,
-          [convId, [userId, peerUserId]]
-        );
-      } else {
-        const inserted = await client.query(
-          `INSERT INTO conversations (user_a_id, user_b_id, initiated_from_circle_id, initiated_from_post_id)
-           VALUES (LEAST($1::uuid, $2::uuid), GREATEST($1::uuid, $2::uuid), $3, $4)
-           RETURNING id`,
-          [userId, peerUserId, body.circleId ?? null, body.postId ?? null]
-        );
-        convId = inserted.rows[0].id;
-        await client.query(
-          `INSERT INTO conversation_participants (conversation_id, user_id)
-           VALUES ($1, $2), ($1, $3)
-           ON CONFLICT DO NOTHING`,
-          [convId, userId, peerUserId]
-        );
-      }
 
       return c.json({
         id: convId,
@@ -1167,6 +1554,40 @@ export function createConversationsRoutes() {
         isMine: true,
         senderHandle: handleRow.rows[0].anonymous_handle,
       });
+    } finally {
+      client.release();
+    }
+  });
+
+  app.post("/:conversationId/report", async (c) => {
+    const userId = c.get("user").sub;
+    const conversationId = c.req.param("conversationId");
+    const body = await c.req.json<{ reason?: string }>();
+    const reason = body.reason?.trim() || "Inappropriate conversation";
+    const client = await pool.connect();
+    try {
+      const { rows } = await client.query(
+        `SELECT c.user_a_id, c.user_b_id
+         FROM conversations c
+         JOIN conversation_participants cp ON cp.conversation_id = c.id
+         WHERE c.id = $1 AND cp.user_id = $2`,
+        [conversationId, userId]
+      );
+      if (rows.length === 0) {
+        return c.json({ error: "Conversation not found" }, 404);
+      }
+      const peerId =
+        rows[0].user_a_id === userId
+          ? rows[0].user_b_id
+          : rows[0].user_a_id;
+      await client.query(
+        `INSERT INTO reports (
+           reporter_id, target_conversation_id, target_user_id, reason
+         )
+         VALUES ($1, $2, $3, $4)`,
+        [userId, conversationId, peerId, reason]
+      );
+      return c.json({ ok: true });
     } finally {
       client.release();
     }

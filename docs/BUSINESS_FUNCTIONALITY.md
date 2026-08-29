@@ -919,6 +919,11 @@ LEVEL 3   Ongoing trust        Meera · C-1203 · 99••••7781 · Grey i20
           explicit, logged     ← carpool only
 ```
 
+Parents sharing a circle can open level-1 chat directly. Parents who do not
+share a circle may connect by exchanging an exact anonymous handle outside
+Vaara; the recipient must accept a connection request before chat opens. Vaara
+does not provide a searchable global parent directory.
+
 ### The rules
 
 | Rule | Reason |

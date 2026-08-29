@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   FlatList,
   Pressable,
@@ -10,7 +9,9 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { colors } from "@/constants/theme";
+import { EmptyState, ScreenLoader } from "@/components/ui";
+import { colors, radii, spacing, typography } from "@/constants/theme";
+import { listingPriceLabel } from "@/lib/market-display";
 import { api, type Listing } from "@/lib/api";
 import { getToken } from "@/lib/session";
 
@@ -44,11 +45,7 @@ export default function MyListingsScreen() {
   }
 
   if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
+    return <ScreenLoader label="Loading your listings" />;
   }
 
   return (
@@ -59,10 +56,14 @@ export default function MyListingsScreen() {
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
+          tintColor={colors.primary}
           onRefresh={async () => {
             setRefreshing(true);
-            await load();
-            setRefreshing(false);
+            try {
+              await load();
+            } finally {
+              setRefreshing(false);
+            }
           }}
         />
       }
@@ -70,11 +71,17 @@ export default function MyListingsScreen() {
         listings.length === 0 ? styles.emptyContainer : styles.list
       }
       ListEmptyComponent={
-        <Text style={styles.empty}>You haven't posted any listings yet.</Text>
+        <EmptyState
+          icon="storefront-outline"
+          title="No listings yet"
+          message="Post books, uniforms, or gear your community can reuse."
+          actionLabel="Post a listing"
+          onAction={() => router.push("/(app)/market/new")}
+        />
       }
       renderItem={({ item }) => (
         <Pressable
-          style={styles.card}
+          style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
           onPress={() =>
             router.push({
               pathname: "/(app)/market/[id]",
@@ -84,10 +91,13 @@ export default function MyListingsScreen() {
         >
           <View style={styles.cardMain}>
             <Text style={styles.title}>{item.title}</Text>
+            <Text style={styles.price}>{listingPriceLabel(item)}</Text>
             <Text style={styles.status}>{item.status}</Text>
           </View>
           {item.status === "active" ? (
             <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Mark ${item.title} completed`}
               style={styles.actionBtn}
               onPress={() =>
                 Alert.alert("Mark completed?", "This removes it from discovery.", [
@@ -110,33 +120,50 @@ export default function MyListingsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  centered: { flex: 1, justifyContent: "center", alignItems: "center" },
-  list: { padding: 16 },
-  emptyContainer: { flexGrow: 1, justifyContent: "center", padding: 24 },
-  empty: { textAlign: "center", color: colors.textMuted },
+  list: { padding: spacing.lg },
+  emptyContainer: { flexGrow: 1, padding: spacing.lg },
   card: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: colors.card,
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 10,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
     borderWidth: 1,
     borderColor: colors.border,
   },
+  cardPressed: { backgroundColor: colors.surfaceMuted },
   cardMain: { flex: 1 },
-  title: { fontSize: 15, fontWeight: "600", color: colors.text },
+  title: {
+    ...typography.body,
+    color: colors.text,
+    fontFamily: typography.semibold,
+  },
+  price: {
+    ...typography.supporting,
+    color: colors.navy,
+    fontFamily: typography.bold,
+    marginTop: 2,
+  },
   status: {
-    fontSize: 12,
+    ...typography.caption,
     color: colors.textMuted,
+    fontFamily: typography.regular,
     marginTop: 4,
     textTransform: "capitalize",
   },
   actionBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: colors.primaryLight,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radii.md,
+    backgroundColor: colors.primarySoft,
+    minHeight: 44,
+    justifyContent: "center",
   },
-  actionText: { color: colors.primary, fontWeight: "600", fontSize: 13 },
+  actionText: {
+    ...typography.body,
+    color: colors.primary,
+    fontFamily: typography.semibold,
+    fontSize: 13,
+  },
 });

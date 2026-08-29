@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   Pressable,
   ScrollView,
@@ -10,7 +9,9 @@ import {
   View,
 } from "react-native";
 import { useLocalSearchParams } from "expo-router";
-import { colors } from "@/constants/theme";
+import { SafetyNotice } from "@/components/SafetyNotice";
+import { Button, Card, ScreenLoader, SectionHeader } from "@/components/ui";
+import { colors, radii, spacing, typography } from "@/constants/theme";
 import { api } from "@/lib/api";
 import { getToken } from "@/lib/session";
 
@@ -21,6 +22,7 @@ export default function PractitionerDetailScreen() {
   > | null>(null);
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     getToken().then(async (token) => {
@@ -31,6 +33,7 @@ export default function PractitionerDetailScreen() {
   }, [id]);
 
   async function onRecommend() {
+    setSaving(true);
     try {
       const token = await getToken();
       if (!token) return;
@@ -40,86 +43,118 @@ export default function PractitionerDetailScreen() {
       Alert.alert("Thanks", "Your logistics note was saved.");
     } catch (e) {
       Alert.alert("Error", e instanceof Error ? e.message : "Could not save");
+    } finally {
+      setSaving(false);
     }
   }
 
   if (loading || !detail) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
+    return <ScreenLoader label="Loading practitioner" />;
   }
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.disclaimer}>{detail.disclaimer}</Text>
+      <SafetyNotice tone="warning" message={detail.disclaimer} />
+
       <Text style={styles.title}>{detail.name}</Text>
       <Text style={styles.meta}>
         {detail.category}
         {detail.clinicName ? ` · ${detail.clinicName}` : ""}
       </Text>
 
-      {detail.recommendations.map((rec) => (
-        <View key={rec.id} style={styles.recCard}>
-          <Text style={styles.recAuthor}>{rec.author.anonymousHandle}</Text>
-          {rec.author.contextLabel ? (
-            <Text style={styles.recContext}>{rec.author.contextLabel}</Text>
-          ) : null}
-          {rec.note ? <Text style={styles.recBody}>{rec.note}</Text> : null}
-        </View>
-      ))}
+      <SectionHeader title="Parent notes" />
+      {detail.recommendations.length === 0 ? (
+        <Text style={styles.empty}>
+          No parent logistics notes yet for this practitioner.
+        </Text>
+      ) : (
+        detail.recommendations.map((rec) => (
+          <Card key={rec.id} style={styles.recCard}>
+            <Text style={styles.recAuthor}>{rec.author.anonymousHandle}</Text>
+            {rec.author.contextLabel ? (
+              <Text style={styles.recContext}>{rec.author.contextLabel}</Text>
+            ) : null}
+            {rec.note ? <Text style={styles.recBody}>{rec.note}</Text> : null}
+          </Card>
+        ))
+      )}
 
-      <Text style={styles.section}>Add your note (logistics only)</Text>
+      <SectionHeader title="Add your note" />
+      <Text style={styles.hint}>Logistics only — wait times, manner, fees.</Text>
       <TextInput
         style={styles.input}
         value={note}
         onChangeText={setNote}
         multiline
         placeholder="Wait time, manner, fees — no medical advice"
+        placeholderTextColor={colors.textSubtle}
+        accessibilityLabel="Recommendation note"
       />
-      <Pressable style={styles.btn} onPress={onRecommend}>
-        <Text style={styles.btnText}>Share recommendation</Text>
-      </Pressable>
+      <Button
+        label="Share recommendation"
+        onPress={onRecommend}
+        loading={saving}
+      />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 16, paddingBottom: 32 },
-  centered: { flex: 1, justifyContent: "center", alignItems: "center" },
-  disclaimer: { fontSize: 13, color: colors.textMuted, marginBottom: 12 },
-  title: { fontSize: 22, fontWeight: "700", color: colors.text },
-  meta: { fontSize: 14, color: colors.textMuted, marginTop: 4 },
-  recCard: {
-    marginTop: 12,
-    backgroundColor: colors.card,
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
+  content: { padding: spacing.lg, paddingBottom: spacing.xxxl, gap: spacing.sm },
+  title: {
+    ...typography.screenTitle,
+    color: colors.navy,
+    fontFamily: typography.bold,
+    fontSize: 22,
   },
-  recAuthor: { fontWeight: "600", color: colors.primary },
-  recContext: { fontSize: 12, color: colors.textMuted },
-  recBody: { marginTop: 6, fontSize: 14, lineHeight: 20 },
-  section: { marginTop: 20, fontWeight: "700", color: colors.text },
+  meta: {
+    ...typography.supporting,
+    color: colors.textMuted,
+    fontFamily: typography.regular,
+    textTransform: "capitalize",
+  },
+  empty: {
+    ...typography.supporting,
+    color: colors.textMuted,
+    fontFamily: typography.regular,
+    lineHeight: 20,
+  },
+  recCard: { marginBottom: spacing.xs },
+  recAuthor: {
+    ...typography.body,
+    color: colors.primary,
+    fontFamily: typography.semibold,
+  },
+  recContext: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontFamily: typography.regular,
+    marginTop: 2,
+  },
+  recBody: {
+    ...typography.body,
+    color: colors.text,
+    fontFamily: typography.regular,
+    marginTop: spacing.xs,
+    lineHeight: 20,
+  },
+  hint: {
+    ...typography.supporting,
+    color: colors.textMuted,
+    fontFamily: typography.regular,
+    lineHeight: 18,
+  },
   input: {
-    marginTop: 8,
     backgroundColor: colors.card,
-    borderRadius: 12,
+    borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 12,
-    minHeight: 90,
+    padding: spacing.md,
+    minHeight: 100,
     textAlignVertical: "top",
+    ...typography.body,
+    color: colors.text,
+    fontFamily: typography.regular,
   },
-  btn: {
-    marginTop: 12,
-    backgroundColor: colors.primary,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
-  btnText: { color: "#fff", fontWeight: "700" },
 });

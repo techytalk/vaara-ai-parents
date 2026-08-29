@@ -55,6 +55,13 @@ async function canSubscribe(
   userId: string,
   channel: string
 ): Promise<boolean> {
+  if (channel === `user:${userId}:inbox`) {
+    return true;
+  }
+  if (channel.startsWith("user:")) {
+    return false;
+  }
+
   const client = await pool.connect();
   try {
     if (channel.startsWith("circle:")) {

@@ -319,7 +319,7 @@ CREATE INDEX idx_conversations_user_b ON conversations(user_b_id, last_message_a
 
 `user_a_id < user_b_id` (uuid compare) enforces canonical ordering so `(A,B)` and `(B,A)` map to one row.
 
-**Create conversation (API):** verify shared circle via:
+**Create conversation (API):** contextual messages verify a shared circle via:
 
 ```sql
 SELECT 1 FROM circle_members cm1
@@ -327,6 +327,30 @@ JOIN circle_members cm2 ON cm1.circle_id = cm2.circle_id
 WHERE cm1.user_id = $caller AND cm2.user_id = $peer
 LIMIT 1;
 ```
+
+Parents who do not share a circle can connect only through an exact anonymous
+handle request. There is no fuzzy or app-wide parent directory.
+
+### `parent_connection_requests`
+
+```sql
+CREATE TABLE parent_connection_requests (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  sender_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  recipient_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  introduction text,
+  status text NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'accepted', 'declined', 'cancelled')),
+  conversation_id uuid REFERENCES conversations(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  responded_at timestamptz,
+  CHECK (sender_id <> recipient_id),
+  CHECK (introduction IS NULL OR char_length(introduction) <= 280)
+);
+```
+
+Only one pending request may exist for an unordered parent pair. Acceptance
+creates or resumes the canonical conversation transactionally.
 
 ### `conversation_participants`
 

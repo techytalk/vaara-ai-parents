@@ -22,7 +22,8 @@ type NotificationType =
   | "carpool_update"
   | "expert_session"
   | "school_event"
-  | "playdate_interest";
+  | "playdate_interest"
+  | "connection_request";
 
 export type NotificationDelivery = "immediate" | "digest";
 

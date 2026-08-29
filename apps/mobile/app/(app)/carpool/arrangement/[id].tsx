@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   Pressable,
   ScrollView,
@@ -8,10 +7,19 @@ import {
   Text,
   View,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { DisclosurePrompt } from "@/components/DisclosurePrompt";
-import { colors } from "@/constants/theme";
+import { SafetyNotice } from "@/components/SafetyNotice";
+import {
+  Avatar,
+  Button,
+  ScreenLoader,
+  SectionHeader,
+} from "@/components/ui";
+import { colors, radii, spacing, typography } from "@/constants/theme";
 import { api, peerDisplayName, type CarpoolArrangement } from "@/lib/api";
+import { showParentSafetyActions } from "@/lib/parent-safety";
 import { getToken } from "@/lib/session";
 
 export default function CarpoolArrangementScreen() {
@@ -104,11 +112,7 @@ export default function CarpoolArrangementScreen() {
   }
 
   if (loading || !arrangement) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
+    return <ScreenLoader label="Loading carpool arrangement" />;
   }
 
   const showActivate =
@@ -119,51 +123,73 @@ export default function CarpoolArrangementScreen() {
   return (
     <>
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-        <Text style={styles.disclaimer}>{arrangement.disclaimer}</Text>
+        <SafetyNotice tone="critical" message={arrangement.disclaimer} />
         <Text style={styles.meta}>
           Status: {arrangement.status} · {arrangement.departureTime}
         </Text>
 
-        <Text style={styles.section}>Participants</Text>
+        <SectionHeader title="Participants" />
         {arrangement.participants.map((p) => (
           <View key={p.userId} style={styles.participantRow}>
-            <Text style={styles.handle}>
-              {p.peerView ? peerDisplayName(p.peerView) : p.handle}
-            </Text>
-            <Text style={styles.participantMeta}>
-              {p.role}
-              {p.disclosureConfirmed ? " · identity confirmed" : " · pending"}
-            </Text>
-            {p.peerView?.contactPhone ? (
-              <Text style={styles.contact}>
-                {p.peerView.contactPhone}
-                {p.peerView.vehicleDescription
-                  ? ` · ${p.peerView.vehicleDescription}`
-                  : ""}
+            <Avatar
+              handle={p.peerView ? peerDisplayName(p.peerView) : p.handle}
+              size={40}
+            />
+            <View style={styles.participantCopy}>
+              <Text style={styles.handle}>
+                {p.peerView ? peerDisplayName(p.peerView) : p.handle}
               </Text>
+              <Text style={styles.participantMeta}>
+                {p.role}
+                {p.disclosureConfirmed ? " · identity confirmed" : " · pending"}
+              </Text>
+              {p.peerView?.contactPhone ? (
+                <Text style={styles.contact}>
+                  {p.peerView.contactPhone}
+                  {p.peerView.vehicleDescription
+                    ? ` · ${p.peerView.vehicleDescription}`
+                    : ""}
+                </Text>
+              ) : null}
+            </View>
+            {p.userId !== myUserId ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Safety actions for ${p.handle}`}
+                hitSlop={8}
+                onPress={() =>
+                  showParentSafetyActions({
+                    handle: p.handle,
+                    userId: p.userId,
+                    onBlocked: () => router.back(),
+                  })
+                }
+              >
+                <Ionicons
+                  name="ellipsis-horizontal"
+                  size={20}
+                  color={colors.textMuted}
+                />
+              </Pressable>
             ) : null}
           </View>
         ))}
 
         {arrangement.status !== "active" && !myConfirmed ? (
-          <Pressable
-            style={styles.btn}
+          <Button
+            label="Confirm my identity (level 3)"
             onPress={() => setPromptVisible(true)}
-          >
-            <Text style={styles.btnText}>Confirm my identity (level 3)</Text>
-          </Pressable>
+            style={styles.action}
+          />
         ) : null}
 
         {showActivate ? (
-          <Pressable
-            style={[styles.btn, styles.btnSecondary]}
+          <Button
+            label={activating ? "Activating…" : "Activate carpool"}
             onPress={onActivate}
-            disabled={activating}
-          >
-            <Text style={styles.btnText}>
-              {activating ? "Activating…" : "Activate carpool"}
-            </Text>
-          </Pressable>
+            loading={activating}
+            style={styles.action}
+          />
         ) : null}
 
         <Pressable style={styles.leaveBtn} onPress={onLeave}>
@@ -185,38 +211,53 @@ export default function CarpoolArrangementScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 16, paddingBottom: 32 },
-  centered: { flex: 1, justifyContent: "center", alignItems: "center" },
-  disclaimer: {
-    fontSize: 13,
+  content: { padding: spacing.lg, paddingBottom: spacing.xxxl, gap: spacing.sm },
+  meta: {
+    ...typography.supporting,
     color: colors.textMuted,
-    lineHeight: 18,
-    backgroundColor: "#fee2e2",
-    padding: 12,
-    borderRadius: 10,
+    fontFamily: typography.regular,
+    textTransform: "capitalize",
   },
-  meta: { marginTop: 12, color: colors.textMuted, fontSize: 14 },
-  section: { marginTop: 20, fontWeight: "700", fontSize: 16 },
   participantRow: {
-    marginTop: 10,
     backgroundColor: colors.card,
-    borderRadius: 12,
-    padding: 14,
+    borderRadius: radii.lg,
+    padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.sm,
+    marginBottom: spacing.xs,
   },
-  handle: { fontWeight: "600", color: colors.primary },
-  participantMeta: { fontSize: 13, color: colors.textMuted, marginTop: 4 },
-  contact: { fontSize: 13, marginTop: 6, color: colors.text },
-  btn: {
-    marginTop: 20,
-    backgroundColor: colors.primary,
-    borderRadius: 12,
-    paddingVertical: 14,
+  participantCopy: { flex: 1 },
+  handle: {
+    ...typography.body,
+    color: colors.primary,
+    fontFamily: typography.semibold,
+  },
+  participantMeta: {
+    ...typography.supporting,
+    color: colors.textMuted,
+    fontFamily: typography.regular,
+    marginTop: 2,
+    textTransform: "capitalize",
+  },
+  contact: {
+    ...typography.supporting,
+    color: colors.text,
+    fontFamily: typography.regular,
+    marginTop: spacing.xs,
+  },
+  action: { marginTop: spacing.sm },
+  leaveBtn: {
+    marginTop: spacing.md,
+    minHeight: 44,
     alignItems: "center",
+    justifyContent: "center",
   },
-  btnSecondary: { backgroundColor: "#059669" },
-  btnText: { color: "#fff", fontWeight: "700" },
-  leaveBtn: { marginTop: 16, paddingVertical: 12, alignItems: "center" },
-  leaveText: { color: "#b91c1c", fontWeight: "600" },
+  leaveText: {
+    ...typography.body,
+    color: colors.error,
+    fontFamily: typography.semibold,
+  },
 });

@@ -55,7 +55,7 @@ export function createCarpoolRoutes() {
 
       const { school_id, pin_code, community_key } = child.rows[0];
       const { rows } = await client.query(
-        `SELECT o.id, o.role, o.direction, o.days_of_week, o.departure_time,
+        `SELECT o.id, o.user_id, o.role, o.direction, o.days_of_week, o.departure_time,
                 o.seats, o.notes, u.anonymous_handle
          FROM carpool_offers o
          JOIN users u ON u.id = o.user_id
@@ -78,6 +78,7 @@ export function createCarpoolRoutes() {
           departureTime: row.departure_time,
           seats: row.seats,
           notes: row.notes,
+          ownerUserId: row.user_id,
           ownerHandle: row.anonymous_handle,
         }))
       );

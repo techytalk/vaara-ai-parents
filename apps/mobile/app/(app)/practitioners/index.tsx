@@ -1,14 +1,18 @@
 import { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
   FlatList,
   Pressable,
+  RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { colors } from "@/constants/theme";
+import { Ionicons } from "@expo/vector-icons";
+import { SafetyNotice } from "@/components/SafetyNotice";
+import { Chip, EmptyState, ScreenLoader } from "@/components/ui";
+import { colors, radii, spacing, typography } from "@/constants/theme";
 import { api, type Practitioner } from "@/lib/api";
 import { getToken } from "@/lib/session";
 
@@ -25,64 +29,82 @@ export default function PractitionersScreen() {
   const [category, setCategory] = useState("");
   const [list, setList] = useState<Practitioner[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  async function load() {
+    const token = await getToken();
+    if (!token) return;
+    setList(
+      await api.discoverPractitioners(token, {
+        category: category || undefined,
+      })
+    );
+  }
 
   useEffect(() => {
-    getToken().then(async (token) => {
-      if (!token) return;
-      try {
-        setList(
-          await api.discoverPractitioners(token, {
-            category: category || undefined,
-          })
-        );
-      } finally {
-        setLoading(false);
-      }
-    });
+    load().finally(() => setLoading(false));
   }, [category]);
 
   if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
+    return <ScreenLoader label="Loading local doctors" />;
   }
 
   return (
     <View style={styles.container}>
-      <Text style={styles.disclaimer}>
-        Parent logistics only — not medical advice. Vaara does not verify clinical
-        competence.
-      </Text>
-      <View style={styles.chips}>
-        {CATEGORIES.map((c) => (
-          <Pressable
-            key={c.value || "all"}
-            style={[styles.chip, category === c.value && styles.chipActive]}
-            onPress={() => setCategory(c.value)}
-          >
-            <Text
-              style={[
-                styles.chipText,
-                category === c.value && styles.chipTextActive,
-              ]}
-            >
-              {c.label}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
       <FlatList
         data={list}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            tintColor={colors.primary}
+            onRefresh={async () => {
+              setRefreshing(true);
+              try {
+                await load();
+              } finally {
+                setRefreshing(false);
+              }
+            }}
+          />
+        }
+        contentContainerStyle={
+          list.length === 0 ? styles.emptyContainer : styles.list
+        }
+        ListHeaderComponent={
+          <>
+            <SafetyNotice
+              tone="warning"
+              message="Parent logistics only — not medical advice. Vaara does not verify clinical competence. Never share symptom or medication guidance here."
+            />
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.chipRow}
+            >
+              {CATEGORIES.map((c) => (
+                <Chip
+                  key={c.value || "all"}
+                  label={c.label}
+                  selected={category === c.value}
+                  onPress={() => setCategory(c.value)}
+                />
+              ))}
+            </ScrollView>
+          </>
+        }
         ListEmptyComponent={
-          <Text style={styles.empty}>No recommendations in your pin code yet.</Text>
+          <EmptyState
+            icon="medkit-outline"
+            title="No recommendations yet"
+            message="Parents in your pin code can add logistics notes about local doctors and clinics."
+          />
         }
         renderItem={({ item }) => (
           <Pressable
-            style={styles.row}
+            style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+            accessibilityRole="button"
+            accessibilityLabel={`${item.name}, ${item.recommendationCount} parent recommendations`}
             onPress={() =>
               router.push({
                 pathname: "/(app)/practitioners/[id]",
@@ -90,11 +112,17 @@ export default function PractitionersScreen() {
               })
             }
           >
-            <Text style={styles.name}>{item.name}</Text>
-            <Text style={styles.meta}>
-              {item.category} · {item.recommendationCount} parent
-              {item.recommendationCount !== 1 ? "s" : ""} recommended
-            </Text>
+            <View style={styles.iconWrap}>
+              <Ionicons name="medkit-outline" size={20} color={colors.teal} />
+            </View>
+            <View style={styles.copy}>
+              <Text style={styles.name}>{item.name}</Text>
+              <Text style={styles.meta}>
+                {item.category} · {item.recommendationCount} parent
+                {item.recommendationCount !== 1 ? "s" : ""} recommended
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.textSubtle} />
           </Pressable>
         )}
       />
@@ -104,36 +132,40 @@ export default function PractitionersScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  centered: { flex: 1, justifyContent: "center", alignItems: "center" },
-  disclaimer: {
-    padding: 16,
-    fontSize: 13,
-    color: colors.textMuted,
-    lineHeight: 18,
-    backgroundColor: "#fef3c7",
-  },
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: 8, padding: 12 },
-  chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
-  },
-  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipText: { fontSize: 12, fontWeight: "600", color: colors.textMuted },
-  chipTextActive: { color: "#fff" },
-  list: { padding: 16 },
-  empty: { textAlign: "center", color: colors.textMuted, marginTop: 24 },
+  list: { padding: spacing.lg, paddingTop: spacing.sm },
+  emptyContainer: { flexGrow: 1, padding: spacing.lg },
+  chipRow: { gap: spacing.xs, paddingBottom: spacing.md },
   row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
     backgroundColor: colors.card,
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 8,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  name: { fontSize: 16, fontWeight: "600", color: colors.text },
-  meta: { fontSize: 13, color: colors.textMuted, marginTop: 4 },
+  rowPressed: { backgroundColor: colors.surfaceMuted },
+  iconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: `${colors.teal}18`,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  copy: { flex: 1 },
+  name: {
+    ...typography.body,
+    color: colors.text,
+    fontFamily: typography.semibold,
+  },
+  meta: {
+    ...typography.supporting,
+    color: colors.textMuted,
+    fontFamily: typography.regular,
+    marginTop: 2,
+    textTransform: "capitalize",
+  },
 });

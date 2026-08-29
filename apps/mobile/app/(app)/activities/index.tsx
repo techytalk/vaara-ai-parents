@@ -21,6 +21,8 @@ import {
   SectionHeader,
 } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
+import { trackEvent } from "@/lib/analytics";
+import { getCoordinationShortcuts } from "@/constants/discovery-shortcuts";
 import { api, type Activity, type ActivityCategory } from "@/lib/api";
 import { getToken } from "@/lib/session";
 
@@ -140,6 +142,8 @@ export default function DiscoverScreen() {
     });
   }
 
+  const coordinationShortcuts = getCoordinationShortcuts();
+
   if (loading) {
     return <ScreenLoader label="Finding tutors and activities" />;
   }
@@ -213,6 +217,46 @@ export default function DiscoverScreen() {
         </ScrollView>
 
         {error ? <InlineError message={error} onRetry={load} /> : null}
+
+        {coordinationShortcuts.length > 0 ? (
+          <View style={styles.section}>
+            <SectionHeader title="Family & local care" />
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.coordinationRow}
+            >
+              {coordinationShortcuts.map((shortcut) => (
+                <Pressable
+                  key={shortcut.key}
+                  style={styles.coordinationCard}
+                  accessibilityRole="button"
+                  accessibilityLabel={shortcut.label}
+                  onPress={() => {
+                    trackEvent("home_shortcut_opened", {
+                      shortcut: shortcut.key,
+                    });
+                    router.push(shortcut.route as never);
+                  }}
+                >
+                  <View
+                    style={[
+                      styles.coordinationIcon,
+                      { backgroundColor: `${shortcut.color}18` },
+                    ]}
+                  >
+                    <Ionicons
+                      name={shortcut.icon}
+                      size={22}
+                      color={shortcut.color}
+                    />
+                  </View>
+                  <Text style={styles.coordinationLabel}>{shortcut.label}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        ) : null}
 
         {filter === "all" ? (
           <View style={styles.section}>
@@ -377,6 +421,30 @@ const styles = StyleSheet.create({
   },
   filterRow: { gap: spacing.xs, paddingVertical: 2 },
   section: { gap: spacing.sm },
+  coordinationRow: { gap: spacing.sm, paddingRight: spacing.lg },
+  coordinationCard: {
+    width: 112,
+    padding: spacing.sm,
+    borderRadius: radii.lg,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  coordinationIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  coordinationLabel: {
+    ...typography.caption,
+    color: colors.text,
+    fontFamily: typography.semibold,
+    textAlign: "center",
+  },
   sectionEmpty: {
     ...typography.supporting,
     color: colors.textMuted,

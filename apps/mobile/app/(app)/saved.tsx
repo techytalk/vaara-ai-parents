@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  ActivityIndicator,
   FlatList,
   Pressable,
   RefreshControl,
@@ -9,7 +8,8 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { colors } from "@/constants/theme";
+import { Avatar, EmptyState, ScreenLoader } from "@/components/ui";
+import { colors, radii, spacing, typography } from "@/constants/theme";
 import { api, type SavedPost } from "@/lib/api";
 import { getToken } from "@/lib/session";
 
@@ -33,11 +33,7 @@ export default function SavedScreen() {
   }, [load]);
 
   if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
+    return <ScreenLoader label="Loading saved posts" />;
   }
 
   return (
@@ -48,23 +44,37 @@ export default function SavedScreen() {
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
+          tintColor={colors.primary}
           onRefresh={async () => {
             setRefreshing(true);
-            await load();
-            setRefreshing(false);
+            try {
+              await load();
+            } finally {
+              setRefreshing(false);
+            }
           }}
         />
       }
-      contentContainerStyle={posts.length === 0 ? styles.emptyContainer : styles.list}
+      contentContainerStyle={
+        posts.length === 0 ? styles.emptyContainer : styles.list
+      }
       ListEmptyComponent={
-        <Text style={styles.empty}>
-          No saved posts yet. Tap the bookmark on a circle post to save it here.
-        </Text>
+        <EmptyState
+          icon="bookmark-outline"
+          title="No saved posts"
+          message="Tap the bookmark on a circle post to save helpful advice here."
+        />
       }
       renderItem={({ item }) => (
         <Pressable
-          style={styles.card}
+          style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
           disabled={item.unavailable || !item.circleId}
+          accessibilityRole="button"
+          accessibilityLabel={
+            item.unavailable
+              ? "Saved post unavailable"
+              : `Saved post by ${item.authorHandle}`
+          }
           onPress={() => {
             if (!item.circleId) return;
             router.push({
@@ -74,11 +84,16 @@ export default function SavedScreen() {
           }}
         >
           {item.unavailable ? (
-            <Text style={styles.unavailable}>This post is no longer available</Text>
+            <Text style={styles.unavailable}>
+              This post is no longer available
+            </Text>
           ) : (
             <>
-              <Text style={styles.handle}>{item.authorHandle}</Text>
-              <Text style={styles.body} numberOfLines={3}>
+              <View style={styles.cardHeader}>
+                <Avatar handle={item.authorHandle ?? "Parent"} size={32} />
+                <Text style={styles.handle}>{item.authorHandle ?? "Parent"}</Text>
+              </View>
+              <Text style={styles.body} numberOfLines={4}>
                 {item.body}
               </Text>
             </>
@@ -91,19 +106,38 @@ export default function SavedScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  centered: { flex: 1, justifyContent: "center", alignItems: "center" },
-  list: { padding: 16 },
-  emptyContainer: { flexGrow: 1, justifyContent: "center", padding: 24 },
-  empty: { textAlign: "center", color: colors.textMuted, fontSize: 15, lineHeight: 22 },
+  list: { padding: spacing.lg },
+  emptyContainer: { flexGrow: 1, padding: spacing.lg },
   card: {
     backgroundColor: colors.card,
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 10,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  handle: { fontSize: 13, fontWeight: "600", color: colors.primary, marginBottom: 6 },
-  body: { fontSize: 15, color: colors.text, lineHeight: 22 },
-  unavailable: { fontSize: 14, color: colors.textMuted, fontStyle: "italic" },
+  cardPressed: { backgroundColor: colors.surfaceMuted },
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  handle: {
+    ...typography.supporting,
+    color: colors.primary,
+    fontFamily: typography.semibold,
+  },
+  body: {
+    ...typography.body,
+    color: colors.text,
+    fontFamily: typography.regular,
+    lineHeight: 22,
+  },
+  unavailable: {
+    ...typography.body,
+    color: colors.textMuted,
+    fontFamily: typography.regular,
+    fontStyle: "italic",
+  },
 });

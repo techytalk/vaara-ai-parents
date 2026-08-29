@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Pressable,
   RefreshControl,
@@ -19,7 +19,11 @@ import {
   SectionHeader,
 } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
-import { api, type School } from "@/lib/api";
+import {
+  api,
+  type Location,
+  type SchoolListItem,
+} from "@/lib/api";
 import { getToken } from "@/lib/session";
 
 type SchoolsTab = "discover" | "reviews";
@@ -36,11 +40,9 @@ function StarRating({ value }: { value: number | null | undefined }) {
 
 function SchoolCard({
   school,
-  rating,
   onPress,
 }: {
-  school: School;
-  rating?: number | null;
+  school: SchoolListItem;
   onPress: () => void;
 }) {
   return (
@@ -57,7 +59,7 @@ function SchoolCard({
           {[school.city, school.pinCode].filter(Boolean).join(" · ")}
         </Text>
         <View style={styles.schoolFooter}>
-          <StarRating value={rating} />
+          <StarRating value={school.ratingAvg} />
           {school.verified ? (
             <View style={styles.verifiedPill}>
               <Ionicons
@@ -82,43 +84,64 @@ export default function SchoolsBrowseScreen() {
   const insets = useSafeAreaInsets();
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<SchoolsTab>("discover");
-  const [results, setResults] = useState<School[]>([]);
-  const [ratings, setRatings] = useState<Record<string, number | null>>({});
+  const [results, setResults] = useState<SchoolListItem[]>([]);
+  const [location, setLocation] = useState<Location | null>(null);
+  const [locationRequired, setLocationRequired] = useState(false);
   const [loading, setLoading] = useState(false);
   const [bootLoading, setBootLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const requestId = useRef(0);
 
-  const searchSchools = useCallback(async (q: string) => {
+  const loadSchools = useCallback(async (
+    q: string,
+    selectedTab: SchoolsTab,
+    scope: Location | null
+  ) => {
+    const currentRequest = ++requestId.current;
     const trimmed = q.trim();
-    if (trimmed.length < 2) {
-      setResults([]);
-      setRatings({});
+    if (trimmed.length === 1) {
       return;
     }
     setLoading(true);
     setError(null);
+    setLocationRequired(false);
     try {
       const token = await getToken();
       if (!token) return;
-      const schools = await api.searchSchools(token, { q: trimmed });
-      setResults(schools);
-      const ratingEntries = await Promise.all(
-        schools.slice(0, 12).map(async (school) => {
-          try {
-            const profile = await api.getSchoolProfile(token, school.id);
-            return [school.id, profile.ratingAvg] as const;
-          } catch {
-            return [school.id, null] as const;
-          }
-        })
-      );
-      setRatings(Object.fromEntries(ratingEntries));
+      const sort = selectedTab === "reviews" ? "rating" : undefined;
+      const schools =
+        trimmed.length >= 2
+          ? await api.searchSchools(token, {
+              q: trimmed,
+              city: scope?.city ?? undefined,
+              pin: scope?.pinCode ?? undefined,
+              sort: sort ?? "relevance",
+              limit: 30,
+            })
+          : await api.getNearbySchools(token, {
+              city: scope?.city ?? undefined,
+              pin: scope?.pinCode ?? undefined,
+              sort: sort ?? "nearby",
+              limit: 30,
+            });
+      if (currentRequest === requestId.current) {
+        setResults(schools);
+      }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Search failed");
+      const message =
+        cause instanceof Error ? cause.message : "Could not load schools";
+      if (message.includes("pin code or city")) {
+        setLocationRequired(true);
+        setResults([]);
+      } else {
+        setError(message);
+      }
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (currentRequest === requestId.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, []);
 
@@ -129,34 +152,22 @@ export default function SchoolsBrowseScreen() {
         return;
       }
       try {
-        const [children, location] = await Promise.all([
-          api.getChildren(token).catch(() => []),
-          api.getLocation(token).catch(() => null),
-        ]);
-        const seed =
-          children[0]?.school?.city ??
-          location?.locality ??
-          location?.pinCode ??
-          "";
-        if (seed.length >= 2) {
-          setQuery(seed);
-          await searchSchools(seed);
-        }
+        const currentLocation = await api.getLocation(token).catch(() => null);
+        setLocation(currentLocation);
+        await loadSchools("", "discover", currentLocation);
       } finally {
         setBootLoading(false);
       }
     });
-  }, [searchSchools]);
+  }, [loadSchools]);
 
-  const displayed = useMemo(() => {
-    const list = [...results];
-    if (tab === "reviews") {
-      return list.sort(
-        (a, b) => (ratings[b.id] ?? 0) - (ratings[a.id] ?? 0)
-      );
-    }
-    return list;
-  }, [results, ratings, tab]);
+  useEffect(() => {
+    if (bootLoading) return;
+    const timer = setTimeout(() => {
+      void loadSchools(query, tab, location);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [bootLoading, loadSchools, location, query, tab]);
 
   if (bootLoading) return <ScreenLoader label="Loading schools" />;
 
@@ -174,7 +185,7 @@ export default function SchoolsBrowseScreen() {
             tintColor={colors.primary}
             onRefresh={async () => {
               setRefreshing(true);
-              await searchSchools(query);
+              await loadSchools(query, tab, location);
             }}
           />
         }
@@ -189,7 +200,7 @@ export default function SchoolsBrowseScreen() {
           placeholder="Search schools by name or location"
           value={query}
           onChangeText={setQuery}
-          onSubmitEditing={() => searchSchools(query)}
+          onSubmitEditing={() => loadSchools(query, tab, location)}
           returnKeyType="search"
         />
 
@@ -206,32 +217,50 @@ export default function SchoolsBrowseScreen() {
           />
         </View>
 
-        {error ? <InlineError message={error} onRetry={() => searchSchools(query)} /> : null}
+        {error ? (
+          <InlineError
+            message={error}
+            onRetry={() => loadSchools(query, tab, location)}
+          />
+        ) : null}
         {loading ? <ScreenLoader label="Searching schools" /> : null}
 
-        {!loading && displayed.length === 0 ? (
+        {!loading && results.length === 0 ? (
           <EmptyState
-            icon="school-outline"
-            title={query.length >= 2 ? "No schools found" : "Search for a school"}
+            icon={locationRequired ? "location-outline" : "school-outline"}
+            title={
+              locationRequired
+                ? "Add your location"
+                : query.length >= 2
+                  ? "No schools found"
+                  : "No nearby schools yet"
+            }
             message={
-              query.length >= 2
+              locationRequired
+                ? "Add your pin code or city to discover relevant schools."
+                : query.length >= 2
                 ? "Try a different name or nearby area."
-                : "Enter at least two characters to find schools near you."
+                : "Schools matching your pin code or city will appear here."
+            }
+            actionLabel={locationRequired ? "Add location" : undefined}
+            onAction={
+              locationRequired
+                ? () => router.push("/onboarding/location")
+                : undefined
             }
           />
         ) : null}
 
-        {!loading && displayed.length > 0 ? (
+        {!loading && results.length > 0 ? (
           <View style={styles.section}>
             <SectionHeader
               title={tab === "reviews" ? "Top rated nearby" : "Nearby schools"}
             />
             <View style={styles.list}>
-              {displayed.map((school) => (
+              {results.map((school) => (
                 <SchoolCard
                   key={school.id}
                   school={school}
-                  rating={ratings[school.id]}
                   onPress={() =>
                     router.push({
                       pathname: "/(app)/schools/[id]",

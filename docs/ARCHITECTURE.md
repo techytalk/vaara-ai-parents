@@ -159,13 +159,18 @@ Parents can **post** and **communicate** with each other in three ways. All chan
 
 ### 4.4 Direct messages (1:1)
 
-**Eligibility:** Parent A can message Parent B only if they share **at least one circle** (any type). This keeps conversations within a trusted local/curriculum/community context.
+**Eligibility:** Parents sharing at least one circle can message immediately.
+Parents without a shared circle can connect only through an exact anonymous
+handle request that the recipient accepts. Vaara does not expose a fuzzy or
+global parent directory.
 
 **Starting a conversation:**
 
 1. From **circle member list** → tap parent → “Message”
 2. From **post or reply** → “Message parent”
-3. API creates or returns existing `conversation` for the pair
+3. From **New Message** → choose a shared-circle suggestion
+4. Enter an exact anonymous handle → send an accept/decline request
+5. API creates or returns the canonical `conversation` for the pair
 
 **Conversation UI:**
 

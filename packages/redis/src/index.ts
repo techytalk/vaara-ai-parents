@@ -7,6 +7,7 @@ export {
   circleChannel,
   conversationChannel,
   topicChannel,
+  userInboxChannel,
 } from "./channels.js";
 export {
   feedCacheKey,
@@ -20,6 +21,7 @@ export {
   publishCircleEvent,
   publishConversationEvent,
   publishTopicEvent,
+  publishUserInboxEvent,
   type RealtimeEvent,
 } from "./pubsub.js";
 export {

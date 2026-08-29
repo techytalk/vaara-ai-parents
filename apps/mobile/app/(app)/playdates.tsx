@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   Pressable,
   ScrollView,
@@ -8,9 +7,20 @@ import {
   Text,
   View,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { colors } from "@/constants/theme";
+import { SafetyNotice } from "@/components/SafetyNotice";
+import {
+  Avatar,
+  Button,
+  Chip,
+  EmptyState,
+  ScreenLoader,
+  SectionHeader,
+} from "@/components/ui";
+import { colors, radii, spacing, typography } from "@/constants/theme";
 import { api, type Child, type PlaydateMatch } from "@/lib/api";
+import { showParentSafetyActions } from "@/lib/parent-safety";
 import { getToken } from "@/lib/session";
 
 const AGE_BANDS = [
@@ -67,7 +77,7 @@ export default function PlaydatesScreen() {
     Alert.alert("Opted in", "We'll show matches when enough families are nearby.");
   }
 
-  async function connect(peerUserId: string) {
+  async function connect(peerUserId: string, peerHandle: string) {
     const token = await getToken();
     if (!token) return;
     const result = await api.connectPlaydate(token, peerUserId);
@@ -75,88 +85,115 @@ export default function PlaydatesScreen() {
       pathname: "/(app)/messages/[conversationId]",
       params: {
         conversationId: result.conversationId,
-        peerHandle: result.peer.anonymousHandle,
+        peerHandle: result.peer.anonymousHandle ?? peerHandle,
       },
     });
   }
 
   if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
+    return <ScreenLoader label="Loading playdates" />;
   }
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.disclaimer}>
-        Playdates are opt-in only. You'll only see anonymous handles and age bands
-        — never a child's name or school. Share first name and flat in chat before
-        meeting.
-      </Text>
+      <SafetyNotice
+        tone="info"
+        message="Playdates are opt-in only. You'll see anonymous handles and age bands — never a child's name, exact age, or school. Arrange meetups only after mutual identity sharing in messages."
+      />
 
-      <Text style={styles.label}>Child</Text>
-      {children.map((child) => (
-        <Pressable
-          key={child.id}
-          style={[
-            styles.chip,
-            selectedChild === child.id && styles.chipActive,
-          ]}
-          onPress={() => setSelectedChild(child.id)}
-        >
-          <Text
-            style={[
-              styles.chipText,
-              selectedChild === child.id && styles.chipTextActive,
-            ]}
-          >
-            {child.nickname}
-          </Text>
-        </Pressable>
-      ))}
-
-      <Text style={styles.label}>Age band</Text>
-      <View style={styles.row}>
-        {AGE_BANDS.map((band) => (
-          <Pressable
-            key={band.value}
-            style={[styles.chip, ageBand === band.value && styles.chipActive]}
-            onPress={() => setAgeBand(band.value)}
-          >
-            <Text
-              style={[
-                styles.chipText,
-                ageBand === band.value && styles.chipTextActive,
-              ]}
-            >
-              {band.label}
-            </Text>
-          </Pressable>
+      <SectionHeader title="Opt in" />
+      <Text style={styles.fieldLabel}>Child</Text>
+      <View style={styles.chipRow}>
+        {children.map((child) => (
+          <Chip
+            key={child.id}
+            label={child.nickname}
+            selected={selectedChild === child.id}
+            onPress={() => setSelectedChild(child.id)}
+          />
         ))}
       </View>
 
-      <Pressable style={styles.btn} onPress={onOptIn}>
-        <Text style={styles.btnText}>Opt in for playdates</Text>
-      </Pressable>
+      <Text style={styles.fieldLabel}>Age band</Text>
+      <View style={styles.chipRow}>
+        {AGE_BANDS.map((band) => (
+          <Chip
+            key={band.value}
+            label={band.label}
+            selected={ageBand === band.value}
+            onPress={() => setAgeBand(band.value)}
+          />
+        ))}
+      </View>
 
+      <Text style={styles.fieldLabel}>Matching scope</Text>
+      <View style={styles.chipRow}>
+        <Chip
+          label="My community"
+          selected={scope === "community"}
+          onPress={() => setScope("community")}
+        />
+        <Chip
+          label="My pin code"
+          selected={scope === "pin"}
+          onPress={() => setScope("pin")}
+        />
+      </View>
+
+      <Button label="Opt in for playdates" onPress={onOptIn} style={styles.cta} />
+
+      <SectionHeader title="Matches" />
       {!available ? (
-        <Text style={styles.meta}>{reason ?? "No matches yet"}</Text>
+        <EmptyState
+          icon="happy-outline"
+          title="No matches yet"
+          message={reason ?? "Opt in above and we'll surface nearby families when enough parents are available."}
+        />
+      ) : matches.length === 0 ? (
+        <EmptyState
+          icon="happy-outline"
+          title="Waiting for families"
+          message="You're opted in. Matches appear here when other parents in your scope join."
+        />
       ) : (
-        <>
-          <Text style={styles.section}>Matches ({matches.length})</Text>
-          {matches.map((m) => (
+        matches.map((m) => (
+          <View key={m.userId} style={styles.matchRow}>
             <Pressable
-              key={m.userId}
-              style={styles.matchRow}
-              onPress={() => connect(m.userId)}
+              style={styles.matchMain}
+              onPress={() => connect(m.userId, m.anonymousHandle)}
             >
-              <Text style={styles.handle}>{m.anonymousHandle}</Text>
-              <Text style={styles.meta}>Age band {m.ageBand.replace("_", "–")}</Text>
+              <Avatar handle={m.anonymousHandle} size={40} />
+              <View style={styles.matchCopy}>
+                <Text style={styles.handle}>{m.anonymousHandle}</Text>
+                <Text style={styles.meta}>
+                  Age band {m.ageBand.replace("_", "–")}
+                </Text>
+              </View>
             </Pressable>
-          ))}
-        </>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Safety actions for ${m.anonymousHandle}`}
+              hitSlop={8}
+              onPress={() =>
+                showParentSafetyActions({
+                  handle: m.anonymousHandle,
+                  userId: m.userId,
+                  onBlocked: () => {
+                    setMatches((current) =>
+                      current.filter((match) => match.userId !== m.userId)
+                    );
+                  },
+                })
+              }
+            >
+              <Ionicons
+                name="ellipsis-horizontal"
+                size={20}
+                color={colors.textMuted}
+              />
+            </Pressable>
+          </View>
+        ))
       )}
     </ScrollView>
   );
@@ -164,40 +201,46 @@ export default function PlaydatesScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 16, paddingBottom: 32 },
-  centered: { flex: 1, justifyContent: "center", alignItems: "center" },
-  disclaimer: { fontSize: 14, color: colors.textMuted, lineHeight: 20 },
-  label: { marginTop: 16, fontWeight: "600", color: colors.textMuted },
-  row: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8 },
-  chip: {
-    marginTop: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
+  content: { padding: spacing.lg, paddingBottom: spacing.xxxl, gap: spacing.sm },
+  fieldLabel: {
+    ...typography.supporting,
+    color: colors.textMuted,
+    fontFamily: typography.semibold,
+    marginTop: spacing.xs,
   },
-  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipText: { fontWeight: "600", color: colors.textMuted },
-  chipTextActive: { color: "#fff" },
-  btn: {
-    marginTop: 20,
-    backgroundColor: colors.primary,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: "center",
+  chipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
   },
-  btnText: { color: "#fff", fontWeight: "700" },
-  meta: { marginTop: 16, color: colors.textMuted, lineHeight: 20 },
-  section: { marginTop: 24, fontWeight: "700", fontSize: 16 },
+  cta: { marginTop: spacing.sm },
   matchRow: {
-    marginTop: 10,
     backgroundColor: colors.card,
-    borderRadius: 12,
-    padding: 14,
+    borderRadius: radii.lg,
+    padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginBottom: spacing.xs,
   },
-  handle: { fontWeight: "600", color: colors.primary },
+  matchMain: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  matchCopy: { flex: 1 },
+  handle: {
+    ...typography.body,
+    color: colors.primary,
+    fontFamily: typography.semibold,
+  },
+  meta: {
+    ...typography.supporting,
+    color: colors.textMuted,
+    fontFamily: typography.regular,
+    marginTop: 2,
+  },
 });

@@ -1,10 +1,11 @@
 import {
   Modal,
-  Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { Button } from "@/components/ui";
+import { colors, radii, spacing, typography } from "@/constants/theme";
 
 type Props = {
   visible: boolean;
@@ -37,14 +38,15 @@ export function UpdatePrompt({
             latest features and fixes.
           </Text>
 
-          <Pressable style={styles.primaryButton} onPress={onUpdate}>
-            <Text style={styles.primaryButtonText}>Update</Text>
-          </Pressable>
+          <Button label="Update" onPress={onUpdate} />
 
           {!forced ? (
-            <Pressable style={styles.secondaryButton} onPress={onDismiss}>
-              <Text style={styles.secondaryButtonText}>Not now</Text>
-            </Pressable>
+            <Button
+              label="Not now"
+              variant="ghost"
+              onPress={onDismiss}
+              style={styles.secondary}
+            />
           ) : null}
         </View>
       </View>
@@ -58,48 +60,29 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0, 0, 0, 0.45)",
     justifyContent: "center",
     alignItems: "center",
-    padding: 24,
+    padding: spacing.xl,
   },
   card: {
     width: "100%",
     maxWidth: 340,
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 24,
+    backgroundColor: colors.card,
+    borderRadius: radii.xl,
+    padding: spacing.xl,
     borderWidth: 1,
-    borderColor: "#e2e4ef",
+    borderColor: colors.border,
+    gap: spacing.sm,
   },
   title: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#1a1a2e",
-    marginBottom: 8,
+    ...typography.screenTitle,
+    color: colors.text,
+    fontFamily: typography.bold,
   },
   body: {
-    fontSize: 15,
+    ...typography.body,
     lineHeight: 22,
-    color: "#5c5c7a",
-    marginBottom: 20,
+    color: colors.textMuted,
+    fontFamily: typography.regular,
+    marginBottom: spacing.xs,
   },
-  primaryButton: {
-    backgroundColor: "#4f46e5",
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
-  primaryButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  secondaryButton: {
-    marginTop: 12,
-    paddingVertical: 10,
-    alignItems: "center",
-  },
-  secondaryButtonText: {
-    color: "#5c5c7a",
-    fontSize: 15,
-    fontWeight: "500",
-  },
+  secondary: { marginTop: spacing.xs },
 });

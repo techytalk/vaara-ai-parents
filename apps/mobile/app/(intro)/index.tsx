@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   FlatList,
   Image,
@@ -17,6 +17,7 @@ import { VaaraLogo } from "@/components/VaaraLogo";
 import { Button, Card } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import { completeIntro } from "@/lib/intro";
+import { trackEvent } from "@/lib/analytics";
 
 type IntroScene = {
   key: string;
@@ -108,14 +109,26 @@ export default function IntroScreen() {
   const [page, setPage] = useState(0);
   const compact = height < 720;
 
+  useEffect(() => {
+    trackEvent("intro_started");
+  }, []);
+
   function goTo(index: number) {
     listRef.current?.scrollToIndex({ index, animated: true });
     setPage(index);
   }
 
   async function finish(destination: "/(auth)/login" | "/(auth)/register") {
+    trackEvent("intro_completed", {
+      destination: destination.includes("login") ? "login" : "register",
+    });
     await completeIntro();
     router.replace(destination);
+  }
+
+  function skipIntro() {
+    trackEvent("intro_skipped");
+    void completeIntro().then(() => router.replace("/(auth)/register"));
   }
 
   const onViewableItemsChanged = useRef(
@@ -151,7 +164,7 @@ export default function IntroScreen() {
                   accessibilityRole="button"
                   accessibilityLabel="Skip introduction"
                   hitSlop={10}
-                  onPress={() => finish("/(auth)/register")}
+                  onPress={skipIntro}
                 >
                   <Text style={styles.skip}>Skip</Text>
                 </Pressable>

@@ -467,6 +467,36 @@ export function createMeRoutes() {
     }
   });
 
+  app.get("/stats", async (c) => {
+    const userId = c.get("user").sub;
+    const client = await pool.connect();
+    try {
+      const { rows } = await client.query<{
+        circle_count: number;
+        saved_post_count: number;
+        helpful_received_count: number;
+      }>(
+        `SELECT
+           (SELECT COUNT(*)::int FROM circle_members WHERE user_id = $1) AS circle_count,
+           (SELECT COUNT(*)::int FROM saved_items
+            WHERE user_id = $1 AND item_type = 'post') AS saved_post_count,
+           (SELECT COUNT(*)::int
+            FROM post_helpful_marks phm
+            JOIN circle_posts cp ON cp.id = phm.post_id
+            WHERE cp.author_id = $1 AND phm.user_id <> $1) AS helpful_received_count`,
+        [userId]
+      );
+      const row = rows[0];
+      return c.json({
+        circleCount: row?.circle_count ?? 0,
+        savedPostCount: row?.saved_post_count ?? 0,
+        helpfulReceivedCount: row?.helpful_received_count ?? 0,
+      });
+    } finally {
+      client.release();
+    }
+  });
+
   app.get("/notification-prefs", async (c) => {
     const userId = c.get("user").sub;
     const client = await pool.connect();
@@ -959,6 +989,38 @@ export function createMeRoutes() {
     }
   });
 
+  app.post("/reports", async (c) => {
+    const userId = c.get("user").sub;
+    const body = await c.req.json<{ targetUserId?: string; reason?: string }>();
+    const targetUserId = body.targetUserId?.trim();
+    if (!targetUserId) {
+      return c.json({ error: "targetUserId is required" }, 400);
+    }
+    if (targetUserId === userId) {
+      return c.json({ error: "Cannot report yourself" }, 400);
+    }
+
+    const reason = body.reason?.trim() || "Reported from the app";
+    const client = await pool.connect();
+    try {
+      const exists = await client.query("SELECT id FROM users WHERE id = $1", [
+        targetUserId,
+      ]);
+      if (exists.rows.length === 0) {
+        return c.json({ error: "User not found" }, 404);
+      }
+
+      await client.query(
+        `INSERT INTO reports (reporter_id, target_user_id, reason)
+         VALUES ($1, $2, $3)`,
+        [userId, targetUserId, reason]
+      );
+      return c.json({ ok: true });
+    } finally {
+      client.release();
+    }
+  });
+
   app.post("/blocks/:userId", async (c) => {
     const userId = c.get("user").sub;
     const blockedId = c.req.param("userId");
@@ -980,6 +1042,32 @@ export function createMeRoutes() {
         `INSERT INTO user_blocks (blocker_id, blocked_id)
          VALUES ($1, $2)
          ON CONFLICT DO NOTHING`,
+        [userId, blockedId]
+      );
+      await client.query(
+        `UPDATE conversation_participants cp
+         SET hidden = true
+         FROM conversations c
+         WHERE cp.conversation_id = c.id
+           AND cp.user_id = $1
+           AND (
+             (c.user_a_id = $1 AND c.user_b_id = $2)
+             OR (c.user_a_id = $2 AND c.user_b_id = $1)
+           )`,
+        [userId, blockedId]
+      );
+      await client.query(
+        `UPDATE parent_connection_requests
+         SET status = CASE
+               WHEN sender_id = $1 THEN 'cancelled'
+               ELSE 'declined'
+             END,
+             responded_at = now()
+         WHERE status = 'pending'
+           AND (
+             (sender_id = $1 AND recipient_id = $2)
+             OR (sender_id = $2 AND recipient_id = $1)
+           )`,
         [userId, blockedId]
       );
 

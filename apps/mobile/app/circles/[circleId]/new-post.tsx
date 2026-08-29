@@ -1,6 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Image,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -8,17 +11,22 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useHeaderHeight } from "@react-navigation/elements";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system";
 import {
-  cardShadow,
   POST_TAGS,
-  PrimaryButton,
   theme,
   type PostTagValue,
 } from "@/components/circles/ui";
+import {
+  AudienceSheet,
+  audienceSummary,
+  TopicsSheet,
+} from "@/components/circles/PostComposerPickers";
 import { api, type Circle } from "@/lib/api";
 import { getToken } from "@/lib/session";
 
@@ -33,6 +41,24 @@ type PendingMedia = {
   durationMs?: number;
 };
 
+const TAG_ORDER: PostTagValue[] = [
+  "general",
+  "question",
+  "recommendation",
+  "heads_up",
+];
+
+const ORDERED_TAGS = TAG_ORDER.map(
+  (value) => POST_TAGS.find((t) => t.value === value)!
+);
+
+const PLACEHOLDERS: Record<PostTagValue, string> = {
+  general: "What's on your mind?",
+  question: "What would you like to ask other parents?",
+  recommendation: "Share what worked for you and why…",
+  heads_up: "What should other parents know about?",
+};
+
 export default function NewPostScreen() {
   const { circleId, title, compose, tag: tagParam } = useLocalSearchParams<{
     circleId: string;
@@ -41,6 +67,9 @@ export default function NewPostScreen() {
     tag?: string;
   }>();
   const router = useRouter();
+  const navigation = useNavigation();
+  const headerHeight = useHeaderHeight();
+  const insets = useSafeAreaInsets();
   const [body, setBody] = useState("");
   const [tag, setTag] = useState<PostTagValue>(() => {
     if (tagParam === "recommendation" || tagParam === "question" || tagParam === "heads_up" || tagParam === "general") {
@@ -65,6 +94,8 @@ export default function NewPostScreen() {
   >([]);
   const [selectedTopicSlugs, setSelectedTopicSlugs] = useState<string[]>([]);
   const [composeHandled, setComposeHandled] = useState(false);
+  const [audienceOpen, setAudienceOpen] = useState(false);
+  const [topicsOpen, setTopicsOpen] = useState(false);
 
   useEffect(() => {
     getToken().then(async (token) => {
@@ -84,33 +115,6 @@ export default function NewPostScreen() {
       }
     });
   }, []);
-
-  function toggleTopic(slug: string) {
-    setSelectedTopicSlugs((current) => {
-      if (current.includes(slug)) {
-        return current.filter((s) => s !== slug);
-      }
-      if (current.length >= 3) {
-        setError("Up to 3 topics per post");
-        return current;
-      }
-      return [...current, slug];
-    });
-  }
-
-  function toggleAdditionalCircle(targetId: string) {
-    setError(null);
-    setAdditionalCircleIds((current) => {
-      if (current.includes(targetId)) {
-        return current.filter((id) => id !== targetId);
-      }
-      if (current.length >= 4) {
-        setError("You can share a post with up to 5 circles");
-        return current;
-      }
-      return [...current, targetId];
-    });
-  }
 
   async function pickMedia() {
     if (!mediaEnabled) {
@@ -180,7 +184,10 @@ export default function NewPostScreen() {
       setUploadProgress(`Uploading ${index + 1} of ${media.length}…`);
       const fileInfo = await FileSystem.getInfoAsync(item.uri, { size: true });
       if (!fileInfo.exists) throw new Error(`Could not read ${item.fileName}`);
-      const sizeBytes = item.fileSize ?? fileInfo.size ?? 0;
+      const sizeBytes = fileInfo.size ?? item.fileSize ?? 0;
+      if (!sizeBytes) {
+        throw new Error(`Could not read file size for ${item.fileName}`);
+      }
       const upload = await api.createMediaUpload(token, {
         fileName: item.fileName,
         mediaType: item.mediaType,
@@ -197,7 +204,10 @@ export default function NewPostScreen() {
         }
       );
       if (uploadResponse.status < 200 || uploadResponse.status >= 300) {
-        throw new Error(`Could not upload ${item.fileName}`);
+        const detail = uploadResponse.body?.slice(0, 200);
+        throw new Error(
+          `Could not upload ${item.fileName} (HTTP ${uploadResponse.status}${detail ? `: ${detail}` : ""})`
+        );
       }
       uploaded.push({
         storageKey: upload.storageKey,
@@ -258,592 +268,576 @@ export default function NewPostScreen() {
     }
   }
 
+  const submitRef = useRef(onSubmit);
+  submitRef.current = onSubmit;
+
+  const canPost =
+    body.trim().length > 0 || media.length > 0 || pollEnabled;
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Publish post"
+          accessibilityState={{ disabled: !canPost || loading }}
+          hitSlop={8}
+          style={[styles.postBtn, (!canPost || loading) && styles.postBtnOff]}
+          onPress={() => void submitRef.current()}
+          disabled={!canPost || loading}
+        >
+          {loading ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Text style={styles.postBtnText}>Post</Text>
+          )}
+        </Pressable>
+      ),
+    });
+  }, [navigation, canPost, loading]);
+
   const primaryCircle = circles.find((circle) => circle.id === circleId);
-  const optionalCircles = circles.filter((circle) => circle.id !== circleId);
+  const audienceLabel = audienceSummary({
+    primaryCircle,
+    primaryLabel: title ?? "This circle",
+    selectedIds: additionalCircleIds,
+  });
+  const selectedTopics = topicOptions.filter((topic) =>
+    selectedTopicSlugs.includes(topic.slug)
+  );
 
   return (
-    <ScrollView
+    <KeyboardAvoidingView
       style={styles.container}
-      contentContainerStyle={styles.content}
-      keyboardShouldPersistTaps="handled"
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      keyboardVerticalOffset={headerHeight}
     >
-      <View style={[styles.privacyCard, cardShadow()]}>
-        <Ionicons name="eye-off-outline" size={20} color={theme.primary} />
-        <View style={styles.privacyText}>
-          <Text style={styles.privacyTitle}>Posted anonymously</Text>
-          <Text style={styles.privacySubtitle}>
-            Your handle is shown, not your name or contact details.
+      <View style={styles.metaBar}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Share with ${audienceLabel}. Change circles`}
+          style={styles.audiencePill}
+          onPress={() => setAudienceOpen(true)}
+        >
+          <Ionicons name="people" size={14} color={theme.primaryDark} />
+          <Text style={styles.audienceText} numberOfLines={1}>
+            {audienceLabel}
           </Text>
+          <Ionicons name="chevron-down" size={14} color={theme.primaryDark} />
+        </Pressable>
+        <View style={styles.anonPill}>
+          <Ionicons name="eye-off" size={13} color={theme.textMuted} />
+          <Text style={styles.anonText}>Anonymous</Text>
         </View>
       </View>
 
-      <Text style={styles.sectionLabel}>What kind of post?</Text>
-      <View style={styles.tagGrid}>
-        {POST_TAGS.map((t) => {
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.typeStrip}
+        contentContainerStyle={styles.typeStripContent}
+      >
+        {ORDERED_TAGS.map((t) => {
           const active = tag === t.value;
           return (
             <Pressable
               key={t.value}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: active }}
               style={[
-                styles.tagOption,
+                styles.typeChip,
                 active && { backgroundColor: t.bg, borderColor: t.color },
               ]}
               onPress={() => setTag(t.value)}
             >
               <Ionicons
                 name={t.icon}
-                size={18}
+                size={15}
                 color={active ? t.color : theme.textMuted}
               />
               <Text
-                style={[
-                  styles.tagOptionText,
-                  active && { color: t.color, fontWeight: "700" },
-                ]}
+                style={[styles.typeChipText, active && { color: t.color }]}
               >
                 {t.label}
               </Text>
             </Pressable>
           );
         })}
-      </View>
+      </ScrollView>
 
-      <Text style={styles.sectionLabel}>Your message</Text>
-      <View style={[styles.inputWrap, cardShadow()]}>
+      <ScrollView
+        style={styles.body}
+        contentContainerStyle={styles.bodyContent}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+      >
         <TextInput
           style={styles.input}
-          placeholder="Ask a question, share a recommendation, or give a heads up…"
+          placeholder={PLACEHOLDERS[tag]}
           placeholderTextColor={theme.textMuted}
           multiline
-          numberOfLines={8}
           textAlignVertical="top"
+          autoFocus
           value={body}
           onChangeText={setBody}
         />
-        <Text style={styles.charCount}>{body.length} characters</Text>
-      </View>
 
-      <View style={styles.attachmentHeader}>
-        <Text style={[styles.sectionLabel, styles.attachmentLabel]}>
-          Photos & videos
-        </Text>
-        <Text style={styles.attachmentCount}>{media.length}/4</Text>
-      </View>
-      <Pressable
-        style={[
-          styles.addMediaButton,
-          mediaEnabled === false && styles.addMediaButtonDisabled,
-        ]}
-        onPress={pickMedia}
-        disabled={mediaEnabled !== true}
-      >
-        <Ionicons
-          name="images-outline"
-          size={20}
-          color={mediaEnabled === false ? theme.tabInactive : theme.primary}
-        />
-        <View style={styles.addMediaText}>
-          <Text
-            style={[
-              styles.addMediaTitle,
-              mediaEnabled === false && styles.addMediaTitleDisabled,
-            ]}
+        {media.length > 0 ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.mediaStrip}
           >
-            Add photos or videos
-          </Text>
-          <Text style={styles.addMediaHint}>
-            {mediaEnabled === null
-              ? "Checking upload availability…"
-              : mediaEnabled
-                ? "Up to 4 files · Images 10 MB · Videos 100 MB"
-                : "S3 and CDN configuration required"}
-          </Text>
-        </View>
-        <Ionicons name="add-circle-outline" size={22} color={theme.primary} />
-      </Pressable>
+            {media.map((item, index) => (
+              <View key={`${item.uri}-${index}`} style={styles.mediaThumb}>
+                {item.mediaType === "image" ? (
+                  <Image
+                    source={{ uri: item.uri }}
+                    style={styles.thumbImage}
+                  />
+                ) : (
+                  <View style={styles.thumbVideo}>
+                    <Ionicons name="play-circle" size={28} color="#fff" />
+                  </View>
+                )}
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove ${item.fileName}`}
+                  hitSlop={6}
+                  style={styles.thumbRemove}
+                  onPress={() =>
+                    setMedia((current) =>
+                      current.filter((_, mediaIndex) => mediaIndex !== index)
+                    )
+                  }
+                >
+                  <Ionicons name="close" size={14} color="#fff" />
+                </Pressable>
+              </View>
+            ))}
+          </ScrollView>
+        ) : null}
 
-      {media.length > 0 ? (
-        <View style={styles.mediaGrid}>
-          {media.map((item, index) => (
-            <View key={`${item.uri}-${index}`} style={styles.mediaPreview}>
-              {item.mediaType === "image" ? (
-                <Image source={{ uri: item.uri }} style={styles.previewImage} />
-              ) : (
-                <View style={styles.videoPreview}>
-                  <Ionicons name="play-circle" size={34} color="#fff" />
-                  <Text style={styles.videoLabel}>Video</Text>
-                </View>
-              )}
+        {pollEnabled ? (
+          <View style={styles.pollPanel}>
+            <View style={styles.pollHeader}>
+              <Ionicons
+                name="stats-chart"
+                size={15}
+                color={theme.primaryDark}
+              />
+              <Text style={styles.pollHeaderText}>Poll</Text>
               <Pressable
-                style={styles.removeMedia}
+                accessibilityRole="button"
+                accessibilityLabel="Remove poll"
+                hitSlop={8}
+                onPress={() => setPollEnabled(false)}
+              >
+                <Ionicons name="close" size={18} color={theme.textMuted} />
+              </Pressable>
+            </View>
+            <TextInput
+              style={styles.pollInput}
+              placeholder="Poll question"
+              placeholderTextColor={theme.textMuted}
+              value={pollQuestion}
+              onChangeText={setPollQuestion}
+            />
+            {pollOptions.map((option, index) => (
+              <TextInput
+                key={`poll-option-${index}`}
+                style={styles.pollInput}
+                placeholder={`Option ${index + 1}`}
+                placeholderTextColor={theme.textMuted}
+                value={option}
+                onChangeText={(value) =>
+                  setPollOptions((current) =>
+                    current.map((item, itemIndex) =>
+                      itemIndex === index ? value : item
+                    )
+                  )
+                }
+              />
+            ))}
+            {pollOptions.length < 6 ? (
+              <Pressable
+                accessibilityRole="button"
+                style={styles.addPollOption}
                 onPress={() =>
-                  setMedia((current) =>
-                    current.filter((_, mediaIndex) => mediaIndex !== index)
+                  setPollOptions((current) =>
+                    current.length < 6 ? [...current, ""] : current
                   )
                 }
               >
-                <Ionicons name="close" size={15} color="#fff" />
+                <Ionicons name="add" size={16} color={theme.primary} />
+                <Text style={styles.addPollOptionText}>Add option</Text>
               </Pressable>
-            </View>
+            ) : null}
+          </View>
+        ) : null}
+      </ScrollView>
+
+      {selectedTopics.length > 0 ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.topicStrip}
+          contentContainerStyle={styles.topicStripContent}
+        >
+          {selectedTopics.map((topic) => (
+            <Pressable
+              key={topic.slug}
+              accessibilityRole="button"
+              accessibilityLabel={`Remove topic ${topic.name}`}
+              style={styles.topicChip}
+              onPress={() =>
+                setSelectedTopicSlugs((current) =>
+                  current.filter((slug) => slug !== topic.slug)
+                )
+              }
+            >
+              <Text style={styles.topicChipText}>{topic.name}</Text>
+              <Ionicons name="close" size={13} color={theme.primaryDark} />
+            </Pressable>
           ))}
+        </ScrollView>
+      ) : null}
+
+      {error ? (
+        <View style={styles.errorBar}>
+          <Ionicons name="alert-circle" size={16} color={theme.error} />
+          <Text style={styles.errorText}>{error}</Text>
         </View>
       ) : null}
 
       {uploadProgress ? (
-        <View style={styles.uploadProgress}>
-          <Ionicons name="cloud-upload-outline" size={17} color={theme.primary} />
-          <Text style={styles.uploadProgressText}>{uploadProgress}</Text>
+        <View style={styles.progressBar}>
+          <ActivityIndicator size="small" color={theme.primary} />
+          <Text style={styles.progressText}>{uploadProgress}</Text>
         </View>
       ) : null}
 
-      {error ? (
-        <View style={styles.errorBox}>
-          <Text style={styles.error}>{error}</Text>
-        </View>
-      ) : null}
-
-      <Pressable
-        style={styles.pollToggle}
-        onPress={() => setPollEnabled((current) => !current)}
+      <View
+        style={[
+          styles.toolbar,
+          { paddingBottom: Math.max(insets.bottom, 10) },
+        ]}
       >
-        <Ionicons
-          name={pollEnabled ? "checkbox" : "square-outline"}
-          size={20}
-          color={theme.primary}
+        <ToolbarButton
+          icon="image-outline"
+          label="Add photos or videos"
+          count={media.length}
+          active={media.length > 0}
+          disabled={mediaEnabled !== true}
+          onPress={pickMedia}
         />
-        <Text style={styles.pollToggleText}>Add a poll</Text>
-      </Pressable>
-
-      {pollEnabled ? (
-        <View style={[styles.pollPanel, cardShadow()]}>
-          <Text style={styles.sectionLabel}>Poll question</Text>
-          <TextInput
-            style={styles.pollInput}
-            placeholder="e.g. How much are you paying for maths tuition?"
-            placeholderTextColor={theme.textMuted}
-            value={pollQuestion}
-            onChangeText={setPollQuestion}
-          />
-          <Text style={styles.sectionLabel}>Options</Text>
-          {pollOptions.map((option, index) => (
-            <TextInput
-              key={`poll-option-${index}`}
-              style={styles.pollInput}
-              placeholder={`Option ${index + 1}`}
-              placeholderTextColor={theme.textMuted}
-              value={option}
-              onChangeText={(value) =>
-                setPollOptions((current) =>
-                  current.map((item, itemIndex) =>
-                    itemIndex === index ? value : item
-                  )
-                )
-              }
-            />
-          ))}
-          {pollOptions.length < 6 ? (
-            <Pressable
-              style={styles.addPollOption}
-              onPress={() =>
-                setPollOptions((current) =>
-                  current.length < 6 ? [...current, ""] : current
-                )
-              }
-            >
-              <Text style={styles.addPollOptionText}>Add option</Text>
-            </Pressable>
-          ) : null}
-        </View>
-      ) : null}
-
-      <View style={[styles.sharePanel, cardShadow()]}>
-        <View style={styles.shareHeading}>
-          <View>
-            <Text style={styles.shareTitle}>Send this post to</Text>
-            <Text style={styles.shareHint}>
-              Choose separately for every post
-            </Text>
-          </View>
-          <Text style={styles.shareCount}>
-            {additionalCircleIds.length + 1}/5
-          </Text>
-        </View>
-
-        <View style={styles.circleTags}>
-          <View style={[styles.circleTag, styles.circleTagPrimary]}>
-            <Ionicons name="lock-closed" size={12} color={theme.primaryDark} />
-            <Text style={styles.circleTagPrimaryText} numberOfLines={1}>
-              {primaryCircle?.displayName ?? title ?? "Current circle"}
-            </Text>
-          </View>
-
-          {optionalCircles.map((circle) => {
-            const selected = additionalCircleIds.includes(circle.id);
-            return (
-              <Pressable
-                key={circle.id}
-                style={[
-                  styles.circleTag,
-                  selected && styles.circleTagSelected,
-                ]}
-                onPress={() => toggleAdditionalCircle(circle.id)}
-              >
-                <Ionicons
-                  name={selected ? "close" : "add"}
-                  size={14}
-                  color={selected ? theme.primaryDark : theme.textMuted}
-                />
-                <Text
-                  style={[
-                    styles.circleTagText,
-                    selected && styles.circleTagSelectedText,
-                  ]}
-                  numberOfLines={1}
-                >
-                  {circle.displayName}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+        <ToolbarButton
+          icon="stats-chart-outline"
+          label="Add a poll"
+          active={pollEnabled}
+          onPress={() => setPollEnabled((current) => !current)}
+        />
+        <ToolbarButton
+          icon="pricetag-outline"
+          label="Add topics"
+          count={selectedTopicSlugs.length}
+          active={selectedTopicSlugs.length > 0}
+          disabled={topicOptions.length === 0}
+          onPress={() => setTopicsOpen(true)}
+        />
+        <View style={styles.toolbarSpacer} />
+        <Text style={styles.charCount}>{body.length}</Text>
       </View>
 
-      {topicOptions.length > 0 ? (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Topics (optional, max 3)</Text>
-          <View style={styles.circleTags}>
-            {topicOptions.slice(0, 24).map((topic) => {
-              const selected = selectedTopicSlugs.includes(topic.slug);
-              return (
-                <Pressable
-                  key={topic.slug}
-                  style={[
-                    styles.circleTag,
-                    selected && styles.circleTagSelected,
-                  ]}
-                  onPress={() => toggleTopic(topic.slug)}
-                >
-                  <Text
-                    style={[
-                      styles.circleTagText,
-                      selected && styles.circleTagSelectedText,
-                    ]}
-                  >
-                    {topic.name}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+      <AudienceSheet
+        visible={audienceOpen}
+        onClose={() => setAudienceOpen(false)}
+        primaryCircle={primaryCircle}
+        primaryLabel={title ?? "This circle"}
+        circles={circles}
+        selectedIds={additionalCircleIds}
+        onChange={setAdditionalCircleIds}
+      />
+      <TopicsSheet
+        visible={topicsOpen}
+        onClose={() => setTopicsOpen(false)}
+        topics={topicOptions}
+        selectedSlugs={selectedTopicSlugs}
+        onChange={setSelectedTopicSlugs}
+      />
+    </KeyboardAvoidingView>
+  );
+}
+
+function ToolbarButton({
+  icon,
+  label,
+  count,
+  active,
+  disabled,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  count?: number;
+  active?: boolean;
+  disabled?: boolean;
+  onPress: () => void;
+}) {
+  const color = disabled
+    ? theme.tabInactive
+    : active
+      ? theme.primary
+      : theme.textMuted;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: Boolean(disabled), selected: active }}
+      style={styles.toolbarBtn}
+      onPress={onPress}
+      disabled={disabled}
+    >
+      <Ionicons name={icon} size={23} color={color} />
+      {count ? (
+        <View style={styles.toolbarBadge}>
+          <Text style={styles.toolbarBadgeText}>{count}</Text>
         </View>
       ) : null}
-
-      <PrimaryButton
-        label={`Post to ${additionalCircleIds.length + 1} circle${
-          additionalCircleIds.length > 0 ? "s" : ""
-        }`}
-        icon="paper-plane-outline"
-        onPress={onSubmit}
-        loading={loading}
-      />
-    </ScrollView>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.bg },
-  content: { padding: 20, paddingBottom: 40 },
-  section: { marginBottom: 16 },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: theme.text,
-    marginBottom: 10,
+
+  postBtn: {
+    minWidth: 62,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: theme.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 14,
   },
-  sharePanel: {
-    backgroundColor: theme.card,
-    padding: 14,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: theme.border,
-    marginBottom: 12,
-  },
-  shareHeading: {
+  postBtnOff: { backgroundColor: theme.primaryLight },
+  postBtnText: { color: "#fff", fontSize: 14, fontWeight: "700" },
+
+  metaBar: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 12,
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingTop: 12,
   },
-  shareTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: theme.text,
-  },
-  shareHint: {
-    fontSize: 11,
-    color: theme.textMuted,
-    marginTop: 2,
-  },
-  shareCount: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: theme.primary,
+  audiencePill: {
+    flexShrink: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    minHeight: 34,
+    paddingHorizontal: 12,
+    borderRadius: 17,
     backgroundColor: theme.primarySoft,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 10,
-  },
-  circleTags: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 7,
-  },
-  circleTag: {
-    maxWidth: "100%",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 18,
     borderWidth: 1,
-    borderColor: theme.border,
-    backgroundColor: theme.bg,
-  },
-  circleTagPrimary: {
-    backgroundColor: theme.primaryLight,
     borderColor: theme.primaryLight,
   },
-  circleTagSelected: {
-    backgroundColor: theme.primarySoft,
-    borderColor: theme.primary,
-  },
-  circleTagText: {
-    fontSize: 12,
-    color: theme.textMuted,
-    fontWeight: "600",
+  audienceText: {
     flexShrink: 1,
-  },
-  circleTagPrimaryText: {
-    fontSize: 12,
-    color: theme.primaryDark,
+    fontSize: 13,
     fontWeight: "700",
-    flexShrink: 1,
-  },
-  circleTagSelectedText: {
     color: theme.primaryDark,
   },
-  privacyCard: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 12,
-    backgroundColor: theme.card,
-    padding: 16,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: theme.border,
-    marginBottom: 24,
-  },
-  privacyText: { flex: 1 },
-  privacyTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: theme.text,
-  },
-  privacySubtitle: {
-    fontSize: 13,
-    color: theme.textMuted,
-    marginTop: 4,
-    lineHeight: 18,
-  },
-  sectionLabel: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: theme.textMuted,
-    marginBottom: 10,
-    textTransform: "uppercase",
-    letterSpacing: 0.4,
-  },
-  tagGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-    marginBottom: 24,
-  },
-  tagOption: {
+  anonPill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: theme.border,
-    backgroundColor: theme.card,
-    minWidth: "47%",
-    flexGrow: 1,
+    gap: 5,
+    paddingHorizontal: 10,
+    minHeight: 34,
+    borderRadius: 17,
+    backgroundColor: theme.surfaceMuted,
   },
-  tagOptionText: {
-    fontSize: 14,
-    color: theme.text,
-    fontWeight: "500",
-  },
-  inputWrap: {
-    backgroundColor: theme.card,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: theme.border,
-    marginBottom: 20,
-  },
-  input: {
-    padding: 16,
-    minHeight: 160,
-    fontSize: 16,
-    color: theme.text,
-    lineHeight: 24,
-  },
-  charCount: {
-    fontSize: 12,
-    color: theme.textMuted,
+  anonText: { fontSize: 12, fontWeight: "600", color: theme.textMuted },
+
+  typeStrip: { flexGrow: 0, marginTop: 10 },
+  typeStripContent: {
     paddingHorizontal: 16,
-    paddingBottom: 12,
-    textAlign: "right",
-  },
-  attachmentHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  attachmentLabel: { marginBottom: 8 },
-  attachmentCount: {
-    fontSize: 12,
-    color: theme.textMuted,
-    marginBottom: 8,
-  },
-  addMediaButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    backgroundColor: theme.card,
-    borderWidth: 1,
-    borderStyle: "dashed",
-    borderColor: theme.primary,
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 12,
-  },
-  addMediaButtonDisabled: {
-    borderColor: theme.border,
-    backgroundColor: theme.borderLight,
-  },
-  addMediaText: { flex: 1 },
-  addMediaTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: theme.primary,
-  },
-  addMediaTitleDisabled: { color: theme.textMuted },
-  addMediaHint: {
-    fontSize: 11,
-    color: theme.textMuted,
-    marginTop: 3,
-    lineHeight: 15,
-  },
-  mediaGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
     gap: 8,
-    marginBottom: 16,
+    paddingBottom: 2,
   },
-  mediaPreview: {
-    width: "48%",
-    aspectRatio: 1.35,
+  typeChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    minHeight: 34,
+    paddingHorizontal: 12,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: theme.border,
+    backgroundColor: theme.card,
+  },
+  typeChipText: { fontSize: 13, fontWeight: "600", color: theme.textMuted },
+
+  body: { flex: 1 },
+  bodyContent: { paddingHorizontal: 16, paddingBottom: 16 },
+  input: {
+    paddingTop: 14,
+    minHeight: 140,
+    fontSize: 17,
+    color: theme.text,
+    lineHeight: 25,
+  },
+
+  mediaStrip: { gap: 10, paddingVertical: 4 },
+  mediaThumb: {
+    width: 92,
+    height: 92,
     borderRadius: 12,
     overflow: "hidden",
-    backgroundColor: theme.text,
+    backgroundColor: theme.surfaceMuted,
   },
-  previewImage: { width: "100%", height: "100%" },
-  videoPreview: {
+  thumbImage: { width: "100%", height: "100%" },
+  thumbVideo: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: theme.textMuted,
+    backgroundColor: "#1F2933",
   },
-  videoLabel: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "600",
-    marginTop: 3,
-  },
-  removeMedia: {
+  thumbRemove: {
     position: "absolute",
-    top: 6,
-    right: 6,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: "rgba(0,0,0,0.68)",
+    top: 5,
+    right: 5,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.6)",
   },
-  uploadProgress: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: theme.primarySoft,
-    padding: 11,
-    borderRadius: 10,
-    marginBottom: 12,
-  },
-  uploadProgressText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: theme.primaryDark,
-  },
-  errorBox: {
-    backgroundColor: "#fef2f2",
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 12,
-  },
-  error: { color: theme.error, fontSize: 14 },
-  pollToggle: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 12,
-  },
-  pollToggleText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: theme.primary,
-  },
+
   pollPanel: {
+    marginTop: 16,
     backgroundColor: theme.card,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: theme.border,
     padding: 14,
-    marginBottom: 16,
-    gap: 8,
+    gap: 10,
+  },
+  pollHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+  },
+  pollHeaderText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "700",
+    color: theme.primaryDark,
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
   },
   pollInput: {
+    backgroundColor: theme.bg,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: theme.border,
-    borderRadius: 10,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 11,
     fontSize: 15,
     color: theme.text,
-    marginBottom: 8,
   },
   addPollOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
     alignSelf: "flex-start",
-    paddingVertical: 6,
+    minHeight: 34,
   },
   addPollOptionText: {
-    color: theme.primary,
+    fontSize: 14,
     fontWeight: "600",
+    color: theme.primary,
+  },
+
+  topicStrip: {
+    flexGrow: 0,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: theme.border,
+  },
+  topicStripContent: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  topicChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 11,
+    minHeight: 30,
+    borderRadius: 15,
+    backgroundColor: theme.primarySoft,
+  },
+  topicChipText: {
     fontSize: 13,
+    fontWeight: "600",
+    color: theme.primaryDark,
+  },
+
+  errorBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: theme.errorSoft,
+  },
+  errorText: { flex: 1, fontSize: 13, color: theme.error, lineHeight: 18 },
+
+  progressBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: theme.primarySoft,
+  },
+  progressText: { fontSize: 13, color: theme.primaryDark, fontWeight: "600" },
+
+  toolbar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: theme.border,
+    backgroundColor: theme.card,
+  },
+  toolbarBtn: {
+    width: 46,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  toolbarSpacer: { flex: 1 },
+  toolbarBadge: {
+    position: "absolute",
+    top: 4,
+    right: 6,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    paddingHorizontal: 4,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: theme.primary,
+  },
+  toolbarBadgeText: { color: "#fff", fontSize: 10, fontWeight: "700" },
+  charCount: {
+    fontSize: 12,
+    color: theme.textMuted,
+    paddingRight: 6,
   },
 });

@@ -1,8 +1,6 @@
 import { useCallback, useLayoutEffect, useState } from "react";
 import {
-  ActivityIndicator,
   FlatList,
-  Pressable,
   RefreshControl,
   StyleSheet,
   Text,
@@ -10,9 +8,11 @@ import {
 } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams, useNavigation } from "expo-router";
-import { AuthorRow, formatPostTime, theme } from "@/components/circles/ui";
+import { AuthorRow, formatPostTime } from "@/components/circles/ui";
+import { Button, EmptyState, ScreenLoader } from "@/components/ui";
+import { colors, radii, spacing, typography } from "@/constants/theme";
 import { useRealtimeChannel } from "@/hooks/useRealtimeChannel";
-import { api, type CirclePost } from "@/lib/api";
+import { api } from "@/lib/api";
 import { getToken } from "@/lib/session";
 
 export default function TopicFeedScreen() {
@@ -71,26 +71,25 @@ export default function TopicFeedScreen() {
   }
 
   if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
+    return <ScreenLoader label="Loading topic feed" />;
   }
 
   return (
     <View style={styles.container}>
-      <Pressable style={styles.followBtn} onPress={toggleFollow}>
-        <Text style={styles.followBtnText}>
-          {following ? "Following" : "Follow topic"}
-        </Text>
-      </Pressable>
+      <View style={styles.followRow}>
+        <Button
+          label={following ? "Following" : "Follow topic"}
+          variant={following ? "secondary" : "primary"}
+          onPress={toggleFollow}
+        />
+      </View>
       <FlatList
         data={posts}
         keyExtractor={(item) => item.id}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
+            tintColor={colors.primary}
             onRefresh={async () => {
               setRefreshing(true);
               await feedQuery.refetch();
@@ -98,12 +97,16 @@ export default function TopicFeedScreen() {
             }}
           />
         }
-        contentContainerStyle={posts.length === 0 ? styles.emptyContainer : styles.list}
+        contentContainerStyle={[
+          styles.list,
+          posts.length === 0 && styles.listEmpty,
+        ]}
         ListEmptyComponent={
-          <Text style={styles.empty}>
-            No posts yet in circles you belong to. Tag posts with this topic when
-            you share.
-          </Text>
+          <EmptyState
+            icon="chatbubble-ellipses-outline"
+            title="No posts yet"
+            message="Tag posts with this topic when you share in your circles. Follow to get digest updates."
+          />
         }
         renderItem={({ item }) => (
           <View style={styles.card}>
@@ -122,28 +125,32 @@ export default function TopicFeedScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.bg },
-  centered: { flex: 1, justifyContent: "center", alignItems: "center" },
-  followBtn: {
-    margin: 12,
-    alignSelf: "flex-start",
-    backgroundColor: theme.primaryLight,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
+  container: { flex: 1, backgroundColor: colors.bg },
+  followRow: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
   },
-  followBtnText: { color: theme.primary, fontWeight: "700" },
-  list: { padding: 12 },
-  emptyContainer: { flexGrow: 1, justifyContent: "center", padding: 24 },
-  empty: { textAlign: "center", color: theme.textMuted, lineHeight: 22 },
+  list: { padding: spacing.lg, paddingTop: spacing.xs, gap: spacing.xs },
+  listEmpty: { flexGrow: 1, justifyContent: "center" },
   card: {
-    backgroundColor: theme.card,
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 10,
+    backgroundColor: colors.card,
+    borderRadius: radii.lg,
+    padding: spacing.md,
     borderWidth: 1,
-    borderColor: theme.border,
+    borderColor: colors.border,
   },
-  body: { fontSize: 15, color: theme.text, marginTop: 10, lineHeight: 22 },
-  time: { fontSize: 12, color: theme.textMuted, marginTop: 8 },
+  body: {
+    ...typography.body,
+    color: colors.text,
+    marginTop: spacing.sm,
+    lineHeight: 22,
+    fontFamily: typography.regular,
+  },
+  time: {
+    ...typography.caption,
+    color: colors.textMuted,
+    marginTop: spacing.xs,
+    fontFamily: typography.regular,
+  },
 });

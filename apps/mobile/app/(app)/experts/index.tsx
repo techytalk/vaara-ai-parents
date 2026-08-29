@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
   FlatList,
   Pressable,
   StyleSheet,
@@ -8,9 +7,21 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { colors } from "@/constants/theme";
+import { Ionicons } from "@expo/vector-icons";
+import { EmptyState, ScreenLoader } from "@/components/ui";
+import { colors, radii, spacing, typography } from "@/constants/theme";
 import { api, type ExpertSession } from "@/lib/api";
 import { getToken } from "@/lib/session";
+
+function formatSessionTime(iso: string) {
+  return new Date(iso).toLocaleString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
 
 export default function ExpertSessionsScreen() {
   const router = useRouter();
@@ -26,11 +37,7 @@ export default function ExpertSessionsScreen() {
   }, []);
 
   if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
+    return <ScreenLoader label="Loading expert sessions" />;
   }
 
   return (
@@ -38,12 +45,15 @@ export default function ExpertSessionsScreen() {
       style={styles.container}
       data={sessions}
       keyExtractor={(item) => item.id}
-      contentContainerStyle={sessions.length ? styles.list : styles.emptyContainer}
+      contentContainerStyle={
+        sessions.length ? styles.list : styles.listEmpty
+      }
       ListEmptyComponent={
-        <Text style={styles.empty}>
-          No expert sessions scheduled yet. Closed sessions stay searchable once
-          added.
-        </Text>
+        <EmptyState
+          icon="school-outline"
+          title="No expert sessions"
+          message="Closed Q&A sessions with verified experts appear here. You'll get an immediate alert when a new session opens."
+        />
       }
       renderItem={({ item }) => (
         <Pressable
@@ -56,13 +66,17 @@ export default function ExpertSessionsScreen() {
           }
         >
           <Text style={styles.title}>{item.title}</Text>
-          <Text style={styles.meta}>
-            {item.expert.displayName} · {item.expert.credentials}
-            {item.expert.verified ? " · Verified" : ""}
-          </Text>
-          <Text style={styles.date}>
-            {new Date(item.startsAt).toLocaleString()}
-          </Text>
+          <View style={styles.expertRow}>
+            <Text style={styles.expertName}>{item.expert.displayName}</Text>
+            {item.expert.verified ? (
+              <View style={styles.verifiedBadge}>
+                <Ionicons name="checkmark-circle" size={14} color={colors.teal} />
+                <Text style={styles.verifiedText}>Verified</Text>
+              </View>
+            ) : null}
+          </View>
+          <Text style={styles.credentials}>{item.expert.credentials}</Text>
+          <Text style={styles.date}>{formatSessionTime(item.startsAt)}</Text>
         </Pressable>
       )}
     />
@@ -71,19 +85,51 @@ export default function ExpertSessionsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  centered: { flex: 1, justifyContent: "center", alignItems: "center" },
-  list: { padding: 16 },
-  emptyContainer: { flexGrow: 1, justifyContent: "center", padding: 24 },
-  empty: { textAlign: "center", color: colors.textMuted, lineHeight: 22 },
+  list: { padding: spacing.lg, gap: spacing.xs },
+  listEmpty: { flexGrow: 1, justifyContent: "center", padding: spacing.lg },
   card: {
     backgroundColor: colors.card,
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 10,
+    borderRadius: radii.lg,
+    padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  title: { fontSize: 16, fontWeight: "700", color: colors.text },
-  meta: { fontSize: 13, color: colors.textMuted, marginTop: 6 },
-  date: { fontSize: 12, color: colors.primary, marginTop: 4 },
+  title: {
+    ...typography.body,
+    color: colors.text,
+    fontFamily: typography.bold,
+  },
+  expertRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
+  expertName: {
+    ...typography.supporting,
+    color: colors.primary,
+    fontFamily: typography.semibold,
+  },
+  verifiedBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+  },
+  verifiedText: {
+    ...typography.caption,
+    color: colors.teal,
+    fontFamily: typography.semibold,
+  },
+  credentials: {
+    ...typography.caption,
+    color: colors.textMuted,
+    marginTop: 2,
+    fontFamily: typography.regular,
+  },
+  date: {
+    ...typography.caption,
+    color: colors.primary,
+    marginTop: spacing.xs,
+    fontFamily: typography.medium,
+  },
 });

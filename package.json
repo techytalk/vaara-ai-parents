@@ -8,6 +8,8 @@
   "scripts": {
     "db:migrate": "npm run migrate -w @vaara/db",
     "db:seed": "npm run seed -w @vaara/db",
+    "test:api": "npm run test -w @vaara/api",
+    "test:audit": "npm run test:audit -w @vaara/api",
     "dev:api": "npm run dev -w @vaara/api",
     "dev:worker": "npm run dev -w @vaara/worker",
     "dev:realtime": "npm run dev -w @vaara/realtime",

@@ -1,5 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { Button } from "@/components/ui";
+import { colors, radii, spacing, typography } from "@/constants/theme";
 
 type Props = {
   children: ReactNode;
@@ -35,12 +37,10 @@ export class AppErrorBoundary extends Component<Props, State> {
         <ScrollView style={styles.box}>
           <Text style={styles.message}>{this.state.error.message}</Text>
         </ScrollView>
-        <Pressable
-          style={styles.button}
+        <Button
+          label="Try again"
           onPress={() => this.setState({ error: null })}
-        >
-          <Text style={styles.buttonText}>Try again</Text>
-        </Pressable>
+        />
       </View>
     );
   }
@@ -49,45 +49,35 @@ export class AppErrorBoundary extends Component<Props, State> {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 24,
+    padding: spacing.xl,
     justifyContent: "center",
-    backgroundColor: "#f8f9fc",
+    backgroundColor: colors.bg,
   },
   title: {
-    fontSize: 22,
-    fontWeight: "700",
-    color: "#1a1a2e",
-    marginBottom: 8,
+    ...typography.screenTitle,
+    color: colors.text,
+    fontFamily: typography.bold,
+    marginBottom: spacing.xs,
   },
   subtitle: {
-    fontSize: 15,
-    color: "#5c5c7a",
-    marginBottom: 16,
+    ...typography.body,
+    color: colors.textMuted,
+    marginBottom: spacing.md,
     lineHeight: 22,
+    fontFamily: typography.regular,
   },
   box: {
     maxHeight: 220,
-    backgroundColor: "#fff",
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: "#e2e4ef",
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 16,
+    borderColor: colors.border,
+    borderRadius: radii.lg,
+    padding: spacing.sm,
+    marginBottom: spacing.md,
   },
   message: {
     fontFamily: "monospace",
     fontSize: 13,
-    color: "#dc2626",
-  },
-  button: {
-    backgroundColor: "#4f46e5",
-    borderRadius: 12,
-    padding: 14,
-    alignItems: "center",
-  },
-  buttonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
+    color: colors.coral,
   },
 });

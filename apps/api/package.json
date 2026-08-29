@@ -30,6 +30,8 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
+    "test": "tsx --test test/*.test.ts",
+    "test:audit": "RUN_E2E_AUDIT=1 tsx --test test/e2e-audit.test.ts",
     "start": "node dist/index.js"
   },
   "dependencies": {

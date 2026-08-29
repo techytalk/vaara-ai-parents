@@ -41,3 +41,15 @@ export function mapSchoolRow(row: Record<string, unknown>) {
     ),
   };
 }
+
+export function mapSchoolListRow(row: Record<string, unknown>) {
+  const ratingCount = Number(row.rating_count ?? 0);
+  return {
+    ...mapSchoolRow(row),
+    ratingAvg:
+      ratingCount >= 3 && row.rating_avg != null
+        ? Number(row.rating_avg)
+        : null,
+    ratingCount,
+  };
+}

@@ -1,17 +1,27 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  ActivityIndicator,
   FlatList,
-  Pressable,
   RefreshControl,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { colors } from "@/constants/theme";
+import { Ionicons } from "@expo/vector-icons";
+import { Button, EmptyState, ScreenLoader } from "@/components/ui";
+import { colors, radii, spacing, typography } from "@/constants/theme";
 import { api, type SchoolEvent } from "@/lib/api";
 import { getToken } from "@/lib/session";
+
+function formatEventTime(iso: string) {
+  return new Date(iso).toLocaleString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
 
 export default function CalendarScreen() {
   const router = useRouter();
@@ -32,27 +42,24 @@ export default function CalendarScreen() {
   }, [load]);
 
   if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
+    return <ScreenLoader label="Loading school calendar" />;
   }
 
   return (
     <View style={styles.container}>
-      <Pressable
-        style={styles.addBtn}
-        onPress={() => router.push("/(app)/calendar/new")}
-      >
-        <Text style={styles.addBtnText}>Report an event</Text>
-      </Pressable>
+      <View style={styles.header}>
+        <Button
+          label="Report an event"
+          onPress={() => router.push("/(app)/calendar/new")}
+        />
+      </View>
       <FlatList
         data={events}
         keyExtractor={(item) => item.id}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
+            tintColor={colors.primary}
             onRefresh={async () => {
               setRefreshing(true);
               await load();
@@ -60,25 +67,41 @@ export default function CalendarScreen() {
             }}
           />
         }
-        contentContainerStyle={
-          events.length === 0 ? styles.emptyContainer : styles.list
-        }
+        contentContainerStyle={[
+          styles.list,
+          events.length === 0 && styles.listEmpty,
+        ]}
         ListEmptyComponent={
-          <Text style={styles.empty}>
-            No upcoming school events in the next week. Parents can report PTMs,
-            exams, and holidays once they appear.
-          </Text>
+          <EmptyState
+            icon="calendar-outline"
+            title="No upcoming events"
+            message="PTMs, exams, and holidays from your school community appear here. Parents can report events for others to confirm."
+            actionLabel="Report an event"
+            onAction={() => router.push("/(app)/calendar/new")}
+          />
         }
         renderItem={({ item }) => (
           <View style={styles.card}>
-            {item.unconfirmed ? (
-              <Text style={styles.unconfirmed}>Unconfirmed</Text>
-            ) : null}
+            <View style={styles.cardTop}>
+              {item.unconfirmed ? (
+                <View style={styles.unconfirmedBadge}>
+                  <Text style={styles.unconfirmedText}>Unconfirmed</Text>
+                </View>
+              ) : (
+                <View style={styles.confirmedBadge}>
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={14}
+                    color={colors.teal}
+                  />
+                  <Text style={styles.confirmedText}>Confirmed</Text>
+                </View>
+              )}
+              <Text style={styles.eventType}>{item.eventType}</Text>
+            </View>
             <Text style={styles.title}>{item.title}</Text>
-            <Text style={styles.meta}>
-              {item.schoolName} · {item.eventType} ·{" "}
-              {new Date(item.startsAt).toLocaleString()}
-            </Text>
+            <Text style={styles.meta}>{item.schoolName}</Text>
+            <Text style={styles.time}>{formatEventTime(item.startsAt)}</Text>
           </View>
         )}
       />
@@ -88,33 +111,65 @@ export default function CalendarScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  centered: { flex: 1, justifyContent: "center", alignItems: "center" },
-  addBtn: {
-    margin: 16,
-    backgroundColor: colors.primary,
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: "center",
-  },
-  addBtnText: { color: "#fff", fontWeight: "700" },
-  list: { paddingHorizontal: 16, paddingBottom: 24 },
-  emptyContainer: { flexGrow: 1, justifyContent: "center", padding: 24 },
-  empty: { textAlign: "center", color: colors.textMuted, lineHeight: 22 },
+  header: { padding: spacing.lg, paddingBottom: spacing.xs },
+  list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxxl, gap: spacing.xs },
+  listEmpty: { flexGrow: 1, justifyContent: "center" },
   card: {
     backgroundColor: colors.card,
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 10,
+    borderRadius: radii.lg,
+    padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  unconfirmed: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#c2410c",
-    marginBottom: 4,
+  cardTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: spacing.xs,
+  },
+  unconfirmedBadge: {
+    backgroundColor: colors.accentLight,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
+    borderRadius: radii.sm,
+  },
+  unconfirmedText: {
+    ...typography.caption,
+    color: colors.coral,
+    fontFamily: typography.bold,
     textTransform: "uppercase",
   },
-  title: { fontSize: 16, fontWeight: "600", color: colors.text },
-  meta: { fontSize: 13, color: colors.textMuted, marginTop: 6 },
+  confirmedBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  confirmedText: {
+    ...typography.caption,
+    color: colors.teal,
+    fontFamily: typography.semibold,
+  },
+  eventType: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontFamily: typography.semibold,
+    textTransform: "capitalize",
+  },
+  title: {
+    ...typography.body,
+    color: colors.text,
+    fontFamily: typography.semibold,
+  },
+  meta: {
+    ...typography.supporting,
+    color: colors.textMuted,
+    marginTop: 4,
+    fontFamily: typography.regular,
+  },
+  time: {
+    ...typography.caption,
+    color: colors.primary,
+    marginTop: spacing.xs,
+    fontFamily: typography.medium,
+  },
 });

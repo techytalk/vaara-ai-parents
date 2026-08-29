@@ -1,14 +1,8 @@
 import { useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { colors } from "@/constants/theme";
+import { Chip, EmptyState, ScreenLoader, SectionHeader } from "@/components/ui";
+import { colors, spacing, typography } from "@/constants/theme";
 import { api, type TopicCatalogItem } from "@/lib/api";
 import { getToken } from "@/lib/session";
 
@@ -36,55 +30,57 @@ export default function TopicsScreen() {
     });
   }, []);
 
-  if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
+  function openTopic(topic: TopicCatalogItem) {
+    router.push({
+      pathname: "/(app)/topics/[slug]",
+      params: { slug: topic.slug, title: topic.name },
+    });
   }
+
+  if (loading) {
+    return <ScreenLoader label="Loading topics" />;
+  }
+
+  const hasTopics =
+    followed.length > 0 || Object.values(categories).some((list) => list.length > 0);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      {!hasTopics ? (
+        <EmptyState
+          icon="pricetags-outline"
+          title="No topics yet"
+          message="Topics appear as parents tag posts in your circles. Follow topics to see related posts in one feed."
+        />
+      ) : null}
+
       {followed.length > 0 ? (
-        <>
-          <Text style={styles.section}>Following</Text>
+        <View style={styles.section}>
+          <SectionHeader title="Following" />
           <View style={styles.chipRow}>
             {followed.map((topic) => (
-              <Pressable
+              <Chip
                 key={topic.slug}
-                style={styles.chip}
-                onPress={() =>
-                  router.push({
-                    pathname: "/(app)/topics/[slug]",
-                    params: { slug: topic.slug, title: topic.name },
-                  })
-                }
-              >
-                <Text style={styles.chipText}>{topic.name}</Text>
-              </Pressable>
+                label={topic.name}
+                selected
+                onPress={() => openTopic(topic)}
+              />
             ))}
           </View>
-        </>
+        </View>
       ) : null}
 
       {Object.entries(categories).map(([category, topics]) => (
-        <View key={category}>
-          <Text style={styles.section}>{category}</Text>
+        <View key={category} style={styles.section}>
+          <SectionHeader title={category} />
           <View style={styles.chipRow}>
             {topics.map((topic) => (
-              <Pressable
+              <Chip
                 key={topic.slug}
-                style={styles.chipOutline}
-                onPress={() =>
-                  router.push({
-                    pathname: "/(app)/topics/[slug]",
-                    params: { slug: topic.slug, title: topic.name },
-                  })
-                }
-              >
-                <Text style={styles.chipOutlineText}>{topic.name}</Text>
-              </Pressable>
+                label={topic.name}
+                selected={followed.some((item) => item.slug === topic.slug)}
+                onPress={() => openTopic(topic)}
+              />
             ))}
           </View>
         </View>
@@ -95,31 +91,7 @@ export default function TopicsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 16, paddingBottom: 32 },
-  centered: { flex: 1, justifyContent: "center", alignItems: "center" },
-  section: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: colors.textMuted,
-    marginTop: 20,
-    marginBottom: 10,
-    textTransform: "uppercase",
-  },
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chip: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-  },
-  chipText: { color: "#fff", fontWeight: "600", fontSize: 13 },
-  chipOutline: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-  },
-  chipOutlineText: { color: colors.text, fontWeight: "600", fontSize: 13 },
+  content: { padding: spacing.lg, paddingBottom: spacing.xxxl, gap: spacing.lg },
+  section: { gap: spacing.xs },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
 });

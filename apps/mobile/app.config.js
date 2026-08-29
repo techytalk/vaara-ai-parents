@@ -9,6 +9,10 @@ config({ path: resolve(__dirname, ".env.local") });
 module.exports = {
   expo: {
     ...appJson.expo,
+    plugins: [
+      ...(appJson.expo.plugins ?? []),
+      "@react-native-community/datetimepicker",
+    ],
     owner: "raj-techy1s-team",
     extra: {
       ...appJson.expo.extra,

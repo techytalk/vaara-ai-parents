@@ -9,6 +9,7 @@ import {
   publishCircleEvent,
   publishConversationEvent,
   publishTopicEvent,
+  publishUserInboxEvent,
   type CircleTarget,
 } from "@vaara/redis";
 import { notifyCirclePostMulti, notifyDirectMessage } from "../services/notifications.js";
@@ -97,6 +98,20 @@ export async function dispatchMessageCreated(params: {
     messageId: params.messageId,
     senderId: params.senderId,
   });
+  await Promise.all([
+    publishUserInboxEvent(params.recipientId, {
+      type: "inbox.updated",
+      userId: params.recipientId,
+      reason: "message",
+      conversationId: params.conversationId,
+    }),
+    publishUserInboxEvent(params.senderId, {
+      type: "inbox.updated",
+      userId: params.senderId,
+      reason: "message",
+      conversationId: params.conversationId,
+    }),
+  ]);
 
   if (isRedisEnabled()) {
     try {

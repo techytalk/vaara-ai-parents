@@ -21,7 +21,9 @@ import {
   SectionHeader,
 } from "@/components/ui";
 import { CIRCLE_TYPE_LABELS, isPlaceholderSchool } from "@/constants/circles";
+import { getDiscoveryShortcuts } from "@/constants/discovery-shortcuts";
 import { colors, radii, spacing, typography } from "@/constants/theme";
+import { trackEvent } from "@/lib/analytics";
 import { useRealtimeChannels } from "@/hooks/useRealtimeChannels";
 import {
   api,
@@ -61,36 +63,7 @@ const circleIconColors: Record<Circle["circleType"], string> = {
   curriculum: colors.lavender,
 };
 
-const DISCOVERY_SHORTCUTS = [
-  {
-    key: "activities",
-    label: "Discover",
-    icon: "compass-outline" as const,
-    color: colors.amber,
-    route: "/(app)/activities" as const,
-  },
-  {
-    key: "schools",
-    label: "Schools",
-    icon: "school-outline" as const,
-    color: colors.primary,
-    route: "/(app)/schools" as const,
-  },
-  {
-    key: "calendar",
-    label: "Calendar",
-    icon: "calendar-outline" as const,
-    color: colors.coral,
-    route: "/(app)/calendar" as const,
-  },
-  {
-    key: "experts",
-    label: "Experts",
-    icon: "shield-checkmark-outline" as const,
-    color: colors.navy,
-    route: "/(app)/experts" as const,
-  },
-];
+const DISCOVERY_SHORTCUTS = getDiscoveryShortcuts();
 
 function iconForType(type: Circle["circleType"]) {
   const icons: Record<Circle["circleType"], keyof typeof Ionicons.glyphMap> = {
@@ -435,14 +408,23 @@ export default function CirclesScreen() {
 
             {error ? <InlineError message={error} onRetry={load} /> : null}
 
-            <View style={styles.shortcutRow}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.shortcutRow}
+            >
               {DISCOVERY_SHORTCUTS.map((shortcut) => (
                 <Pressable
                   key={shortcut.key}
                   style={styles.shortcut}
                   accessibilityRole="button"
                   accessibilityLabel={shortcut.label}
-                  onPress={() => router.push(shortcut.route)}
+                  onPress={() => {
+                    trackEvent("home_shortcut_opened", {
+                      shortcut: shortcut.key,
+                    });
+                    router.push(shortcut.route as never);
+                  }}
                 >
                   <View
                     style={[
@@ -459,7 +441,7 @@ export default function CirclesScreen() {
                   <Text style={styles.shortcutLabel}>{shortcut.label}</Text>
                 </Pressable>
               ))}
-            </View>
+            </ScrollView>
 
             {upcomingEvents.length > 0 ? (
               <View style={styles.calendarBlock}>
@@ -473,32 +455,41 @@ export default function CirclesScreen() {
                   </Pressable>
                 </View>
                 <View style={styles.eventList}>
-                  {upcomingEvents.map((event) => (
-                    <Pressable
-                      key={event.id}
-                      style={styles.eventCard}
-                      onPress={() => router.push("/(app)/calendar")}
-                    >
-                      <View style={styles.eventIcon}>
-                        <Ionicons
-                          name="calendar-outline"
-                          size={16}
-                          color={colors.coral}
-                        />
-                      </View>
-                      <View style={styles.eventCopy}>
-                        <Text style={styles.eventTitle} numberOfLines={1}>
-                          {event.title}
-                        </Text>
-                        <Text style={styles.eventMeta} numberOfLines={1}>
-                          {event.schoolName ? `${event.schoolName} · ` : ""}
-                          {formatEventWhen(event.startsAt)}
-                        </Text>
-                      </View>
-                      {event.unconfirmed ? (
-                        <Text style={styles.eventUnconfirmed}>Unconfirmed</Text>
+                  {upcomingEvents.map((event, index) => (
+                    <View key={event.id}>
+                      {index > 0 ? (
+                        <View style={styles.eventDivider} />
                       ) : null}
-                    </Pressable>
+                      <Pressable
+                        style={({ pressed }) => [
+                          styles.eventCard,
+                          pressed && styles.pressed,
+                        ]}
+                        onPress={() => router.push("/(app)/calendar")}
+                      >
+                        <View style={styles.eventIcon}>
+                          <Ionicons
+                            name="calendar-outline"
+                            size={16}
+                            color={colors.coral}
+                          />
+                        </View>
+                        <View style={styles.eventCopy}>
+                          <Text style={styles.eventTitle} numberOfLines={1}>
+                            {event.title}
+                          </Text>
+                          <Text style={styles.eventMeta} numberOfLines={1}>
+                            {event.schoolName ? `${event.schoolName} · ` : ""}
+                            {formatEventWhen(event.startsAt)}
+                          </Text>
+                        </View>
+                        {event.unconfirmed ? (
+                          <Text style={styles.eventUnconfirmed}>
+                            Unconfirmed
+                          </Text>
+                        ) : null}
+                      </Pressable>
+                    </View>
                   ))}
                 </View>
               </View>
@@ -510,12 +501,16 @@ export default function CirclesScreen() {
                   <View key={group.type} style={styles.groupBlock}>
                     <SectionHeader title={CIRCLE_TYPE_LABELS[group.type]} />
                     <View style={styles.list}>
-                      {group.items.map((circle) => (
-                        <CircleListCard
-                          key={circle.id}
-                          circle={circle}
-                          onPress={() => openCircle(circle)}
-                        />
+                      {group.items.map((circle, index) => (
+                        <View key={circle.id}>
+                          {index > 0 ? (
+                            <View style={styles.circleDivider} />
+                          ) : null}
+                          <CircleListCard
+                            circle={circle}
+                            onPress={() => openCircle(circle)}
+                          />
+                        </View>
                       ))}
                     </View>
                   </View>
@@ -678,12 +673,12 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   shortcutRow: {
-    flexDirection: "row",
     gap: spacing.xs,
     marginBottom: spacing.lg,
+    paddingRight: spacing.sm,
   },
   shortcut: {
-    flex: 1,
+    width: 78,
     alignItems: "center",
     gap: 6,
   },
@@ -712,16 +707,23 @@ const styles = StyleSheet.create({
     fontFamily: typography.bold,
     marginBottom: spacing.sm,
   },
-  eventList: { gap: spacing.xs },
+  eventList: {
+    backgroundColor: colors.card,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: "hidden",
+  },
+  eventDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border,
+    marginLeft: spacing.sm * 2 + 34,
+  },
   eventCard: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
     padding: spacing.sm,
-    borderRadius: radii.lg,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
   },
   eventIcon: {
     width: 34,
@@ -748,20 +750,28 @@ const styles = StyleSheet.create({
     color: colors.amber,
     fontFamily: typography.bold,
   },
-  groupBlock: { marginBottom: spacing.sm },
-  list: { gap: spacing.xs, marginBottom: spacing.md },
+  groupBlock: { marginBottom: spacing.md },
+  list: {
+    backgroundColor: colors.card,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: "hidden",
+  },
+  circleDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border,
+    marginLeft: spacing.sm * 2 + 46,
+  },
   circleCard: {
-    minHeight: 74,
+    minHeight: 72,
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
-    padding: spacing.sm,
-    borderRadius: radii.lg,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
   },
-  pressed: { opacity: 0.72 },
+  pressed: { backgroundColor: colors.surfaceMuted },
   circleIcon: {
     width: 46,
     height: 46,

@@ -25,6 +25,13 @@ export const GOOGLE_WEB_CLIENT_ID = readConfigValue(
   extra?.googleWebClientId
 );
 
+/** Android OAuth client ID — used on standalone Android builds. */
+export const GOOGLE_ANDROID_CLIENT_ID = readConfigValue(
+  process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+  (Constants.expoConfig?.extra as { googleAndroidClientId?: string } | undefined)
+    ?.googleAndroidClientId
+);
+
 export function isGoogleSignInConfigured(): boolean {
   return Boolean(GOOGLE_WEB_CLIENT_ID);
 }

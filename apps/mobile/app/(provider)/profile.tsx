@@ -1,12 +1,8 @@
 import { useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
+import { Button, Card, ScreenLoader } from "@/components/ui";
+import { colors, spacing, typography } from "@/constants/theme";
 import { api, type AuthUser } from "@/lib/api";
 import { clearSession, getToken } from "@/lib/session";
 
@@ -32,41 +28,46 @@ export default function ProviderProfileScreen() {
   }
 
   if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
+    return <ScreenLoader label="Loading profile" />;
   }
 
   return (
     <View style={styles.container}>
-      <Text style={styles.label}>Account</Text>
-      <Text style={styles.value}>{user?.email}</Text>
-      <Text style={styles.label}>Role</Text>
-      <Text style={styles.valueMuted}>Provider</Text>
+      <Card style={styles.card}>
+        <Text style={styles.label}>Account email</Text>
+        <Text style={styles.value}>{user?.email}</Text>
+        <Text style={styles.label}>Role</Text>
+        <Text style={styles.valueMuted}>Provider</Text>
+      </Card>
 
-      <Pressable style={styles.button} onPress={onSignOut}>
-        <Text style={styles.buttonText}>Sign out</Text>
-      </Pressable>
+      <Button label="Sign out" variant="secondary" onPress={onSignOut} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 24, backgroundColor: "#f8f9fc" },
-  centered: { flex: 1, justifyContent: "center", alignItems: "center" },
-  label: { fontSize: 13, color: "#5c5c7a", marginTop: 16, marginBottom: 4 },
-  value: { fontSize: 16, color: "#1a1a2e" },
-  valueMuted: { fontSize: 16, color: "#1a1a2e" },
-  button: {
-    marginTop: 40,
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#e2e4ef",
-    borderRadius: 12,
-    padding: 16,
-    alignItems: "center",
+  container: {
+    flex: 1,
+    padding: spacing.lg,
+    backgroundColor: colors.bg,
+    gap: spacing.md,
   },
-  buttonText: { color: "#dc2626", fontWeight: "600", fontSize: 16 },
+  card: { gap: spacing.xs },
+  label: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontFamily: typography.semibold,
+    marginTop: spacing.sm,
+  },
+  value: {
+    ...typography.body,
+    color: colors.text,
+    fontFamily: typography.semibold,
+  },
+  valueMuted: {
+    ...typography.body,
+    color: colors.text,
+    fontFamily: typography.regular,
+    textTransform: "capitalize",
+  },
 });

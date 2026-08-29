@@ -40,6 +40,11 @@ export type School = {
   displayLabel: string;
 };
 
+export type SchoolListItem = School & {
+  ratingAvg: number | null;
+  ratingCount: number;
+};
+
 export type Child = {
   id: string;
   nickname: string;
@@ -253,6 +258,7 @@ export type CarpoolOffer = {
   departureTime: string;
   seats: number | null;
   notes: string | null;
+  ownerUserId: string;
   ownerHandle: string;
 };
 
@@ -298,7 +304,32 @@ export type ConversationPreview = {
   id: string;
   peer: PeerView;
   lastMessage: { body: string; createdAt: string } | null;
+  unreadCount: number;
   unread: boolean;
+};
+
+export type MessageableParent = {
+  userId: string;
+  anonymousHandle: string;
+  contextLabel: string;
+  circleId: string;
+  circleName: string;
+  existingConversationId: string | null;
+};
+
+export type ParentConnectionRequest = {
+  id: string;
+  direction: "incoming" | "outgoing";
+  peer: {
+    userId: string;
+    anonymousHandle: string;
+    contextLabel: string;
+  };
+  introduction: string | null;
+  status: "pending" | "accepted" | "declined" | "cancelled";
+  conversationId: string | null;
+  createdAt: string;
+  respondedAt: string | null;
 };
 
 export type DirectMessage = {
@@ -395,6 +426,12 @@ export type AppVersionInfo = {
   androidStoreUrl: string;
 };
 
+export type MeStats = {
+  circleCount: number;
+  savedPostCount: number;
+  helpfulReceivedCount: number;
+};
+
 export type NotificationPrefs = {
   circle_posts?: boolean;
   circle_replies?: boolean;
@@ -483,12 +520,46 @@ export const api = {
 
   searchSchools: (
     token: string,
-    params: { q: string; city?: string; pin?: string }
+    params: {
+      q: string;
+      city?: string;
+      pin?: string;
+      sort?: "relevance" | "rating";
+      limit?: number;
+    }
   ) => {
     const search = new URLSearchParams({ q: params.q });
     if (params.city) search.set("city", params.city);
     if (params.pin) search.set("pin", params.pin);
-    return request<School[]>(`/v1/schools/search?${search}`, {}, token);
+    if (params.sort) search.set("sort", params.sort);
+    if (params.limit) search.set("limit", String(params.limit));
+    return request<SchoolListItem[]>(
+      `/v1/schools/search?${search}`,
+      {},
+      token
+    );
+  },
+
+  getNearbySchools: (
+    token: string,
+    params?: {
+      city?: string;
+      pin?: string;
+      sort?: "nearby" | "rating";
+      limit?: number;
+    }
+  ) => {
+    const search = new URLSearchParams();
+    if (params?.city) search.set("city", params.city);
+    if (params?.pin) search.set("pin", params.pin);
+    if (params?.sort) search.set("sort", params.sort);
+    if (params?.limit) search.set("limit", String(params.limit));
+    const query = search.toString();
+    return request<SchoolListItem[]>(
+      `/v1/schools/nearby${query ? `?${query}` : ""}`,
+      {},
+      token
+    );
   },
 
   createSchool: (
@@ -700,6 +771,65 @@ export const api = {
   getConversations: (token: string) =>
     request<ConversationPreview[]>("/v1/conversations", {}, token),
 
+  getMessageSuggestions: (token: string, q?: string) => {
+    const search = new URLSearchParams();
+    if (q?.trim()) search.set("q", q.trim());
+    const query = search.toString();
+    return request<MessageableParent[]>(
+      `/v1/conversations/suggestions${query ? `?${query}` : ""}`,
+      {},
+      token
+    );
+  },
+
+  getConnectionRequests: (token: string) =>
+    request<{
+      incoming: ParentConnectionRequest[];
+      outgoing: ParentConnectionRequest[];
+    }>("/v1/conversations/requests", {}, token),
+
+  requestParentConnection: (
+    token: string,
+    body: { anonymousHandle: string; introduction?: string }
+  ) =>
+    request<
+      | {
+          kind: "conversation";
+          conversation: { id: string; peer: PeerView };
+        }
+      | { kind: "request"; request: ParentConnectionRequest }
+    >(
+      "/v1/conversations/requests",
+      { method: "POST", body: JSON.stringify(body) },
+      token
+    ),
+
+  respondToConnectionRequest: (
+    token: string,
+    requestId: string,
+    action: "accept" | "decline" | "cancel"
+  ) =>
+    request<{
+      ok: boolean;
+      status: "accepted" | "declined" | "cancelled";
+      conversationId: string | null;
+    }>(
+      `/v1/conversations/requests/${requestId}`,
+      { method: "PATCH", body: JSON.stringify({ action }) },
+      token
+    ),
+
+  reportConnectionRequest: (
+    token: string,
+    requestId: string,
+    reason?: string
+  ) =>
+    request<{ ok: boolean }>(
+      `/v1/conversations/requests/${requestId}/report`,
+      { method: "POST", body: JSON.stringify({ reason }) },
+      token
+    ),
+
   startConversation: (
     token: string,
     body: {
@@ -784,6 +914,17 @@ export const api = {
       token
     ),
 
+  reportConversation: (
+    token: string,
+    conversationId: string,
+    reason?: string
+  ) =>
+    request<{ ok: boolean }>(
+      `/v1/conversations/${conversationId}/report`,
+      { method: "POST", body: JSON.stringify({ reason }) },
+      token
+    ),
+
   markConversationRead: (token: string, conversationId: string) =>
     request<{ ok: boolean }>(
       `/v1/conversations/${conversationId}/read`,
@@ -794,6 +935,12 @@ export const api = {
   blockUser: (token: string, userId: string) =>
     request<{ ok: boolean }>(`/v1/me/blocks/${userId}`, {
       method: "POST",
+    }, token),
+
+  reportUser: (token: string, targetUserId: string, reason?: string) =>
+    request<{ ok: boolean }>("/v1/me/reports", {
+      method: "POST",
+      body: JSON.stringify({ targetUserId, reason }),
     }, token),
 
   getProviderProfile: (token: string) =>
@@ -907,6 +1054,9 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ pushToken }),
     }, token),
+
+  getMeStats: (token: string) =>
+    request<MeStats>("/v1/me/stats", {}, token),
 
   getNotificationPrefs: (token: string) =>
     request<NotificationPrefs>("/v1/me/notification-prefs", {}, token),

@@ -1,42 +1,20 @@
 import { useEffect, useState } from "react";
 import {
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { SignOutButton } from "@/components/SignOutButton";
-import { Avatar, ScreenLoader, SectionHeader } from "@/components/ui";
+import { Avatar, ScreenLoader } from "@/components/ui";
 import { FEATURE_FLAGS } from "@/constants/features";
 import { colors, radii, spacing, typography } from "@/constants/theme";
-import {
-  api,
-  type AuthUser,
-  type Child,
-  type NotificationPrefs,
-} from "@/lib/api";
+import { api, type AuthUser, type Child, type MeStats } from "@/lib/api";
+import { trackEvent } from "@/lib/analytics";
 import { getToken } from "@/lib/session";
-
-type BooleanPrefKey = Exclude<keyof NotificationPrefs, "quiet_hours">;
-
-const PREF_LABELS: Record<BooleanPrefKey, string> = {
-  circle_posts: "Circle posts",
-  circle_replies: "Replies to your posts",
-  direct_messages: "Direct messages",
-  reminders: "Reminders",
-  activity_nearby: "Nearby activities",
-  topics: "Topic digests",
-  listings: "Marketplace",
-  disclosures: "Identity sharing",
-  carpool: "Carpool updates",
-  school_events: "School calendar",
-  expert_sessions: "Expert sessions",
-};
 
 type MenuIcon = keyof typeof Ionicons.glyphMap;
 
@@ -83,10 +61,8 @@ export default function ProfileScreen() {
   const router = useRouter();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [children, setChildren] = useState<Child[]>([]);
-  const [circleCount, setCircleCount] = useState(0);
-  const [savedCount, setSavedCount] = useState(0);
-  const [prefs, setPrefs] = useState<NotificationPrefs | null>(null);
-  const [showSettings, setShowSettings] = useState(false);
+  const [stats, setStats] = useState<MeStats | null>(null);
+  const [statsFailed, setStatsFailed] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -96,50 +72,24 @@ export default function ProfileScreen() {
         return;
       }
       try {
-        const [me, kids, circles, saved, notificationPrefs] = await Promise.all([
+        const [me, kids, meStats] = await Promise.all([
           api.me(token),
           api.getChildren(token).catch(() => []),
-          api.getCircles(token).catch(() => []),
-          api.getSaved(token).catch(() => ({ posts: [] })),
-          api.getNotificationPrefs(token),
+          api.getMeStats(token).catch(() => null),
         ]);
         setUser(me);
         setChildren(kids);
-        setCircleCount(circles.length);
-        setSavedCount(saved.posts.length);
-        setPrefs(notificationPrefs);
+        if (meStats) {
+          setStats(meStats);
+          setStatsFailed(false);
+        } else {
+          setStatsFailed(true);
+        }
       } finally {
         setLoading(false);
       }
     });
   }, []);
-
-  async function togglePref(key: BooleanPrefKey, value: boolean) {
-    const token = await getToken();
-    if (!token || !prefs) return;
-    const updated = { ...prefs, [key]: value };
-    setPrefs(updated);
-    try {
-      await api.updateNotificationPrefs(token, updated);
-    } catch {
-      setPrefs(prefs);
-    }
-  }
-
-  async function toggleQuietHours(value: boolean) {
-    const token = await getToken();
-    if (!token || !prefs) return;
-    const updated = {
-      ...prefs,
-      quiet_hours: { ...prefs.quiet_hours, enabled: value },
-    };
-    setPrefs(updated);
-    try {
-      await api.updateNotificationPrefs(token, updated);
-    } catch {
-      setPrefs(prefs);
-    }
-  }
 
   if (loading) {
     return <ScreenLoader label="Loading your account" />;
@@ -150,6 +100,15 @@ export default function ProfileScreen() {
       ? `${children[0].curriculum.code} · ${children[0].grade.label}`
       : "Complete your profile";
 
+  const circleValue = statsFailed ? "—" : (stats?.circleCount ?? 0);
+  const savedValue = statsFailed ? "—" : (stats?.savedPostCount ?? 0);
+  const helpfulValue = statsFailed ? "—" : (stats?.helpfulReceivedCount ?? 0);
+
+  function openMore(destination: string, label: string) {
+    trackEvent("more_destination_opened", { destination: label });
+    router.push(destination as never);
+  }
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.profileCard}>
@@ -159,145 +118,95 @@ export default function ProfileScreen() {
       </View>
 
       <View style={styles.statsRow}>
-        <StatItem value={circleCount} label="Circles" />
+        <StatItem value={circleValue} label="Circles" />
         <View style={styles.statDivider} />
-        <StatItem value={savedCount} label="Saved" />
+        <StatItem value={savedValue} label="Saved" />
         <View style={styles.statDivider} />
-        <StatItem value="—" label="Upvotes" />
+        <StatItem value={helpfulValue} label="Helpful received" />
       </View>
 
       <View style={styles.menuGroup}>
         <MenuRow
           icon="people-outline"
           label="My Children"
-          onPress={() => router.push("/onboarding/children")}
+          onPress={() => openMore("/onboarding/children", "children")}
         />
         <MenuRow
           icon="people-circle-outline"
           label="My Circles"
-          onPress={() => router.push("/(app)/circles" as never)}
+          onPress={() => openMore("/(app)/circles", "circles")}
         />
         <MenuRow
           icon="bookmark-outline"
           label="Saved Posts"
-          onPress={() => router.push("/(app)/saved")}
+          onPress={() => openMore("/(app)/saved", "saved")}
         />
         <MenuRow
           icon="storefront-outline"
           label="My Listings"
           color={colors.coral}
-          onPress={() => router.push("/(app)/market")}
+          onPress={() => openMore("/(app)/market", "market")}
         />
         <MenuRow
           icon="chatbubbles-outline"
           label="Messages"
-          onPress={() => router.push("/(app)/messages")}
+          onPress={() => openMore("/(app)/messages", "messages")}
         />
         <MenuRow
           icon="notifications-outline"
           label="Notifications"
-          onPress={() => router.push("/(app)/notifications")}
+          onPress={() => openMore("/(app)/notifications", "notifications")}
         />
         <MenuRow
           icon="settings-outline"
           label="Settings & Privacy"
-          onPress={() => setShowSettings((current) => !current)}
+          onPress={() => openMore("/(app)/settings", "settings")}
+        />
+        <MenuRow
+          icon="options-outline"
+          label="Notification Preferences"
+          onPress={() =>
+            openMore("/(app)/settings/notifications", "notification_preferences")
+          }
         />
         <MenuRow
           icon="help-circle-outline"
           label="Help & Support"
           color={colors.amber}
-          onPress={() =>
-            Alert.alert(
-              "Help & Support",
-              "Email support@vaara.ai for help with your account, privacy, or community safety."
-            )
-          }
+          onPress={() => openMore("/(app)/support", "support")}
         />
       </View>
 
-      {showSettings ? (
-        <>
-          <SectionHeader title="Family & privacy" />
-          <View style={styles.menuGroup}>
+      {FEATURE_FLAGS.showDoctors ||
+      FEATURE_FLAGS.showPlaydates ||
+      FEATURE_FLAGS.showCarpool ? (
+        <View style={styles.menuGroup}>
+          {FEATURE_FLAGS.showDoctors ? (
             <MenuRow
-              icon="location-outline"
-              label="Location & community"
-              onPress={() => router.push("/onboarding/location")}
+              icon="medkit-outline"
+              label="Local doctors"
+              color={colors.teal}
+              onPress={() =>
+                openMore("/(app)/practitioners", "practitioners")
+              }
             />
-            <MenuRow
-              icon="id-card-outline"
-              label="Contact details for handover"
-              onPress={() => router.push("/(app)/contact-details")}
-            />
-            <MenuRow
-              icon="pricetags-outline"
-              label="Interest topics"
-              color={colors.lavender}
-              onPress={() => router.push("/(app)/topics")}
-            />
-            <MenuRow
-              icon="calendar-outline"
-              label="School calendar"
-              onPress={() => router.push("/(app)/calendar")}
-            />
-            {FEATURE_FLAGS.showPlaydates ? (
-              <MenuRow
-                icon="happy-outline"
-                label="Playdates"
-                onPress={() => router.push("/(app)/playdates")}
-              />
-            ) : null}
-          </View>
-
-          <SectionHeader title="Notification preferences" />
-          <Text style={styles.sectionHint}>
-            Circle and topic activity arrives as a digest. Replies and messages
-            are immediate.
-          </Text>
-          {prefs ? (
-            <View style={styles.menuGroup}>
-              {(Object.keys(PREF_LABELS) as BooleanPrefKey[]).map((key) => (
-                <View key={key} style={styles.prefRow}>
-                  <Text style={styles.prefLabel}>{PREF_LABELS[key]}</Text>
-                  <Switch
-                    value={prefs[key] !== false}
-                    onValueChange={(value) => togglePref(key, value)}
-                    trackColor={{
-                      false: colors.border,
-                      true: colors.primaryLight,
-                    }}
-                    thumbColor={
-                      prefs[key] !== false ? colors.primary : colors.card
-                    }
-                  />
-                </View>
-              ))}
-              <View style={styles.prefRow}>
-                <View style={styles.prefCopy}>
-                  <Text style={styles.prefLabel}>Quiet hours</Text>
-                  <Text style={styles.prefHint}>
-                    {prefs.quiet_hours?.start ?? "22:00"} –{" "}
-                    {prefs.quiet_hours?.end ?? "07:00"}
-                  </Text>
-                </View>
-                <Switch
-                  value={prefs.quiet_hours?.enabled !== false}
-                  onValueChange={toggleQuietHours}
-                  trackColor={{
-                    false: colors.border,
-                    true: colors.primaryLight,
-                  }}
-                  thumbColor={
-                    prefs.quiet_hours?.enabled !== false
-                      ? colors.primary
-                      : colors.card
-                  }
-                />
-              </View>
-            </View>
           ) : null}
-        </>
+          {FEATURE_FLAGS.showPlaydates ? (
+            <MenuRow
+              icon="happy-outline"
+              label="Playdates"
+              color={colors.lavender}
+              onPress={() => openMore("/(app)/playdates", "playdates")}
+            />
+          ) : null}
+          {FEATURE_FLAGS.showCarpool ? (
+            <MenuRow
+              icon="car-outline"
+              label="Carpool"
+              onPress={() => openMore("/(app)/carpool", "carpool")}
+            />
+          ) : null}
+        </View>
       ) : null}
 
       <SignOutButton />
@@ -352,6 +261,7 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontFamily: typography.medium,
     marginTop: 2,
+    textAlign: "center",
   },
   statDivider: {
     width: 1,
@@ -388,31 +298,5 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontFamily: typography.semibold,
     flex: 1,
-  },
-  sectionHint: {
-    ...typography.supporting,
-    color: colors.textMuted,
-    marginBottom: spacing.sm,
-    fontFamily: typography.regular,
-  },
-  prefRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  prefCopy: { flex: 1, paddingRight: spacing.sm },
-  prefLabel: {
-    ...typography.body,
-    color: colors.text,
-    fontFamily: typography.medium,
-  },
-  prefHint: {
-    ...typography.caption,
-    color: colors.textMuted,
-    marginTop: 2,
-    fontFamily: typography.regular,
   },
 });
