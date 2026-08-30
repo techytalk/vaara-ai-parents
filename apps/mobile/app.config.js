@@ -12,6 +12,15 @@ module.exports = {
     ...appJson.expo,
     plugins: [
       ...(appJson.expo.plugins ?? []),
+      [
+        "expo-build-properties",
+        {
+          android: {
+            compileSdkVersion: 35,
+            targetSdkVersion: 35,
+          },
+        },
+      ],
       withAndroidPostNotifications,
       "@react-native-community/datetimepicker",
     ],

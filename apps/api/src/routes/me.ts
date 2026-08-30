@@ -1074,7 +1074,7 @@ export function createMeRoutes() {
     }
 
     const parsed = parseReportReason(body);
-    if (!parsed.ok) {
+    if (parsed.ok === false) {
       return c.json({ error: parsed.error }, 400);
     }
     const reason = parsed.reason;

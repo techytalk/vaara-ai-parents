@@ -1020,7 +1020,7 @@ export function createCirclesRoutes() {
       otherDetail?: string;
     }>();
     const parsed = parseReportReason(body);
-    if (!parsed.ok) {
+    if (parsed.ok === false) {
       return c.json({ error: parsed.error }, 400);
     }
 
@@ -1470,7 +1470,7 @@ export function createConversationsRoutes() {
       otherDetail?: string;
     }>();
     const parsed = parseReportReason(body);
-    if (!parsed.ok) {
+    if (parsed.ok === false) {
       return c.json({ error: parsed.error }, 400);
     }
     const client = await pool.connect();
@@ -1782,7 +1782,7 @@ export function createConversationsRoutes() {
       otherDetail?: string;
     }>();
     const parsed = parseReportReason(body);
-    if (!parsed.ok) {
+    if (parsed.ok === false) {
       return c.json({ error: parsed.error }, 400);
     }
     const client = await pool.connect();

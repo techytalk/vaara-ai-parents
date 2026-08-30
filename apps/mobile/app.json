@@ -31,7 +31,8 @@
         "foregroundImage": "./assets/splash-icon.png",
         "backgroundColor": "#FFFCF7"
       },
-      "package": "com.vaara.parents"
+      "package": "com.vaara.parents",
+      "versionCode": 2
     },
     "plugins": [
       "expo-router",
