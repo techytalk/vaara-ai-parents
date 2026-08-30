@@ -14,7 +14,6 @@ import {
   Chip,
   colors,
   FieldInput,
-  FieldLabel,
   InfoCard,
   OnboardingHeader,
   PrimaryButton,
@@ -284,11 +283,24 @@ export default function LocationScreen() {
 
         {lookupError ? <Text style={styles.lookupError}>{lookupError}</Text> : null}
 
-        {localityOptions.length > 1 ? (
+        <FieldInput
+          label="Locality / area"
+          placeholder="e.g. Indiranagar, IDA Jeedimetla"
+          value={locality}
+          onChangeText={setLocality}
+          hint={
+            localityOptions.length > 0
+              ? "Type your area or tap a suggestion below"
+              : undefined
+          }
+        />
+
+        {localityOptions.length > 0 ? (
           <View style={styles.optionBlock}>
-            <FieldLabel>Locality / area</FieldLabel>
             <Text style={styles.optionHint}>
-              Multiple areas share this code — pick the one closest to you.
+              {localityOptions.length > 1
+                ? "This pin code covers multiple areas — pick the one closest to you:"
+                : "Suggested area for this pin code:"}
             </Text>
             <View style={styles.chipRow}>
               {localityOptions.map((option) => (
@@ -301,14 +313,7 @@ export default function LocationScreen() {
               ))}
             </View>
           </View>
-        ) : (
-          <FieldInput
-            label="Locality / area"
-            placeholder="e.g. Indiranagar, Beverly Hills"
-            value={locality}
-            onChangeText={setLocality}
-          />
-        )}
+        ) : null}
 
         <FieldInput
           label="City"
