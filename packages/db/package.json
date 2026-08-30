@@ -15,9 +15,11 @@
   "scripts": {
     "build": "tsc",
     "migrate": "tsx src/migrate.ts",
-    "seed": "tsx src/seed.ts"
+    "seed": "tsx src/seed.ts",
+    "import-pincodes": "tsx src/import-pincodes.ts"
   },
   "dependencies": {
+    "@twin.techies/india-pincode": "^0.1.5",
     "dotenv": "^16.4.7",
     "pg": "^8.13.1"
   },

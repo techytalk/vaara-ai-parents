@@ -360,7 +360,7 @@ export default function HomeScreen() {
             message={
               circles.length > 0
                 ? "Be the first to share something with parents in your circles."
-                : "Complete your profile to join circles and see posts from other parents."
+                : "Complete your profile to join circles. We'll also suggest posts from other parent groups nearby."
             }
             actionLabel={circles.length > 0 ? "Create post" : "Complete profile"}
             onAction={() => openNewPost()}
@@ -370,13 +370,18 @@ export default function HomeScreen() {
           <FeedPostCard
             post={item}
             circleName={item.circleName}
+            discovery={item.discovery}
             saved={savedPostIds.has(item.id)}
             onPress={() => openPost(item)}
             onComment={() => openPost(item)}
             onToggleSave={() => toggleSave(item.id)}
-            onToggleHelpful={() => toggleHelpful(item)}
+            onToggleHelpful={
+              item.discovery ? undefined : () => toggleHelpful(item)
+            }
             onShare={() => sharePost(item)}
-            onPollVote={(optionId) => onPollVote(item, optionId)}
+            onPollVote={
+              item.discovery ? undefined : (optionId) => onPollVote(item, optionId)
+            }
           />
         )}
       />

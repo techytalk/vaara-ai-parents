@@ -31,6 +31,10 @@ const MIGRATIONS = [
   { version: "023_circle_read_state", file: "023_circle_read_state.sql" },
   { version: "024_activity_categories", file: "024_activity_categories.sql" },
   { version: "025_parent_connection_requests", file: "025_parent_connection_requests.sql" },
+  { version: "026_avatar_key", file: "026_avatar_key.sql" },
+  { version: "027_child_date_of_birth", file: "027_child_date_of_birth.sql" },
+  { version: "028_pin_code_offices", file: "028_pin_code_offices.sql" },
+  { version: "029_international_postal_codes", file: "029_international_postal_codes.sql" },
 ];
 
 async function isMigrationApplied(

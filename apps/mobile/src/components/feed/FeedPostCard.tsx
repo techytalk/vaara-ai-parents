@@ -15,6 +15,7 @@ import type { CirclePost } from "@/lib/api";
 export function FeedPostCard({
   post,
   circleName,
+  discovery,
   saved,
   onPress,
   onComment,
@@ -25,6 +26,7 @@ export function FeedPostCard({
 }: {
   post: CirclePost;
   circleName?: string;
+  discovery?: boolean;
   saved?: boolean;
   onPress: () => void;
   onComment?: () => void;
@@ -57,6 +59,14 @@ export function FeedPostCard({
       onPress={onPress}
       accessibilityRole="button"
     >
+      {discovery ? (
+        <View style={styles.discoveryBadge}>
+          <Ionicons name="compass-outline" size={12} color={colors.textMuted} />
+          <Text style={styles.discoveryBadgeText}>
+            Suggested from another circle
+          </Text>
+        </View>
+      ) : null}
       {circleName ? (
         <Pressable
           style={styles.circleBadge}
@@ -179,6 +189,18 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primarySoft,
     marginBottom: spacing.sm,
     maxWidth: "100%",
+  },
+  discoveryBadge: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginBottom: spacing.xs,
+  },
+  discoveryBadgeText: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontFamily: typography.medium,
   },
   circleBadgeText: {
     ...typography.caption,

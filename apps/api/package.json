@@ -38,6 +38,7 @@
     "@aws-sdk/client-s3": "^3.1118.0",
     "@aws-sdk/s3-request-presigner": "^3.1118.0",
     "@hono/node-server": "^1.13.7",
+    "@twin.techies/india-pincode": "^0.1.5",
     "@vaara/db": "*",
     "@vaara/redis": "*",
     "@vaara/shared": "*",

@@ -409,7 +409,7 @@ export function createMeRoutes() {
     const client = await pool.connect();
     try {
       const { rows } = await client.query(
-        `SELECT pin_code, locality, city, state, community_name, community_key
+        `SELECT country_code, pin_code, locality, city, state, community_name, community_key
          FROM user_locations WHERE user_id = $1`,
         [userId]
       );
@@ -418,7 +418,9 @@ export function createMeRoutes() {
       }
       const loc = rows[0];
       return c.json({
+        countryCode: loc.country_code ?? "IN",
         pinCode: loc.pin_code,
+        postalCode: loc.pin_code,
         locality: loc.locality,
         city: loc.city,
         state: loc.state,
@@ -433,6 +435,7 @@ export function createMeRoutes() {
   app.patch("/location", async (c) => {
     const userId = c.get("user").sub;
     const body = await c.req.json<{
+      countryCode?: string;
       pinCode?: string;
       locality?: string;
       city?: string;
@@ -440,6 +443,7 @@ export function createMeRoutes() {
       communityName?: string;
     }>();
 
+    const countryCode = (body.countryCode?.trim() || "IN").toUpperCase();
     const pinCode = body.pinCode?.trim();
     if (!pinCode) {
       return c.json({ error: "pinCode is required" }, 400);
@@ -455,9 +459,10 @@ export function createMeRoutes() {
       await client.query("BEGIN");
 
       await client.query(
-        `INSERT INTO user_locations (user_id, pin_code, locality, city, state, community_name, community_key, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, now())
+        `INSERT INTO user_locations (user_id, country_code, pin_code, locality, city, state, community_name, community_key, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())
          ON CONFLICT (user_id) DO UPDATE SET
+           country_code = EXCLUDED.country_code,
            pin_code = EXCLUDED.pin_code,
            locality = EXCLUDED.locality,
            city = EXCLUDED.city,
@@ -467,6 +472,7 @@ export function createMeRoutes() {
            updated_at = now()`,
         [
           userId,
+          countryCode,
           pinCode,
           body.locality?.trim() || null,
           body.city?.trim() || null,
@@ -486,7 +492,9 @@ export function createMeRoutes() {
       await client.query("COMMIT");
 
       return c.json({
+        countryCode,
         pinCode,
+        postalCode: pinCode,
         locality: body.locality?.trim() || null,
         city: body.city?.trim() || null,
         state: body.state?.trim() || null,

@@ -60,6 +60,7 @@ export default function PostThreadScreen() {
   const queryClient = useQueryClient();
   const [post, setPost] = useState<CirclePost | null>(null);
   const [comments, setComments] = useState<PostComment[]>([]);
+  const [readOnly, setReadOnly] = useState(false);
   const [saved, setSaved] = useState(false);
   const [commentText, setCommentText] = useState("");
   const [loading, setLoading] = useState(true);
@@ -80,6 +81,7 @@ export default function PostThreadScreen() {
       ]);
       setPost(data.post);
       setComments(data.replies);
+      setReadOnly(Boolean(data.readOnly ?? data.post.readOnly));
       setSaved(savedData.posts.some((item) => item.id === postId));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Failed to load");
@@ -322,7 +324,7 @@ export default function PostThreadScreen() {
     Boolean(currentUserId) &&
     (post.authorId === currentUserId || post.author.userId === currentUserId);
   const canMessageAuthor =
-    !isOwnPost && Boolean(post.authorId ?? post.author.userId);
+    !readOnly && !isOwnPost && Boolean(post.authorId ?? post.author.userId);
 
   return (
     <KeyboardAvoidingView
@@ -340,6 +342,11 @@ export default function PostThreadScreen() {
             <View style={[styles.postCard, cardShadow()]}>
               <View style={styles.postAccent} />
               <View style={styles.postInner}>
+                {readOnly ? (
+                  <Text style={styles.discoveryBanner}>
+                    Suggested from another circle — preview only
+                  </Text>
+                ) : null}
                 <AuthorRow
                   handle={post.author.anonymousHandle}
                   avatarKey={post.author.avatarKey}
@@ -352,8 +359,10 @@ export default function PostThreadScreen() {
                     <Text style={styles.postBody}>{post.body}</Text>
                   ) : null}
                 </View>
-                {post.poll ? (
+                {post.poll && !readOnly ? (
                   <PollCard poll={post.poll} onVote={onPollVote} />
+                ) : post.poll ? (
+                  <PollCard poll={post.poll} />
                 ) : null}
                 <PostMediaGallery media={post.media ?? []} />
 
@@ -365,25 +374,27 @@ export default function PostThreadScreen() {
                 ) : null}
 
                 <View style={styles.actions}>
-                  <Pressable
-                    style={styles.action}
-                    onPress={toggleHelpful}
-                    hitSlop={8}
-                  >
-                    <Ionicons
-                      name={post.myHelpful ? "thumbs-up" : "thumbs-up-outline"}
-                      size={18}
-                      color={post.myHelpful ? theme.primary : theme.textMuted}
-                    />
-                    <Text
-                      style={[
-                        styles.actionText,
-                        post.myHelpful && styles.actionTextActive,
-                      ]}
+                  {!readOnly ? (
+                    <Pressable
+                      style={styles.action}
+                      onPress={toggleHelpful}
+                      hitSlop={8}
                     >
-                      Helpful
-                    </Text>
-                  </Pressable>
+                      <Ionicons
+                        name={post.myHelpful ? "thumbs-up" : "thumbs-up-outline"}
+                        size={18}
+                        color={post.myHelpful ? theme.primary : theme.textMuted}
+                      />
+                      <Text
+                        style={[
+                          styles.actionText,
+                          post.myHelpful && styles.actionTextActive,
+                        ]}
+                      >
+                        Helpful
+                      </Text>
+                    </Pressable>
+                  ) : null}
                   <Pressable
                     style={styles.action}
                     onPress={onSharePost}
@@ -421,7 +432,9 @@ export default function PostThreadScreen() {
               </Text>
               {comments.length === 0 ? (
                 <Text style={styles.commentsHint}>
-                  Be the first to respond to this post
+                  {readOnly
+                    ? "Join this circle to see comments and join the conversation."
+                    : "Be the first to respond to this post"}
                 </Text>
               ) : null}
             </View>
@@ -446,6 +459,14 @@ export default function PostThreadScreen() {
         </View>
       ) : null}
 
+      {readOnly ? (
+        <View style={[styles.composer, cardShadow()]}>
+          <Text style={styles.readOnlyNote}>
+            This post is from a circle you are not in yet. Browse your circles
+            to find parents in your school, class, or area.
+          </Text>
+        </View>
+      ) : (
       <View style={[styles.composer, cardShadow()]}>
         <TextInput
           style={styles.composerInput}
@@ -473,6 +494,7 @@ export default function PostThreadScreen() {
           )}
         </Pressable>
       </View>
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -604,6 +626,18 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   errorText: { color: theme.error, fontSize: 13 },
+  discoveryBanner: {
+    fontSize: 13,
+    color: theme.textMuted,
+    marginBottom: 10,
+  },
+  readOnlyNote: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: theme.textMuted,
+    paddingHorizontal: 4,
+    paddingVertical: 6,
+  },
   composer: {
     flexDirection: "row",
     alignItems: "flex-end",

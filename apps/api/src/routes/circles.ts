@@ -44,7 +44,7 @@ import {
   type PollView,
 } from "../lib/polls.js";
 import { syncCircleMembership } from "../services/circle-sync.js";
-import { loadCircleFeed } from "../services/feed.js";
+import { loadCircleFeed, isDiscoveryPostReadable } from "../services/feed.js";
 import { dispatchPostCreated, dispatchMessageCreated } from "../lib/async-events.js";
 import { rateLimitMiddleware } from "../middleware/rate-limit.js";
 import { authMiddleware, type AuthVariables } from "../middleware/auth.js";
@@ -595,10 +595,34 @@ export function createCirclesRoutes() {
 
     const client = await pool.connect();
     try {
-      const circle = await assertCircleMember(client, circleId, userId);
+      let circle = await assertCircleMember(client, circleId, userId);
+      let readOnly = false;
+      if (!circle) {
+        const discoveryReadable = await isDiscoveryPostReadable(
+          client,
+          userId,
+          circleId,
+          postId
+        );
+        if (!discoveryReadable) {
+          return c.json({ error: "Circle not found" }, 404);
+        }
+        const { rows: circleRows } = await client.query(
+          `SELECT id, circle_type, key, display_name, metadata
+           FROM circles WHERE id = $1`,
+          [circleId]
+        );
+        if (circleRows.length === 0) {
+          return c.json({ error: "Circle not found" }, 404);
+        }
+        circle = circleRows[0];
+        readOnly = true;
+      }
+
       if (!circle) {
         return c.json({ error: "Circle not found" }, 404);
       }
+      const resolvedCircle = circle;
 
       const postResult = await client.query(
         `SELECT p.id, p.body, p.tag, p.reply_count, p.created_at, p.author_id,
@@ -634,11 +658,13 @@ export function createCirclesRoutes() {
         client,
         postRow.author_id,
         postRow.anonymous_handle,
-        circle,
+        resolvedCircle,
         postRow.avatar_key
       );
 
-      const repliesResult = await client.query(
+      const repliesResult = readOnly
+        ? { rows: [] }
+        : await client.query(
         `SELECT r.id, r.body, r.created_at, r.author_id, u.anonymous_handle, u.avatar_key
          FROM circle_post_replies r
          JOIN users u ON u.id = r.author_id
@@ -647,13 +673,15 @@ export function createCirclesRoutes() {
         [postId]
       );
 
-      const replies = await Promise.all(
+      const replies = readOnly
+        ? []
+        : await Promise.all(
         repliesResult.rows.map(async (row) => {
           const author = await buildAuthorView(
             client,
             row.author_id,
             row.anonymous_handle,
-            circle,
+            resolvedCircle,
             row.avatar_key
           );
           return {
@@ -690,8 +718,11 @@ export function createCirclesRoutes() {
           authorId: String(postRow.author_id),
           helpfulCount: helpfulResult.rows[0]?.count ?? 0,
           myHelpful: helpfulResult.rows[0]?.mine ?? false,
+          readOnly,
+          discovery: readOnly,
         },
         replies,
+        readOnly,
       });
     } finally {
       client.release();

@@ -60,12 +60,39 @@ export type Child = {
 };
 
 export type Location = {
+  countryCode: string;
   pinCode: string;
+  postalCode?: string;
   locality: string | null;
   city: string | null;
   state: string | null;
   communityName: string | null;
   communityKey: string | null;
+};
+
+export type PostalCountry = {
+  code: string;
+  name: string;
+  postalLabel: string;
+  placeholder: string;
+  provider: "india" | "zippopotam" | "manual";
+  lookupSupported: boolean;
+};
+
+export type PinCodeLookup = {
+  countryCode: string;
+  countryName: string;
+  pinCode: string;
+  postalCode: string;
+  state: string;
+  city: string;
+  district: string;
+  localities: Array<{
+    name: string;
+    officeType: string | null;
+    deliveryStatus: string | null;
+  }>;
+  communities: string[];
 };
 
 export type Circle = {
@@ -129,6 +156,7 @@ export type CirclePost = {
 export type HomeFeedPost = CirclePost & {
   circleId: string;
   circleName: string;
+  discovery?: boolean;
 };
 
 export type PostComment = {
@@ -532,6 +560,17 @@ export const api = {
 
   getCurricula: () => request<Curriculum[]>("/v1/reference/curricula"),
 
+  getPostalCountries: () =>
+    request<PostalCountry[]>("/v1/reference/postal-countries"),
+
+  lookupPinCode: (pinCode: string) =>
+    request<PinCodeLookup>(`/v1/reference/pin-codes/${encodeURIComponent(pinCode)}`),
+
+  lookupPostalCode: (countryCode: string, postalCode: string) =>
+    request<PinCodeLookup>(
+      `/v1/reference/postal-codes/${encodeURIComponent(countryCode)}/${encodeURIComponent(postalCode)}`
+    ),
+
   getChildren: (token: string) =>
     request<Child[]>("/v1/me/children", {}, token),
 
@@ -638,6 +677,7 @@ export const api = {
   updateLocation: (
     token: string,
     body: {
+      countryCode?: string;
       pinCode: string;
       locality?: string;
       city?: string;
@@ -775,8 +815,9 @@ export const api = {
 
   getPost: (token: string, circleId: string, postId: string) =>
     request<{
-      post: CirclePost;
+      post: CirclePost & { readOnly?: boolean; discovery?: boolean };
       replies: PostComment[];
+      readOnly?: boolean;
     }>(`/v1/circles/${circleId}/posts/${postId}`, {}, token),
 
   addReply: (
