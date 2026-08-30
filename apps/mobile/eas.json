@@ -48,6 +48,7 @@
       "prebuildCommand": "npx expo prebuild --platform android --clean"
     },
     "production": {
+      "distribution": "store",
       "env": {
         "EXPO_PUBLIC_API_URL": "https://api.vaara.ai",
         "EXPO_PUBLIC_REALTIME_URL": "wss://vaara-realtime.fly.dev/ws",
@@ -84,6 +85,14 @@
         "EXPO_PUBLIC_GOOGLE_REDIRECT_URI": "https://auth.expo.io/@raj-techy1s-team/vaara-parents"
       },
       "prebuildCommand": "npx expo prebuild --platform ios --clean"
+    }
+  },
+  "submit": {
+    "production": {
+      "android": {
+        "track": "internal",
+        "releaseStatus": "completed"
+      }
     }
   }
 }
