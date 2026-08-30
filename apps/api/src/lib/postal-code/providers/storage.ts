@@ -70,3 +70,97 @@ export async function savePostalCodeOffices(
     );
   }
 }
+
+/** Replace cached offices with the latest authoritative list from a live lookup. */
+export async function syncPostalCodeOffices(
+  client: PoolClient,
+  countryCode: string,
+  postalCode: string,
+  stateName: string,
+  district: string,
+  offices: PostalCodeLocality[]
+): Promise<void> {
+  if (offices.length === 0) return;
+
+  const officeNames = offices.map((office) => office.name);
+  await client.query(
+    `DELETE FROM postal_code_offices
+     WHERE country_code = $1
+       AND postal_code = $2
+       AND NOT (office_name = ANY($3::text[]))`,
+    [countryCode, postalCode, officeNames]
+  );
+  await savePostalCodeOffices(
+    client,
+    countryCode,
+    postalCode,
+    stateName,
+    district,
+    offices
+  );
+}
+
+export function isIndiaCacheStale(lookup: PostalCodeLookup): boolean {
+  if (lookup.localities.length === 0) return true;
+  return !lookup.localities.some(
+    (locality) => locality.officeType || locality.deliveryStatus
+  );
+}
+
+function localityKey(name: string): string {
+  return cleanOfficeName(name).toLowerCase();
+}
+
+export function mergeLocalities(
+  ...groups: PostalCodeLocality[][]
+): PostalCodeLocality[] {
+  const map = new Map<string, PostalCodeLocality>();
+
+  for (const group of groups) {
+    for (const locality of group) {
+      const name = cleanOfficeName(locality.name);
+      if (!name) continue;
+
+      const key = localityKey(name);
+      const existing = map.get(key);
+      if (!existing) {
+        map.set(key, { ...locality, name });
+        continue;
+      }
+
+      const preferExistingName =
+        Boolean(existing.officeType || existing.deliveryStatus) &&
+        !locality.officeType &&
+        !locality.deliveryStatus;
+
+      map.set(key, {
+        name: preferExistingName ? existing.name : name,
+        officeType: locality.officeType ?? existing.officeType,
+        deliveryStatus: locality.deliveryStatus ?? existing.deliveryStatus,
+      });
+    }
+  }
+
+  return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export function mergePostalCodeLookups(
+  ...lookups: Array<PostalCodeLookup | null | undefined>
+): PostalCodeLookup | null {
+  const valid = lookups.filter(
+    (lookup): lookup is PostalCodeLookup => Boolean(lookup)
+  );
+  if (valid.length === 0) return null;
+
+  const primary =
+    valid.find((lookup) =>
+      lookup.localities.some(
+        (locality) => locality.officeType || locality.deliveryStatus
+      )
+    ) ?? valid[0];
+
+  return {
+    ...primary,
+    localities: mergeLocalities(...valid.map((lookup) => lookup.localities)),
+  };
+}

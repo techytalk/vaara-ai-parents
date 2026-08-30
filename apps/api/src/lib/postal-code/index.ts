@@ -1,6 +1,7 @@
 import type { PoolClient } from "pg";
 import { getPostalCountry, listPostalCountries, normalizeCountryCode } from "./countries.js";
 import { lookupIndiaPostalCode } from "./providers/india.js";
+import { lookupUkPostalCode } from "./providers/uk.js";
 import { lookupZippopotamPostalCode } from "./providers/zippopotam.js";
 import type { PostalCodeLookup } from "./types.js";
 
@@ -36,6 +37,8 @@ export async function lookupPostalCode(
   let lookup: PostalCodeLookup | null = null;
   if (country.provider === "india") {
     lookup = await lookupIndiaPostalCode(client, postalCode);
+  } else if (country.provider === "uk") {
+    lookup = await lookupUkPostalCode(client, postalCode);
   } else if (country.provider === "zippopotam") {
     lookup = await lookupZippopotamPostalCode(
       client,

@@ -14,7 +14,7 @@ export type PostalCodeLookup = {
   localities: PostalCodeLocality[];
 };
 
-export type PostalCountryProvider = "india" | "zippopotam" | "manual";
+export type PostalCountryProvider = "india" | "uk" | "zippopotam" | "manual";
 
 export type PostalCountryConfig = {
   code: string;

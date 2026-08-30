@@ -52,6 +52,7 @@ const COUNTRY_DEFINITIONS: Array<
     name: "United Kingdom",
     postalLabel: "Postcode",
     placeholder: "e.g. SW1A 1AA",
+    provider: "uk",
     normalize: compactUpper,
     validate: (value) => /^[A-Z]{1,2}\d[A-Z\d]?\d[A-Z]{2}$/.test(compactUpper(value)),
   },
@@ -155,6 +156,7 @@ const COUNTRY_DEFINITIONS: Array<
 
 function resolveProvider(code: string): PostalCountryConfig["provider"] {
   if (code === "IN") return "india";
+  if (code === "GB") return "uk";
   if (ZIPPOTAM_COUNTRIES.has(code)) return "zippopotam";
   return "manual";
 }

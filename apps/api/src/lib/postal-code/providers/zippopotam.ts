@@ -1,7 +1,7 @@
 import type { PoolClient } from "pg";
 import { titleCaseWords } from "../format.js";
 import type { PostalCodeLocality, PostalCodeLookup } from "../types.js";
-import { loadPostalCodeFromDb, savePostalCodeOffices } from "./storage.js";
+import { loadPostalCodeFromDb, syncPostalCodeOffices } from "./storage.js";
 
 type ZippopotamPlace = {
   "place name"?: string;
@@ -57,7 +57,7 @@ function zippopotamPostalPath(countryCode: string, postalCode: string): string {
   return compact;
 }
 
-async function loadZippopotamPostalCode(
+export async function fetchZippopotamPostalCode(
   countryCode: string,
   postalCode: string
 ): Promise<PostalCodeLookup | null> {
@@ -94,10 +94,10 @@ export async function lookupZippopotamPostalCode(
   const cached = await loadPostalCodeFromDb(client, countryCode, postalCode);
   if (cached) return cached;
 
-  const remote = await loadZippopotamPostalCode(countryCode, postalCode);
+  const remote = await fetchZippopotamPostalCode(countryCode, postalCode);
   if (!remote) return null;
 
-  await savePostalCodeOffices(
+  await syncPostalCodeOffices(
     client,
     countryCode,
     remote.postalCode,

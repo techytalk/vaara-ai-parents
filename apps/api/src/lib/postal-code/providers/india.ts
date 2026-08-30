@@ -6,7 +6,12 @@ import {
   titleCaseWords,
 } from "../format.js";
 import type { PostalCodeLocality, PostalCodeLookup } from "../types.js";
-import { loadPostalCodeFromDb, savePostalCodeOffices } from "./storage.js";
+import {
+  isIndiaCacheStale,
+  loadPostalCodeFromDb,
+  mergePostalCodeLookups,
+  savePostalCodeOffices,
+} from "./storage.js";
 
 function officeTypeRank(officeType: string | null): number {
   switch ((officeType ?? "").toUpperCase()) {
@@ -23,29 +28,40 @@ function officeTypeRank(officeType: string | null): number {
   return 2;
 }
 
-function buildIndiaLookup(
-  postalCode: string,
-  stateName: string,
-  district: string,
-  offices: PostalCodeLocality[]
-): PostalCodeLookup {
-  const localities = [...offices].sort((a, b) => {
+function finalizeIndiaLookup(lookup: PostalCodeLookup): PostalCodeLookup {
+  const localities = [...lookup.localities].sort((a, b) => {
     const rankDiff =
       officeTypeRank(a.officeType) - officeTypeRank(b.officeType);
     if (rankDiff !== 0) return rankDiff;
     return a.name.localeCompare(b.name);
   });
 
-  const city = formatDistrictAsCity(district);
   return {
+    ...lookup,
+    countryCode: "IN",
+    countryName: "India",
+    city: formatDistrictAsCity(lookup.district),
+    state: formatStateName(lookup.state),
+    district: titleCaseWords(lookup.district),
+    localities,
+  };
+}
+
+function buildIndiaLookup(
+  postalCode: string,
+  stateName: string,
+  district: string,
+  offices: PostalCodeLocality[]
+): PostalCodeLookup {
+  return finalizeIndiaLookup({
     countryCode: "IN",
     countryName: "India",
     postalCode,
-    state: formatStateName(stateName),
-    city,
-    district: titleCaseWords(district),
-    localities,
-  };
+    state: stateName,
+    city: district,
+    district,
+    localities: offices,
+  });
 }
 
 export async function loadIndiaPostalCodeFromDb(
@@ -54,13 +70,10 @@ export async function loadIndiaPostalCodeFromDb(
 ): Promise<PostalCodeLookup | null> {
   const cached = await loadPostalCodeFromDb(client, "IN", postalCode);
   if (!cached) return null;
-  return {
+  return finalizeIndiaLookup({
     ...cached,
     countryName: "India",
-    city: formatDistrictAsCity(cached.district),
-    state: formatStateName(cached.state),
-    district: titleCaseWords(cached.district),
-  };
+  });
 }
 
 async function loadIndiaPostalCodeFromBundledDataset(
@@ -125,31 +138,27 @@ export async function lookupIndiaPostalCode(
   postalCode: string
 ): Promise<PostalCodeLookup | null> {
   const cached = await loadIndiaPostalCodeFromDb(client, postalCode);
-  if (cached) return cached;
 
-  const bundled = await loadIndiaPostalCodeFromBundledDataset(postalCode);
-  if (bundled) {
-    await savePostalCodeOffices(
-      client,
-      "IN",
-      postalCode,
-      bundled.state,
-      bundled.district,
-      bundled.localities
-    );
-    return bundled;
+  if (cached && !isIndiaCacheStale(cached)) {
+    return cached;
   }
 
   const remote = await loadIndiaPostalCodeFromPostalApi(postalCode);
-  if (!remote) return null;
+  const bundled = remote
+    ? null
+    : await loadIndiaPostalCodeFromBundledDataset(postalCode);
 
+  const merged = mergePostalCodeLookups(cached, remote, bundled);
+  if (!merged) return null;
+
+  const result = finalizeIndiaLookup(merged);
   await savePostalCodeOffices(
     client,
     "IN",
     postalCode,
-    remote.state,
-    remote.district,
-    remote.localities
+    result.state,
+    result.district,
+    result.localities
   );
-  return remote;
+  return result;
 }
