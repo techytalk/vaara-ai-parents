@@ -108,7 +108,7 @@ export default function HomeScreen() {
 
   useLayoutEffect(() => {
     navigation.setOptions({
-      title: "Home",
+      title: "Feed",
       headerRight: () => (
         <Pressable
           onPress={() => router.push("/(app)/notifications")}

@@ -15,6 +15,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { api, type Child } from "@/lib/api";
 import { getToken } from "@/lib/session";
 import { GENDER_LABEL } from "@/constants/onboarding";
+import { formatChildDob } from "@/lib/dates";
 import { colors, PrimaryButton, SecondaryButton } from "@/components/onboarding/ui";
 import { SignOutButton } from "@/components/SignOutButton";
 import { radii, shadows, spacing, typography } from "@/constants/theme";
@@ -63,6 +64,7 @@ function ChildCard({
         </Text>
         <Text style={styles.childSub} numberOfLines={1}>
           {GENDER_LABEL[child.gender] ?? child.gender}
+          {child.dateOfBirth ? ` · Born ${formatChildDob(child.dateOfBirth)}` : ""}
           {child.school ? ` · ${child.school.displayLabel}` : ""}
         </Text>
       </View>

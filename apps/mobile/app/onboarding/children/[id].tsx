@@ -13,6 +13,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { api, type Child, type Curriculum } from "@/lib/api";
 import { getToken } from "@/lib/session";
 import { GENDER_LABEL } from "@/constants/onboarding";
+import { formatChildDob } from "@/lib/dates";
 import {
   colors,
   DetailRow,
@@ -130,6 +131,12 @@ export default function ChildDetailScreen() {
           label="Gender"
           value={GENDER_LABEL[child.gender] ?? child.gender}
         />
+        <DetailRow
+          label="Date of birth"
+          value={
+            child.dateOfBirth ? formatChildDob(child.dateOfBirth) : "Not set"
+          }
+        />
         <DetailRow label="Curriculum" value={curriculumFullName} />
         <DetailRow label="Class / grade" value={child.grade.label} />
         <DetailRow label="School" value={child.school.displayLabel} />
@@ -137,7 +144,7 @@ export default function ChildDetailScreen() {
 
       <Text style={styles.privacy}>
         Other parents only see your anonymous handle plus curriculum and grade
-        context in circles — never this nickname or school name.
+        context in circles — never this nickname, date of birth, or school name.
       </Text>
 
       {error ? <Text style={styles.error}>{error}</Text> : null}

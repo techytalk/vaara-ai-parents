@@ -1,6 +1,8 @@
 import { FlatList, ScrollView, StyleSheet, Text, View } from "react-native";
 import type { Curriculum, School } from "@/lib/api";
 import { SchoolPicker } from "@/components/onboarding/SchoolPicker";
+import { DateField } from "@/components/DateTimeField";
+import { childDobBounds } from "@/lib/dates";
 import {
   GENDERS,
   curriculumChipLabel,
@@ -19,6 +21,8 @@ type Props = {
   curricula: Curriculum[];
   nickname: string;
   onNicknameChange: (v: string) => void;
+  dateOfBirth: Date | null;
+  onDateOfBirthChange: (v: Date) => void;
   selectedSchool: School | null;
   onSchoolSelect: (school: School | null) => void;
   gender: string;
@@ -37,6 +41,8 @@ export function ChildFormFields({
   curricula,
   nickname,
   onNicknameChange,
+  dateOfBirth,
+  onDateOfBirthChange,
   selectedSchool,
   onSchoolSelect,
   gender,
@@ -50,6 +56,7 @@ export function ChildFormFields({
   defaultState = "",
 }: Props) {
   const selectedCurriculum = curricula.find((c) => c.id === curriculumId);
+  const dobBounds = childDobBounds();
 
   return (
     <>
@@ -60,6 +67,17 @@ export function ChildFormFields({
         onChangeText={onNicknameChange}
         hint="Never shown to other parents"
       />
+
+      <View style={styles.dobField}>
+        <DateField
+          label="Date of birth *"
+          value={dateOfBirth}
+          onChange={onDateOfBirthChange}
+          minimumDate={dobBounds.minimumDate}
+          maximumDate={dobBounds.maximumDate}
+          hint="Private — never shown to other parents"
+        />
+      </View>
 
       <SchoolPicker
         token={token}
@@ -142,6 +160,7 @@ export function ChildFormFields({
 }
 
 const styles = StyleSheet.create({
+  dobField: { marginBottom: 16 },
   chipRow: { flexDirection: "row", marginBottom: 16 },
   chipWrap: { marginRight: 8 },
   curriculumHint: {

@@ -16,9 +16,13 @@ import {
   type NotificationPrefs,
 } from "../lib/notification-prefs.js";
 import { isValidAvatarKey, resolveAvatarKey } from "../lib/avatar.js";
+import {
+  formatChildDateOfBirth,
+  parseChildDateOfBirth,
+} from "../lib/child-dob.js";
 
 const CHILD_SELECT = `
-  ch.id, ch.nickname, ch.gender, ch.curriculum_id, ch.grade_id, ch.school_id,
+  ch.id, ch.nickname, ch.gender, ch.date_of_birth, ch.curriculum_id, ch.grade_id, ch.school_id,
   cur.code AS curriculum_code, cur.name AS curriculum_name,
   g.code AS grade_code, g.label AS grade_label,
   s.name AS school_name, s.branch AS school_branch, s.city AS school_city,
@@ -35,6 +39,7 @@ function mapChild(row: Record<string, unknown>) {
     id: row.id,
     nickname: row.nickname,
     gender: row.gender,
+    dateOfBirth: formatChildDateOfBirth(row.date_of_birth),
     curriculumId: row.curriculum_id,
     gradeId: row.grade_id,
     schoolId: row.school_id,
@@ -164,6 +169,7 @@ export function createMeRoutes() {
     const body = await c.req.json<{
       nickname?: string;
       gender?: string;
+      dateOfBirth?: string;
       curriculumId?: string;
       gradeId?: string;
       schoolId?: string;
@@ -172,6 +178,10 @@ export function createMeRoutes() {
     const nickname = body.nickname?.trim();
     if (!nickname) {
       return c.json({ error: "nickname is required" }, 400);
+    }
+    const dateOfBirth = parseChildDateOfBirth(body.dateOfBirth);
+    if (!dateOfBirth) {
+      return c.json({ error: "Valid dateOfBirth is required (YYYY-MM-DD)" }, 400);
     }
     if (!body.curriculumId || !body.gradeId) {
       return c.json({ error: "curriculumId and gradeId are required" }, 400);
@@ -211,13 +221,14 @@ export function createMeRoutes() {
       }
 
       const { rows } = await client.query(
-        `INSERT INTO children (user_id, nickname, gender, curriculum_id, grade_id, school_id)
-         VALUES ($1, $2, $3, $4, $5, $6)
+        `INSERT INTO children (user_id, nickname, gender, date_of_birth, curriculum_id, grade_id, school_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING id`,
         [
           userId,
           nickname,
           gender,
+          dateOfBirth,
           body.curriculumId,
           body.gradeId,
           body.schoolId,
@@ -251,6 +262,7 @@ export function createMeRoutes() {
     const body = await c.req.json<{
       nickname?: string;
       gender?: string;
+      dateOfBirth?: string;
       curriculumId?: string;
       gradeId?: string;
       schoolId?: string;
@@ -309,6 +321,15 @@ export function createMeRoutes() {
       if (body.gender !== undefined) {
         fields.push(`gender = $${i++}`);
         values.push(body.gender);
+      }
+      if (body.dateOfBirth !== undefined) {
+        const dateOfBirth = parseChildDateOfBirth(body.dateOfBirth);
+        if (!dateOfBirth) {
+          await client.query("ROLLBACK");
+          return c.json({ error: "Invalid dateOfBirth (YYYY-MM-DD)" }, 400);
+        }
+        fields.push(`date_of_birth = $${i++}`);
+        values.push(dateOfBirth);
       }
       if (body.curriculumId !== undefined) {
         fields.push(`curriculum_id = $${i++}`);

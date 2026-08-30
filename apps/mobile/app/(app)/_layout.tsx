@@ -91,8 +91,8 @@ export default function AppLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Home",
-          tabBarLabel: "Home",
+          title: "Feed",
+          tabBarLabel: "Feed",
           tabBarIcon: tabIcon("home", "home-outline"),
         }}
       />
@@ -106,21 +106,21 @@ export default function AppLayout() {
         }}
       />
       <Tabs.Screen
-        name="activities"
-        options={{
-          title: "Discover",
-          tabBarLabel: "Discover",
-          tabBarIcon: tabIcon("compass", "compass-outline"),
-          headerShown: false,
-        }}
-      />
-      <Tabs.Screen
         name="messages"
         options={{
           title: "Messages",
           tabBarLabel: "Messages",
           headerShown: false,
           tabBarIcon: tabIcon("chatbubbles", "chatbubbles-outline"),
+        }}
+      />
+      <Tabs.Screen
+        name="activities"
+        options={{
+          title: "Discover",
+          tabBarLabel: "Discover",
+          tabBarIcon: tabIcon("compass", "compass-outline"),
+          headerShown: false,
         }}
       />
       <Tabs.Screen

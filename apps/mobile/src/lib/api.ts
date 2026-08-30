@@ -50,6 +50,7 @@ export type Child = {
   id: string;
   nickname: string;
   gender: string;
+  dateOfBirth: string | null;
   curriculumId: string;
   gradeId: string;
   schoolId: string;
@@ -601,6 +602,7 @@ export const api = {
     body: {
       nickname: string;
       gender: string;
+      dateOfBirth: string;
       curriculumId: string;
       gradeId: string;
       schoolId: string;
@@ -622,6 +624,7 @@ export const api = {
     body: {
       nickname?: string;
       gender?: string;
+      dateOfBirth?: string;
       curriculumId?: string;
       gradeId?: string;
       schoolId?: string;

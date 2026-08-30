@@ -11,6 +11,7 @@ import { api, type Curriculum, type School } from "@/lib/api";
 import { getToken } from "@/lib/session";
 import { ChildFormFields } from "@/components/onboarding/ChildFormFields";
 import { pickDefaultCurriculum, pickGradeForCurriculum, sortCurricula } from "@/constants/onboarding";
+import { defaultChildDob, toIsoDateOnly } from "@/lib/dates";
 import {
   colors,
   OnboardingHeader,
@@ -29,6 +30,7 @@ export default function AddChildScreen() {
   const [defaultState, setDefaultState] = useState("");
 
   const [nickname, setNickname] = useState("");
+  const [dateOfBirth, setDateOfBirth] = useState<Date | null>(defaultChildDob());
   const [selectedSchool, setSelectedSchool] = useState<School | null>(null);
   const [gender, setGender] = useState("unspecified");
   const [curriculumId, setCurriculumId] = useState<string | null>(null);
@@ -73,12 +75,17 @@ export default function AddChildScreen() {
       setError("Nickname is required");
       return;
     }
+    if (!dateOfBirth) {
+      setError("Date of birth is required");
+      return;
+    }
 
     setError(null);
     setSubmitting(true);
     try {
       await api.addChild(token, {
         nickname: nick,
+        dateOfBirth: toIsoDateOnly(dateOfBirth),
         schoolId: selectedSchool.id,
         gender,
         curriculumId,
@@ -101,7 +108,7 @@ export default function AddChildScreen() {
   }
 
   const canSave =
-    nickname.trim().length > 0 && selectedSchool && gradeId;
+    nickname.trim().length > 0 && dateOfBirth && selectedSchool && gradeId;
 
   return (
     <ScrollView
@@ -111,7 +118,7 @@ export default function AddChildScreen() {
     >
       <OnboardingHeader
         title="Add a child"
-        subtitle="Nickname and school are required. Both stay private in circles."
+        subtitle="Nickname, date of birth, and school are required. All stay private in circles."
       />
 
       <ChildFormFields
@@ -119,6 +126,8 @@ export default function AddChildScreen() {
         curricula={curricula}
         nickname={nickname}
         onNicknameChange={setNickname}
+        dateOfBirth={dateOfBirth}
+        onDateOfBirthChange={setDateOfBirth}
         selectedSchool={selectedSchool}
         onSchoolSelect={setSelectedSchool}
         gender={gender}

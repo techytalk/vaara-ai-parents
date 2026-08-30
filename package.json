@@ -14,6 +14,8 @@
     "dev:worker": "npm run dev -w @vaara/worker",
     "dev:realtime": "npm run dev -w @vaara/realtime",
     "dev:mobile": "npm run start -w @vaara/mobile",
+    "dev:web": "npm run dev -w @vaara/web",
+    "build:web": "npm run build -w @vaara/web",
     "build:api": "npm run build -w @vaara/db && npm run build -w @vaara/redis && npm run build -w @vaara/api",
     "build:worker": "npm run build -w @vaara/db && npm run build -w @vaara/redis && npm run build -w @vaara/api && npm run build -w @vaara/worker",
     "build:realtime": "npm run build -w @vaara/db && npm run build -w @vaara/redis && npm run build -w @vaara/api && npm run build -w @vaara/realtime"

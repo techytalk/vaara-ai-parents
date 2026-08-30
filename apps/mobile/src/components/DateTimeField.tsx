@@ -16,12 +16,111 @@ import { colors, radii, spacing, typography } from "@/constants/theme";
 function parseTime(value: string): Date {
   const [hours, minutes] = value.split(":").map((part) => Number(part));
   const date = new Date();
-  date.setHours(Number.isFinite(hours) ? hours : 0, Number.isFinite(minutes) ? minutes : 0, 0, 0);
+  date.setHours(
+    Number.isFinite(hours) ? hours : 0,
+    Number.isFinite(minutes) ? minutes : 0,
+    0,
+    0
+  );
   return date;
 }
 
 function formatTime(date: Date): string {
   return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+export function DateField({
+  label,
+  value,
+  onChange,
+  minimumDate,
+  maximumDate,
+  hint,
+}: {
+  label: string;
+  value: Date | null;
+  onChange: (value: Date) => void;
+  minimumDate?: Date;
+  maximumDate?: Date;
+  hint?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(value ?? new Date());
+
+  function openPicker() {
+    setDraft(value ?? new Date());
+    setOpen(true);
+  }
+
+  function onPickerChange(event: DateTimePickerEvent, date?: Date) {
+    if (Platform.OS === "android") {
+      setOpen(false);
+      if (event.type === "set" && date) {
+        onChange(date);
+      }
+      return;
+    }
+    if (date) setDraft(date);
+  }
+
+  function confirmIos() {
+    onChange(draft);
+    setOpen(false);
+  }
+
+  const display = value
+    ? value.toLocaleDateString(undefined, {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      })
+    : "Select date of birth";
+
+  return (
+    <>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${label}, ${display}`}
+        onPress={openPicker}
+        style={styles.field}
+      >
+        <Text style={styles.fieldLabel}>{label}</Text>
+        <Text style={[styles.fieldValue, !value && styles.placeholder]}>
+          {display}
+        </Text>
+        {hint ? <Text style={styles.fieldHint}>{hint}</Text> : null}
+      </Pressable>
+
+      {open && Platform.OS === "android" ? (
+        <DateTimePicker
+          value={draft}
+          mode="date"
+          display="default"
+          minimumDate={minimumDate}
+          maximumDate={maximumDate}
+          onChange={onPickerChange}
+        />
+      ) : null}
+
+      {open && Platform.OS === "ios" ? (
+        <Modal transparent animationType="slide">
+          <Pressable style={styles.backdrop} onPress={() => setOpen(false)} />
+          <View style={styles.sheet}>
+            <Text style={styles.sheetTitle}>{label}</Text>
+            <DateTimePicker
+              value={draft}
+              mode="date"
+              display="spinner"
+              minimumDate={minimumDate}
+              maximumDate={maximumDate}
+              onChange={onPickerChange}
+            />
+            <Button label="Done" onPress={confirmIos} />
+          </View>
+        </Modal>
+      ) : null}
+    </>
+  );
 }
 
 export function TimeField({
@@ -207,6 +306,12 @@ const styles = StyleSheet.create({
     fontFamily: typography.medium,
   },
   placeholder: { color: colors.textSubtle },
+  fieldHint: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontFamily: typography.regular,
+    marginTop: 4,
+  },
   backdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.35)",

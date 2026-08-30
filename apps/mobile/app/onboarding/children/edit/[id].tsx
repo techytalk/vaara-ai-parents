@@ -15,6 +15,7 @@ import {
   resolveChildFormState,
   sortCurricula,
 } from "@/constants/onboarding";
+import { parseIsoDateOnly, toIsoDateOnly } from "@/lib/dates";
 import {
   colors,
   OnboardingHeader,
@@ -34,6 +35,7 @@ export default function EditChildScreen() {
   const [defaultState, setDefaultState] = useState("");
 
   const [nickname, setNickname] = useState("");
+  const [dateOfBirth, setDateOfBirth] = useState<Date | null>(null);
   const [selectedSchool, setSelectedSchool] = useState<School | null>(null);
   const [gender, setGender] = useState("unspecified");
   const [curriculumId, setCurriculumId] = useState<string | null>(null);
@@ -75,6 +77,9 @@ export default function EditChildScreen() {
 
   function populateFromChild(child: Child, sortedCurricula: Curriculum[]) {
     setNickname(child.nickname);
+    setDateOfBirth(
+      child.dateOfBirth ? parseIsoDateOnly(child.dateOfBirth) : null
+    );
     setSelectedSchool(child.school);
     setGender(child.gender);
     const resolved = resolveChildFormState(child, sortedCurricula);
@@ -91,12 +96,17 @@ export default function EditChildScreen() {
       setError("Nickname is required");
       return;
     }
+    if (!dateOfBirth) {
+      setError("Date of birth is required");
+      return;
+    }
 
     setError(null);
     setSubmitting(true);
     try {
       await api.updateChild(token, id, {
         nickname: nick,
+        dateOfBirth: toIsoDateOnly(dateOfBirth),
         schoolId: selectedSchool.id,
         gender,
         curriculumId,
@@ -130,7 +140,7 @@ export default function EditChildScreen() {
   }
 
   const canSave =
-    nickname.trim().length > 0 && selectedSchool && gradeId;
+    nickname.trim().length > 0 && dateOfBirth && selectedSchool && gradeId;
 
   return (
     <ScrollView
@@ -140,7 +150,7 @@ export default function EditChildScreen() {
     >
       <OnboardingHeader
         title="Edit child"
-        subtitle="Update nickname, school, curriculum, or class. Changes update your circles."
+        subtitle="Update nickname, date of birth, school, curriculum, or class. Changes update your circles."
       />
 
       <ChildFormFields
@@ -148,6 +158,8 @@ export default function EditChildScreen() {
         curricula={curricula}
         nickname={nickname}
         onNicknameChange={setNickname}
+        dateOfBirth={dateOfBirth}
+        onDateOfBirthChange={setDateOfBirth}
         selectedSchool={selectedSchool}
         onSchoolSelect={setSelectedSchool}
         gender={gender}

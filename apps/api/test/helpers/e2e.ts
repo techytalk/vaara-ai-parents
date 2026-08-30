@@ -165,6 +165,7 @@ export async function onboardParent(
     method: "POST",
     body: JSON.stringify({
       nickname,
+      dateOfBirth: "2018-06-15",
       curriculumId: fixture.curriculumId,
       gradeId: fixture.gradeId,
       schoolId: fixture.schoolId,
