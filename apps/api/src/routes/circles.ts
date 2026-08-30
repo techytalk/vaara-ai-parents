@@ -46,6 +46,7 @@ import {
 import { syncCircleMembership } from "../services/circle-sync.js";
 import { loadCircleFeed, isDiscoveryPostReadable } from "../services/feed.js";
 import { dispatchPostCreated, dispatchMessageCreated } from "../lib/async-events.js";
+import { parseReportReason } from "../lib/report-reasons.js";
 import { rateLimitMiddleware } from "../middleware/rate-limit.js";
 import { authMiddleware, type AuthVariables } from "../middleware/auth.js";
 import {
@@ -1009,6 +1010,67 @@ export function createCirclesRoutes() {
     }
   });
 
+  app.post("/:circleId/posts/:postId/report", async (c) => {
+    const userId = c.get("user").sub;
+    const circleId = c.req.param("circleId");
+    const postId = c.req.param("postId");
+    const body = await c.req.json<{
+      reason?: string;
+      reasonId?: string;
+      otherDetail?: string;
+    }>();
+    const parsed = parseReportReason(body);
+    if (!parsed.ok) {
+      return c.json({ error: parsed.error }, 400);
+    }
+
+    const client = await pool.connect();
+    try {
+      let circle = await assertCircleMember(client, circleId, userId);
+      if (!circle) {
+        const discoveryReadable = await isDiscoveryPostReadable(
+          client,
+          userId,
+          circleId,
+          postId
+        );
+        if (!discoveryReadable) {
+          return c.json({ error: "Post not found" }, 404);
+        }
+      }
+
+      const postResult = await client.query(
+        `SELECT p.id, p.author_id
+         FROM circle_posts p
+         WHERE p.id = $1
+           AND EXISTS (
+             SELECT 1 FROM circle_post_targets pct
+             WHERE pct.post_id = p.id AND pct.circle_id = $2
+           )`,
+        [postId, circleId]
+      );
+      if (postResult.rows.length === 0) {
+        return c.json({ error: "Post not found" }, 404);
+      }
+
+      const authorId = String(postResult.rows[0].author_id);
+      if (authorId === userId) {
+        return c.json({ error: "Cannot report your own post" }, 400);
+      }
+
+      await client.query(
+        `INSERT INTO reports (
+           reporter_id, target_post_id, target_user_id, reason
+         )
+         VALUES ($1, $2, $3, $4)`,
+        [userId, postId, authorId, parsed.reason]
+      );
+      return c.json({ ok: true });
+    } finally {
+      client.release();
+    }
+  });
+
   return app;
 }
 
@@ -1402,8 +1464,15 @@ export function createConversationsRoutes() {
   app.post("/requests/:requestId/report", async (c) => {
     const userId = c.get("user").sub;
     const requestId = c.req.param("requestId");
-    const body = await c.req.json<{ reason?: string }>();
-    const reason = body.reason?.trim() || "Unwanted connection request";
+    const body = await c.req.json<{
+      reason?: string;
+      reasonId?: string;
+      otherDetail?: string;
+    }>();
+    const parsed = parseReportReason(body);
+    if (!parsed.ok) {
+      return c.json({ error: parsed.error }, 400);
+    }
     const client = await pool.connect();
     try {
       const { rows } = await client.query(
@@ -1423,7 +1492,7 @@ export function createConversationsRoutes() {
       await client.query(
         `INSERT INTO reports (reporter_id, target_user_id, reason)
          VALUES ($1, $2, $3)`,
-        [userId, peerId, reason]
+        [userId, peerId, parsed.reason]
       );
       return c.json({ ok: true });
     } finally {
@@ -1707,8 +1776,15 @@ export function createConversationsRoutes() {
   app.post("/:conversationId/report", async (c) => {
     const userId = c.get("user").sub;
     const conversationId = c.req.param("conversationId");
-    const body = await c.req.json<{ reason?: string }>();
-    const reason = body.reason?.trim() || "Inappropriate conversation";
+    const body = await c.req.json<{
+      reason?: string;
+      reasonId?: string;
+      otherDetail?: string;
+    }>();
+    const parsed = parseReportReason(body);
+    if (!parsed.ok) {
+      return c.json({ error: parsed.error }, 400);
+    }
     const client = await pool.connect();
     try {
       const { rows } = await client.query(
@@ -1730,7 +1806,7 @@ export function createConversationsRoutes() {
            reporter_id, target_conversation_id, target_user_id, reason
          )
          VALUES ($1, $2, $3, $4)`,
-        [userId, conversationId, peerId, reason]
+        [userId, conversationId, peerId, parsed.reason]
       );
       return c.json({ ok: true });
     } finally {

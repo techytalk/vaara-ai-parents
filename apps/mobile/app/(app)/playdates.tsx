@@ -20,7 +20,7 @@ import {
 } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import { api, type Child, type PlaydateMatch } from "@/lib/api";
-import { showParentSafetyActions } from "@/lib/parent-safety";
+import { useParentSafetyActions } from "@/lib/parent-safety";
 import { getToken } from "@/lib/session";
 
 const AGE_BANDS = [
@@ -34,6 +34,7 @@ const AGE_BANDS = [
 
 export default function PlaydatesScreen() {
   const router = useRouter();
+  const showParentSafetyActions = useParentSafetyActions();
   const [children, setChildren] = useState<Child[]>([]);
   const [selectedChild, setSelectedChild] = useState<string | null>(null);
   const [ageBand, setAgeBand] = useState("4_6");

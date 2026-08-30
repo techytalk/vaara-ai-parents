@@ -19,12 +19,13 @@ import {
 } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import { api, peerDisplayName, type CarpoolArrangement } from "@/lib/api";
-import { showParentSafetyActions } from "@/lib/parent-safety";
+import { useParentSafetyActions } from "@/lib/parent-safety";
 import { getToken } from "@/lib/session";
 
 export default function CarpoolArrangementScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const showParentSafetyActions = useParentSafetyActions();
   const [arrangement, setArrangement] = useState<CarpoolArrangement | null>(
     null
   );

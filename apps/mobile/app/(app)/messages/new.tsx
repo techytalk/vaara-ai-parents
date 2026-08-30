@@ -22,9 +22,11 @@ import {
   type ParentConnectionRequest,
 } from "@/lib/api";
 import { getToken } from "@/lib/session";
+import { useSubmitReport } from "@/providers/ReportProvider";
 
 export default function NewMessageScreen() {
   const router = useRouter();
+  const submitReport = useSubmitReport();
   const { handle: invitedHandle } = useLocalSearchParams<{ handle?: string }>();
   const [me, setMe] = useState<AuthUser | null>(null);
   const [suggestions, setSuggestions] = useState<MessageableParent[]>([]);
@@ -198,11 +200,15 @@ export default function NewMessageScreen() {
       { text: "Cancel", style: "cancel" },
       {
         text: "Report",
-        onPress: async () => {
-          const token = await getToken();
-          if (!token) return;
-          await api.reportConnectionRequest(token, request.id);
-          Alert.alert("Reported", "Thank you. Our safety team can review it.");
+        onPress: () => {
+          submitReport({
+            title: `Report ${request.peer.anonymousHandle}`,
+            submit: async (reason) => {
+              const token = await getToken();
+              if (!token) throw new Error("Not signed in");
+              await api.reportConnectionRequest(token, request.id, reason);
+            },
+          });
         },
       },
       {

@@ -110,8 +110,8 @@ export default function SupportScreen() {
       <Text style={styles.sectionTitle}>Frequently asked questions</Text>
       <View style={styles.faqGroup}>
         <FaqItem
-          question="How do I report a parent?"
-          answer="Open the connection request or conversation, use the block option, and email support if you need help with ongoing safety concerns."
+          question="How do I report a parent or post?"
+          answer="Open the ⋯ menu on a post, conversation, or connection request, choose Report, then pick a reason before submitting. You can also report parents from carpool and playdate screens."
         />
         <FaqItem
           question="Why can't I see another parent's name?"

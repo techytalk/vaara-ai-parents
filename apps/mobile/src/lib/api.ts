@@ -838,6 +838,18 @@ export const api = {
       token
     ),
 
+  reportPost: (
+    token: string,
+    circleId: string,
+    postId: string,
+    reason: string
+  ) =>
+    request<{ ok: boolean }>(
+      `/v1/circles/${circleId}/posts/${postId}/report`,
+      { method: "POST", body: JSON.stringify({ reason }) },
+      token
+    ),
+
   getConversations: (token: string) =>
     request<ConversationPreview[]>("/v1/conversations", {}, token),
 

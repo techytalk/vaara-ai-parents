@@ -23,6 +23,7 @@ export function FeedPostCard({
   onToggleHelpful,
   onShare,
   onPollVote,
+  onReport,
 }: {
   post: CirclePost;
   circleName?: string;
@@ -34,6 +35,7 @@ export function FeedPostCard({
   onToggleHelpful?: () => void;
   onShare?: () => void;
   onPollVote?: (optionId: string) => void;
+  onReport?: () => void;
 }) {
   const helpfulCount = post.helpfulCount ?? 0;
   const engagementParts: string[] = [];
@@ -67,18 +69,33 @@ export function FeedPostCard({
           </Text>
         </View>
       ) : null}
-      {circleName ? (
-        <Pressable
-          style={styles.circleBadge}
-          onPress={onPress}
-          hitSlop={4}
-        >
-          <Ionicons name="people-outline" size={12} color={colors.primaryDark} />
-          <Text style={styles.circleBadgeText} numberOfLines={1}>
-            {circleName}
-          </Text>
-        </Pressable>
-      ) : null}
+      <View style={styles.cardHeader}>
+        <View style={styles.cardHeaderMain}>
+          {circleName ? (
+            <Pressable
+              style={styles.circleBadge}
+              onPress={onPress}
+              hitSlop={4}
+            >
+              <Ionicons name="people-outline" size={12} color={colors.primaryDark} />
+              <Text style={styles.circleBadgeText} numberOfLines={1}>
+                {circleName}
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
+        {onReport ? (
+          <Pressable
+            style={styles.reportBtn}
+            onPress={() => onReport()}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Report post"
+          >
+            <Ionicons name="flag-outline" size={18} color={colors.textMuted} />
+          </Pressable>
+        ) : null}
+      </View>
       <AuthorRow
         handle={post.author.anonymousHandle}
         avatarKey={post.author.avatarKey}
@@ -201,6 +218,21 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.textMuted,
     fontFamily: typography.medium,
+  },
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: spacing.xs,
+  },
+  cardHeaderMain: {
+    flex: 1,
+  },
+  reportBtn: {
+    width: 32,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
   },
   circleBadgeText: {
     ...typography.caption,

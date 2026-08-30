@@ -27,6 +27,7 @@ import {
   type ComposeMode,
 } from "@/lib/home-feed";
 import { getToken } from "@/lib/session";
+import { useSubmitReport } from "@/providers/ReportProvider";
 
 function greetingForHour(hour: number) {
   if (hour < 12) return "Good morning";
@@ -38,6 +39,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const queryClient = useQueryClient();
+  const submitReport = useSubmitReport();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [circles, setCircles] = useState<Circle[]>([]);
   const [unreadAlerts, setUnreadAlerts] = useState(0);
@@ -190,6 +192,17 @@ export default function HomeScreen() {
         };
       }
     );
+  }
+
+  function reportPost(post: HomeFeedPost) {
+    submitReport({
+      title: "Report post",
+      submit: async (reason) => {
+        const token = await getToken();
+        if (!token) throw new Error("Not signed in");
+        await api.reportPost(token, post.circleId, post.id, reason);
+      },
+    });
   }
 
   async function onPollVote(post: HomeFeedPost, optionId: string) {
@@ -381,6 +394,11 @@ export default function HomeScreen() {
             onShare={() => sharePost(item)}
             onPollVote={
               item.discovery ? undefined : (optionId) => onPollVote(item, optionId)
+            }
+            onReport={
+              user && (item.authorId ?? item.author.userId) !== user.id
+                ? () => reportPost(item)
+                : undefined
             }
           />
         )}

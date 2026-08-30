@@ -13,6 +13,7 @@ import { AppErrorBoundary } from "@/components/AppErrorBoundary";
 import { UpdatePrompt } from "@/components/UpdatePrompt";
 import { useAppUpdateCheck } from "@/hooks/useAppUpdateCheck";
 import { AppQueryProvider } from "@/providers/QueryProvider";
+import { ReportProvider } from "@/providers/ReportProvider";
 import { colors } from "@/constants/theme";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -37,6 +38,7 @@ export default function RootLayout() {
   return (
     <AppErrorBoundary>
       <AppQueryProvider>
+        <ReportProvider>
         <StatusBar style="dark" backgroundColor={colors.bg} />
         <Stack
           screenOptions={{
@@ -59,6 +61,7 @@ export default function RootLayout() {
           onUpdate={update.openStore}
           onDismiss={update.dismiss}
         />
+        </ReportProvider>
       </AppQueryProvider>
     </AppErrorBoundary>
   );

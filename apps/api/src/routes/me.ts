@@ -16,6 +16,7 @@ import {
   type NotificationPrefs,
 } from "../lib/notification-prefs.js";
 import { isValidAvatarKey, resolveAvatarKey } from "../lib/avatar.js";
+import { parseReportReason } from "../lib/report-reasons.js";
 import {
   formatChildDateOfBirth,
   parseChildDateOfBirth,
@@ -1058,7 +1059,12 @@ export function createMeRoutes() {
 
   app.post("/reports", async (c) => {
     const userId = c.get("user").sub;
-    const body = await c.req.json<{ targetUserId?: string; reason?: string }>();
+    const body = await c.req.json<{
+      targetUserId?: string;
+      reason?: string;
+      reasonId?: string;
+      otherDetail?: string;
+    }>();
     const targetUserId = body.targetUserId?.trim();
     if (!targetUserId) {
       return c.json({ error: "targetUserId is required" }, 400);
@@ -1067,7 +1073,11 @@ export function createMeRoutes() {
       return c.json({ error: "Cannot report yourself" }, 400);
     }
 
-    const reason = body.reason?.trim() || "Reported from the app";
+    const parsed = parseReportReason(body);
+    if (!parsed.ok) {
+      return c.json({ error: parsed.error }, 400);
+    }
+    const reason = parsed.reason;
     const client = await pool.connect();
     try {
       const exists = await client.query("SELECT id FROM users WHERE id = $1", [

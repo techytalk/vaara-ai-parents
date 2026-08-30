@@ -58,6 +58,7 @@ export default function AppLayout() {
 
   return (
     <Tabs
+      initialRouteName="index"
       screenOptions={{
         headerShown: true,
         tabBarActiveTintColor: colors.tabActive,
@@ -124,6 +125,14 @@ export default function AppLayout() {
         }}
       />
       <Tabs.Screen
+        name="profile"
+        options={{
+          title: "More",
+          tabBarLabel: "More",
+          tabBarIcon: tabIcon("grid", "grid-outline"),
+        }}
+      />
+      <Tabs.Screen
         name="schools"
         options={{
           href: null,
@@ -136,14 +145,6 @@ export default function AppLayout() {
         options={{
           href: null,
           title: "Alerts",
-        }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: "More",
-          tabBarLabel: "More",
-          tabBarIcon: tabIcon("grid", "grid-outline"),
         }}
       />
       <Tabs.Screen name="market" options={{ href: null, headerShown: false }} />

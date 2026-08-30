@@ -28,6 +28,7 @@ import {
 import { useRealtimeChannel } from "@/hooks/useRealtimeChannel";
 import { api, type CirclePost, type PostComment } from "@/lib/api";
 import { getStoredUser, getToken } from "@/lib/session";
+import { useSubmitReport } from "@/providers/ReportProvider";
 
 function CommentCard({ comment }: { comment: PostComment }) {
   return (
@@ -58,6 +59,7 @@ export default function PostThreadScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const queryClient = useQueryClient();
+  const submitReport = useSubmitReport();
   const [post, setPost] = useState<CirclePost | null>(null);
   const [comments, setComments] = useState<PostComment[]>([]);
   const [readOnly, setReadOnly] = useState(false);
@@ -106,6 +108,44 @@ export default function PostThreadScreen() {
     onPollFallback: load,
   });
 
+  const showPostSafetyActions = useCallback(() => {
+    if (!post) return;
+    const authorId = post.authorId ?? post.author.userId;
+    Alert.alert("Safety options", "Choose an action for this post.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Report post",
+        onPress: () => {
+          submitReport({
+            title: "Report post",
+            submit: async (reason) => {
+              const token = await getToken();
+              if (!token) throw new Error("Not signed in");
+              await api.reportPost(token, circleId, postId, reason);
+            },
+          });
+        },
+      },
+      ...(authorId
+        ? [
+            {
+              text: "Report parent",
+              onPress: () => {
+                submitReport({
+                  title: `Report ${post.author.anonymousHandle}`,
+                  submit: async (reason) => {
+                    const token = await getToken();
+                    if (!token) throw new Error("Not signed in");
+                    await api.reportUser(token, authorId, reason);
+                  },
+                });
+              },
+            },
+          ]
+        : []),
+    ]);
+  }, [circleId, post, postId, submitReport]);
+
   useLayoutEffect(() => {
     const isOwnPost =
       Boolean(currentUserId) && post?.author.userId === currentUserId;
@@ -124,7 +164,21 @@ export default function PostThreadScreen() {
             >
               <Ionicons name="trash-outline" size={22} color={theme.error} />
             </Pressable>
-          ) : null}
+          ) : (
+            <Pressable
+              onPress={showPostSafetyActions}
+              hitSlop={8}
+              style={styles.headerMore}
+              accessibilityRole="button"
+              accessibilityLabel="Post safety options"
+            >
+              <Ionicons
+                name="ellipsis-horizontal"
+                size={22}
+                color={theme.text}
+              />
+            </Pressable>
+          )}
           <Pressable onPress={toggleSave} hitSlop={8} style={styles.headerSave}>
             <Ionicons
               name={saved ? "bookmark" : "bookmark-outline"}
@@ -135,7 +189,14 @@ export default function PostThreadScreen() {
         </View>
       ),
     });
-  }, [navigation, saved, currentUserId, post, deleting]);
+  }, [
+    navigation,
+    saved,
+    currentUserId,
+    post,
+    deleting,
+    showPostSafetyActions,
+  ]);
 
   function confirmDelete() {
     Alert.alert(
@@ -506,6 +567,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   headerDelete: { marginRight: 4 },
+  headerMore: { marginRight: 4 },
   headerSave: { marginRight: 8 },
   container: { flex: 1, backgroundColor: theme.bg },
   centered: {

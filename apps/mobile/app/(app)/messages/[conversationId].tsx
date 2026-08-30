@@ -26,6 +26,7 @@ import {
   type PeerView,
 } from "@/lib/api";
 import { getToken } from "@/lib/session";
+import { useSubmitReport } from "@/providers/ReportProvider";
 
 export default function ChatScreen() {
   const { conversationId, peerHandle } = useLocalSearchParams<{
@@ -35,6 +36,7 @@ export default function ChatScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const queryClient = useQueryClient();
+  const submitReport = useSubmitReport();
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [disclosing, setDisclosing] = useState(false);
@@ -107,11 +109,17 @@ export default function ChatScreen() {
       { text: "Cancel", style: "cancel" },
       {
         text: "Report conversation",
-        onPress: async () => {
-          const token = await getToken();
-          if (!token) return;
-          await api.reportConversation(token, conversationId);
-          Alert.alert("Reported", "Thank you. Our safety team can review it.");
+        onPress: () => {
+          submitReport({
+            title: `Report ${peerDisplayName(peer)}`,
+            description:
+              "Choose why you are reporting this conversation. We will also notify our safety team about the other parent.",
+            submit: async (reason) => {
+              const token = await getToken();
+              if (!token) throw new Error("Not signed in");
+              await api.reportConversation(token, conversationId, reason);
+            },
+          });
         },
       },
       {

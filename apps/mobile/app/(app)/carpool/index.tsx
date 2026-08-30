@@ -20,11 +20,12 @@ import {
 } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import { api, type CarpoolOffer } from "@/lib/api";
-import { showParentSafetyActions } from "@/lib/parent-safety";
+import { useParentSafetyActions } from "@/lib/parent-safety";
 import { getToken } from "@/lib/session";
 
 export default function CarpoolScreen() {
   const router = useRouter();
+  const showParentSafetyActions = useParentSafetyActions();
   const [matches, setMatches] = useState<CarpoolOffer[]>([]);
   const [departureTime, setDepartureTime] = useState("08:00");
   const [loading, setLoading] = useState(true);
