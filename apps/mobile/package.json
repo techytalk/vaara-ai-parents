@@ -9,6 +9,7 @@
     "ios": "expo run:ios",
     "build:apk": "npx eas-cli build -p android --profile preview",
     "build:apk:production": "npx eas-cli build -p android --profile production-apk",
+    "build:aab:production": "npx eas-cli build -p android --profile production",
     "build:apk:dev": "npx eas-cli build -p android --profile development",
     "build:ios": "npx eas-cli build -p ios --profile preview-ios",
     "build:ios:production": "npx eas-cli build -p ios --profile production-ios"
