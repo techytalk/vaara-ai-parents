@@ -4,7 +4,18 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./types": "./types.ts",
-    "./report-reasons": "./report-reasons.ts"
+    "./types": {
+      "react-native": "./types.ts",
+      "types": "./dist/types.d.ts",
+      "default": "./dist/types.js"
+    },
+    "./report-reasons": {
+      "react-native": "./report-reasons.ts",
+      "types": "./dist/report-reasons.d.ts",
+      "default": "./dist/report-reasons.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc"
   }
 }

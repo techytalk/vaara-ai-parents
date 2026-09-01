@@ -8,16 +8,16 @@
   "scripts": {
     "db:migrate": "npm run migrate -w @vaara/db",
     "db:seed": "npm run seed -w @vaara/db",
-    "test:api": "npm run test -w @vaara/api",
-    "test:audit": "npm run test:audit -w @vaara/api",
-    "dev:api": "npm run dev -w @vaara/api",
+    "test:api": "npm run build -w @vaara/shared && npm run test -w @vaara/api",
+    "test:audit": "npm run build -w @vaara/shared && npm run test:audit -w @vaara/api",
+    "dev:api": "npm run build -w @vaara/shared && npm run dev -w @vaara/api",
     "dev:worker": "npm run dev -w @vaara/worker",
     "dev:realtime": "npm run dev -w @vaara/realtime",
     "dev:mobile": "npm run start -w @vaara/mobile",
     "dev:web": "npm run dev -w @vaara/web",
     "build:web": "npm run build -w @vaara/web",
-    "build:api": "npm run build -w @vaara/db && npm run build -w @vaara/redis && npm run build -w @vaara/api",
-    "build:worker": "npm run build -w @vaara/db && npm run build -w @vaara/redis && npm run build -w @vaara/api && npm run build -w @vaara/worker",
-    "build:realtime": "npm run build -w @vaara/db && npm run build -w @vaara/redis && npm run build -w @vaara/api && npm run build -w @vaara/realtime"
+    "build:api": "npm run build -w @vaara/shared && npm run build -w @vaara/db && npm run build -w @vaara/redis && npm run build -w @vaara/api",
+    "build:worker": "npm run build -w @vaara/shared && npm run build -w @vaara/db && npm run build -w @vaara/redis && npm run build -w @vaara/api && npm run build -w @vaara/worker",
+    "build:realtime": "npm run build -w @vaara/shared && npm run build -w @vaara/db && npm run build -w @vaara/redis && npm run build -w @vaara/api && npm run build -w @vaara/realtime"
   }
 }
