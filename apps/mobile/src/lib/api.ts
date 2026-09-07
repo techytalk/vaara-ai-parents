@@ -138,6 +138,38 @@ export type PollView = {
   closesAt: string | null;
 };
 
+export type ThreadAccessState =
+  | "member"
+  | "author"
+  | "discovery_preview"
+  | "share_preview";
+
+export type ThreadCapabilities = {
+  canViewPost: boolean;
+  canViewReplies: boolean;
+  canReply: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
+  canVote: boolean;
+  canMarkHelpful: boolean;
+  canSave: boolean;
+  canMessageAuthor: boolean;
+  canOpenCircle: boolean;
+  canReport: boolean;
+};
+
+export type AuthoredPost = {
+  id: string;
+  body: string;
+  tag: string;
+  replyCount: number;
+  createdAt: string;
+  editedAt: string | null;
+  circleId: string;
+  circleName: string;
+  accessState: "member" | "author";
+};
+
 export type CirclePost = {
   id: string;
   body: string;
@@ -553,6 +585,13 @@ export const api = {
 
   me: (token: string) => request<AuthUser>("/v1/me", {}, token),
 
+  getMyPosts: (token: string) =>
+    request<{ posts: AuthoredPost[]; nextCursor: string | null }>(
+      "/v1/me/posts",
+      {},
+      token
+    ),
+
   updateAvatar: (token: string, avatarKey: string) =>
     request<{ avatarKey: string }>(
       "/v1/me/avatar",
@@ -843,12 +882,38 @@ export const api = {
       token
     ),
 
-  getPost: (token: string, circleId: string, postId: string) =>
-    request<{
+  getPost: (
+    token: string,
+    circleId: string,
+    postId: string,
+    shareId?: string
+  ) => {
+    const qs = shareId ? `?shareId=${encodeURIComponent(shareId)}` : "";
+    return request<{
       post: CirclePost & { readOnly?: boolean; discovery?: boolean };
       replies: PostComment[];
       readOnly?: boolean;
-    }>(`/v1/circles/${circleId}/posts/${postId}`, {}, token),
+      accessState?: ThreadAccessState;
+      capabilities?: ThreadCapabilities;
+    }>(`/v1/circles/${circleId}/posts/${postId}${qs}`, {}, token);
+  },
+
+  createPostShare: (token: string, circleId: string, postId: string) =>
+    request<{ shareId: string; url: string; expiresAt: string }>(
+      `/v1/circles/${circleId}/posts/${postId}/shares`,
+      { method: "POST" },
+      token
+    ),
+
+  resolveShare: (token: string | null, shareId: string) =>
+    request<{
+      available: boolean;
+      shareId?: string;
+      circleId?: string;
+      postId?: string;
+      access?: string;
+      url?: string;
+    }>(`/v1/shares/${shareId}`, {}, token ?? undefined),
 
   addReply: (
     token: string,
@@ -1338,7 +1403,12 @@ export const api = {
   },
 
   askSchoolQuestion: (token: string, schoolId: string, body: string) =>
-    request<{ id: string; createdAt: string }>(
+    request<{
+      id: string;
+      createdAt: string;
+      circleId: string;
+      postId: string;
+    }>(
       `/v1/schools/${schoolId}/questions`,
       { method: "POST", body: JSON.stringify({ body }) },
       token

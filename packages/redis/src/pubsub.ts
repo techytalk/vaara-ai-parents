@@ -1,6 +1,7 @@
 import {
   circleChannel,
   conversationChannel,
+  postChannel,
   topicChannel,
   userInboxChannel,
 } from "./channels.js";
@@ -53,6 +54,13 @@ export async function publishCircleEvent(
   event: Extract<RealtimeEvent, { type: "post.new" | "poll.vote" | "reply.new" }>
 ): Promise<void> {
   await publish(circleChannel(circleId), event);
+}
+
+export async function publishPostEvent(
+  postId: string,
+  event: Extract<RealtimeEvent, { type: "reply.new" | "poll.vote" }>
+): Promise<void> {
+  await publish(postChannel(postId), event);
 }
 
 export async function publishConversationEvent(

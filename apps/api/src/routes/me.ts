@@ -975,13 +975,17 @@ export function createMeRoutes() {
                     SELECT 1 FROM circle_post_targets pct
                     JOIN circle_members cm ON cm.circle_id = pct.circle_id
                     WHERE pct.post_id = p.id AND cm.user_id = $2
-                  ) AS can_view,
-                  (
+                  ) OR p.author_id = $2 AS can_view,
+                  COALESCE((
                     SELECT pct.circle_id FROM circle_post_targets pct
                     JOIN circle_members cm ON cm.circle_id = pct.circle_id
                     WHERE pct.post_id = p.id AND cm.user_id = $2
                     LIMIT 1
-                  ) AS circle_id
+                  ), (
+                    SELECT pct.circle_id FROM circle_post_targets pct
+                    WHERE pct.post_id = p.id AND pct.is_primary
+                    LIMIT 1
+                  )) AS circle_id
            FROM circle_posts p
            JOIN users u ON u.id = p.author_id
            WHERE p.id = $1`,
@@ -1150,6 +1154,55 @@ export function createMeRoutes() {
       );
 
       return c.json({ ok: true });
+    } finally {
+      client.release();
+    }
+  });
+
+  app.get("/posts", async (c) => {
+    const userId = c.get("user").sub;
+    const before = c.req.query("before");
+    const limit = Math.min(Number(c.req.query("limit") ?? 20), 50);
+    const client = await pool.connect();
+    try {
+      const params: unknown[] = [userId, limit];
+      let beforeClause = "";
+      if (before) {
+        params.push(before);
+        beforeClause = `AND p.created_at < $3::timestamptz`;
+      }
+      const { rows } = await client.query(
+        `SELECT p.id, p.body, p.tag, p.reply_count, p.created_at, p.edited_at,
+                pct.circle_id, c.display_name AS circle_name,
+                EXISTS (
+                  SELECT 1 FROM circle_members cm
+                  WHERE cm.circle_id = pct.circle_id AND cm.user_id = $1
+                ) AS is_member
+         FROM circle_posts p
+         JOIN circle_post_targets pct
+           ON pct.post_id = p.id AND pct.is_primary
+         JOIN circles c ON c.id = pct.circle_id
+         WHERE p.author_id = $1
+           ${beforeClause}
+         ORDER BY p.created_at DESC
+         LIMIT $2`,
+        params
+      );
+      return c.json({
+        posts: rows.map((row) => ({
+          id: row.id,
+          body: row.body,
+          tag: row.tag,
+          replyCount: row.reply_count,
+          createdAt: row.created_at,
+          editedAt: row.edited_at ?? null,
+          circleId: row.circle_id,
+          circleName: row.circle_name,
+          accessState: row.is_member ? "member" : "author",
+        })),
+        nextCursor:
+          rows.length === limit ? rows[rows.length - 1].created_at : null,
+      });
     } finally {
       client.release();
     }

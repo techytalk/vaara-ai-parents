@@ -94,6 +94,26 @@ async function canSubscribe(
       return rows.length > 0;
     }
 
+    if (channel.startsWith("post:")) {
+      const postId = channel.slice("post:".length);
+      const { rows } = await client.query(
+        `SELECT 1
+         FROM circle_posts p
+         WHERE p.id = $1
+           AND (
+             p.author_id = $2
+             OR EXISTS (
+               SELECT 1
+               FROM circle_post_targets pct
+               JOIN circle_members cm ON cm.circle_id = pct.circle_id
+               WHERE pct.post_id = p.id AND cm.user_id = $2
+             )
+           )`,
+        [postId, userId]
+      );
+      return rows.length > 0;
+    }
+
     return false;
   } finally {
     client.release();

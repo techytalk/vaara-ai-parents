@@ -90,7 +90,8 @@ export async function loadPostPolls(
   client: PoolClient,
   postIds: string[],
   viewerId: string,
-  circleMemberCount: number
+  circleMemberCount: number,
+  viewerOptions?: { revealHiddenResults?: boolean }
 ): Promise<Map<string, PollView>> {
   const result = new Map<string, PollView>();
   if (postIds.length === 0) return result;
@@ -144,7 +145,9 @@ export async function loadPostPolls(
     const resultsVisible =
       !smallCircle &&
       !belowThreshold &&
-      (!hideUntilVote || myOptionId !== null);
+      (!hideUntilVote ||
+        myOptionId !== null ||
+        Boolean(viewerOptions?.revealHiddenResults));
 
     result.set(poll.post_id, {
       id: poll.id,

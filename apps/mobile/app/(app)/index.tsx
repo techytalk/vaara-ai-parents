@@ -4,7 +4,6 @@ import {
   FlatList,
   Pressable,
   RefreshControl,
-  Share,
   StyleSheet,
   Text,
   View,
@@ -27,6 +26,7 @@ import {
   type ComposeMode,
 } from "@/lib/home-feed";
 import { getToken } from "@/lib/session";
+import { sharePostLink } from "@/lib/share-post";
 import { useSubmitReport } from "@/providers/ReportProvider";
 
 function greetingForHour(hour: number) {
@@ -259,10 +259,15 @@ export default function HomeScreen() {
   }
 
   async function sharePost(post: HomeFeedPost) {
-    const preview = post.body.trim() || post.poll?.question || "A parent post";
+    const token = await getToken();
+    if (!token) return;
     try {
-      await Share.share({
-        message: `${preview}\n\n— via Vaara Parents (${post.circleName})`,
+      await sharePostLink({
+        token,
+        circleId: post.circleId,
+        postId: post.id,
+        post,
+        circleName: post.circleName,
       });
     } catch {
       // user dismissed share sheet

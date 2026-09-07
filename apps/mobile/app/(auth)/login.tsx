@@ -15,6 +15,7 @@ import { VaaraLogo } from "@/components/VaaraLogo";
 import { Button, InlineError } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import { api } from "@/lib/api";
+import { trackAuthConversion } from "@/lib/analytics";
 import { routeAfterAuth } from "@/lib/auth-navigation";
 import { saveSession } from "@/lib/session";
 
@@ -27,9 +28,13 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
 
   const completeAuth = useCallback(
-    async (result: Awaited<ReturnType<typeof api.login>>) => {
+    async (
+      result: Awaited<ReturnType<typeof api.login>>,
+      method: "password" | "google" = "password"
+    ) => {
+      trackAuthConversion("login", method);
       await saveSession(result.token, result.user);
-      routeAfterAuth(router, result.user);
+      await routeAfterAuth(router, result.user);
     },
     [router]
   );
@@ -68,7 +73,7 @@ export default function LoginScreen() {
           </View>
 
           <GoogleAuthSection
-            onSuccess={completeAuth}
+            onSuccess={(result) => completeAuth(result, "google")}
             onError={setGoogleError}
           />
 

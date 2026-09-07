@@ -13,3 +13,7 @@ export function userInboxChannel(userId: string): string {
 export function topicChannel(slug: string): string {
   return `topic:${slug}`;
 }
+
+export function postChannel(postId: string): string {
+  return `post:${postId}`;
+}

@@ -2,6 +2,7 @@ const { config } = require("dotenv");
 const { resolve } = require("path");
 const appJson = require("./app.json");
 const withAndroidPostNotifications = require("./plugins/with-android-post-notifications");
+const withRnFirebaseIos = require("./plugins/with-rnfirebase-ios");
 
 // Monorepo: load shared env from repo root (same file used by API/worker).
 config({ path: resolve(__dirname, "../../.env.local") });
@@ -19,9 +20,13 @@ module.exports = {
             compileSdkVersion: 35,
             targetSdkVersion: 35,
           },
+          ios: {
+            useFrameworks: "static",
+          },
         },
       ],
       withAndroidPostNotifications,
+      withRnFirebaseIos,
       "@react-native-community/datetimepicker",
     ],
     owner: "raj-techy1s-team",

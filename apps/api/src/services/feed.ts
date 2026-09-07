@@ -2,7 +2,7 @@ import type { PoolClient } from "pg";
 import { readPool } from "@vaara/db";
 import {
   assertCircleMember,
-  buildAuthorView,
+  buildAuthorViewForCircleAccess,
 } from "../lib/author.js";
 import { mediaPublicUrl, type MediaType } from "../lib/media-storage.js";
 import { loadPostPolls } from "../lib/polls.js";
@@ -183,7 +183,7 @@ export async function loadCircleFeed(params: {
 
     const posts = await Promise.all(
       rows.map(async (row) => {
-        const author = await buildAuthorView(
+        const author = await buildAuthorViewForCircleAccess(
           client,
           row.author_id,
           row.anonymous_handle,
@@ -435,7 +435,7 @@ async function hydrateHomeFeedPosts(
         display_name: row.circle_name as string,
         metadata: (row.circle_metadata ?? {}) as Record<string, unknown>,
       };
-      const author = await buildAuthorView(
+      const author = await buildAuthorViewForCircleAccess(
         client,
         row.author_id as string,
         row.anonymous_handle as string,

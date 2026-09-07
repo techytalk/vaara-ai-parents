@@ -14,6 +14,7 @@ import {
   createProviderRoutes,
 } from "./routes/activities.js";
 import { createInternalRoutes } from "./routes/internal.js";
+import { createShareRoutes } from "./routes/shares.js";
 import { createAppRoutes } from "./routes/app.js";
 import { createSchoolsRoutes } from "./routes/schools.js";
 import { createMediaRoutes } from "./routes/media.js";
@@ -69,6 +70,7 @@ app.route("/v1/playdates", createPlaydateRoutes());
 app.route("/v1/carpool", createCarpoolRoutes());
 app.route("/v1/providers", createProviderReviewRoutes());
 app.route("/v1/provider/reviews", createProviderReviewReplyRoutes());
+app.route("/v1/shares", createShareRoutes());
 app.route("/v1/app", createAppRoutes());
 app.route("/internal", createInternalRoutes());
 

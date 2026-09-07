@@ -1,5 +1,6 @@
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
+import * as Linking from "expo-linking";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import {
@@ -16,6 +17,9 @@ import { useOTAUpdates } from "@/hooks/useOTAUpdates";
 import { AppQueryProvider } from "@/providers/QueryProvider";
 import { ReportProvider } from "@/providers/ReportProvider";
 import { colors } from "@/constants/theme";
+import { initAnalytics } from "@/lib/analytics";
+import { pathFromShareUrl, savePendingLink } from "@/lib/pending-link";
+import { getToken } from "@/lib/session";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -28,6 +32,25 @@ export default function RootLayout() {
     PlusJakartaSans_600SemiBold,
     PlusJakartaSans_700Bold,
   });
+
+  useEffect(() => {
+    void initAnalytics();
+  }, []);
+
+  useEffect(() => {
+    function handleUrl(url: string) {
+      const path = pathFromShareUrl(url);
+      if (!path) return;
+      getToken().then((token) => {
+        if (!token) savePendingLink(path).catch(() => {});
+      });
+    }
+    Linking.getInitialURL().then((url) => {
+      if (url) handleUrl(url);
+    });
+    const sub = Linking.addEventListener("url", (event) => handleUrl(event.url));
+    return () => sub.remove();
+  }, []);
 
   useEffect(() => {
     if (fontsLoaded || fontError) {
@@ -54,7 +77,8 @@ export default function RootLayout() {
           <Stack.Screen name="onboarding" />
           <Stack.Screen name="(app)" />
           <Stack.Screen name="(provider)" />
-          <Stack.Screen name="circles" options={{ headerShown: false }} />
+        <Stack.Screen name="circles" options={{ headerShown: false }} />
+          <Stack.Screen name="p" options={{ headerShown: false }} />
         </Stack>
         <UpdatePrompt
           visible={update.visible}

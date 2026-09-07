@@ -9,6 +9,7 @@ import {
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, type PostalCountry } from "@/lib/api";
+import { trackOnboardingComplete } from "@/lib/analytics";
 import { getToken, getStoredUser, saveSession } from "@/lib/session";
 import {
   Chip,
@@ -180,6 +181,7 @@ export default function LocationScreen() {
         });
       }
 
+      trackOnboardingComplete();
       router.replace("/(app)");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save location");

@@ -93,6 +93,8 @@ export async function getAuthorContextForCircle(
   return `${primary.curriculum_name} · ${primary.grade_label}`;
 }
 
+export const OUTSIDER_AUTHOR_LABEL = "Prospective parent · Not in this circle";
+
 export async function buildAuthorView(
   client: PoolClient,
   userId: string,
@@ -102,6 +104,31 @@ export async function buildAuthorView(
 ): Promise<AuthorView> {
   const contextLabel = await getAuthorContextForCircle(client, userId, circle);
   return mapAuthorView(userId, anonymousHandle, contextLabel, storedAvatarKey);
+}
+
+export async function buildAuthorViewForCircleAccess(
+  client: PoolClient,
+  userId: string,
+  anonymousHandle: string,
+  circle: CircleRow,
+  storedAvatarKey?: string | null
+): Promise<AuthorView> {
+  const member = await assertCircleMember(client, circle.id, userId);
+  if (!member) {
+    return mapAuthorView(
+      userId,
+      anonymousHandle,
+      OUTSIDER_AUTHOR_LABEL,
+      storedAvatarKey
+    );
+  }
+  return buildAuthorView(
+    client,
+    userId,
+    anonymousHandle,
+    circle,
+    storedAvatarKey
+  );
 }
 
 export async function buildReviewAuthorView(

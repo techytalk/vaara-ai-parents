@@ -4,7 +4,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
-  KeyboardAvoidingView,
+  Keyboard,
   Platform,
   Pressable,
   ScrollView,
@@ -15,7 +15,6 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useHeaderHeight } from "@react-navigation/elements";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system";
@@ -28,6 +27,7 @@ import {
 import {
   AudienceSheet,
   audienceSummary,
+  PostTypeSheet,
   TopicsSheet,
 } from "@/components/circles/PostComposerPickers";
 import { api, type Circle } from "@/lib/api";
@@ -44,17 +44,6 @@ type PendingMedia = {
   height?: number;
   durationMs?: number;
 };
-
-const TAG_ORDER: PostTagValue[] = [
-  "general",
-  "question",
-  "recommendation",
-  "heads_up",
-];
-
-const ORDERED_TAGS = TAG_ORDER.map(
-  (value) => POST_TAGS.find((t) => t.value === value)!
-);
 
 const PLACEHOLDERS: Record<PostTagValue, string> = {
   general: "What's on your mind?",
@@ -75,8 +64,8 @@ export default function NewPostScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const queryClient = useQueryClient();
-  const headerHeight = useHeaderHeight();
   const insets = useSafeAreaInsets();
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [body, setBody] = useState("");
   const [tag, setTag] = useState<PostTagValue>(() => {
     if (tagParam === "recommendation" || tagParam === "question" || tagParam === "heads_up" || tagParam === "general") {
@@ -105,11 +94,29 @@ export default function NewPostScreen() {
   const [composeHandled, setComposeHandled] = useState(false);
   const [audienceOpen, setAudienceOpen] = useState(false);
   const [topicsOpen, setTopicsOpen] = useState(false);
+  const [typeOpen, setTypeOpen] = useState(false);
 
   function showSubmitError(message: string) {
     setError(message);
     Alert.alert(isEditing ? "Could not save" : "Could not post", message);
   }
+
+  useEffect(() => {
+    const showEvent =
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent =
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const showSub = Keyboard.addListener(showEvent, (event) => {
+      setKeyboardHeight(event.endCoordinates.height);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardHeight(0);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   useEffect(() => {
     getToken().then(async (token) => {
@@ -454,28 +461,9 @@ export default function NewPostScreen() {
   useLayoutEffect(() => {
     navigation.setOptions({
       title: isEditing ? "Edit post" : "New post",
-      headerRight: () => (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={isEditing ? "Save post" : "Publish post"}
-          accessibilityState={{ disabled: !canPost || loading || !editReady }}
-          hitSlop={8}
-          style={[
-            styles.postBtn,
-            (!canPost || loading || !editReady) && styles.postBtnOff,
-          ]}
-          onPress={() => void submitRef.current()}
-          disabled={loading || !editReady}
-        >
-          {loading ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Text style={styles.postBtnText}>{isEditing ? "Save" : "Post"}</Text>
-          )}
-        </Pressable>
-      ),
+      headerRight: () => null,
     });
-  }, [navigation, canPost, editReady, isEditing, loading]);
+  }, [navigation, isEditing]);
 
   const primaryCircle = circles.find((circle) => circle.id === circleId);
   const audienceLabel = audienceSummary({
@@ -486,6 +474,9 @@ export default function NewPostScreen() {
   const selectedTopics = topicOptions.filter((topic) =>
     selectedTopicSlugs.includes(topic.slug)
   );
+  const tagMeta = POST_TAGS.find((item) => item.value === tag) ?? POST_TAGS[3];
+  const composerPadBottom =
+    keyboardHeight > 0 ? 10 : Math.max(insets.bottom, 10);
 
   if (isEditing && !editReady) {
     return error ? (
@@ -501,11 +492,7 @@ export default function NewPostScreen() {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={headerHeight}
-    >
+    <View style={styles.container}>
       <View style={styles.metaBar}>
         <Pressable
           accessibilityRole="button"
@@ -527,6 +514,21 @@ export default function NewPostScreen() {
             color={theme.primaryDark}
           />
         </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Post type ${tagMeta.label}. Change type`}
+          style={[
+            styles.typePill,
+            { backgroundColor: tagMeta.bg, borderColor: tagMeta.color },
+          ]}
+          onPress={() => setTypeOpen(true)}
+        >
+          <Ionicons name={tagMeta.icon} size={14} color={tagMeta.color} />
+          <Text style={[styles.typePillText, { color: tagMeta.color }]} numberOfLines={1}>
+            {tagMeta.label}
+          </Text>
+          <Ionicons name="chevron-down" size={14} color={tagMeta.color} />
+        </Pressable>
         <View style={styles.anonPill}>
           <Ionicons name="eye-off" size={13} color={theme.textMuted} />
           <Text style={styles.anonText}>Anonymous</Text>
@@ -537,40 +539,6 @@ export default function NewPostScreen() {
           Circles can’t be changed after posting.
         </Text>
       ) : null}
-
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.typeStrip}
-        contentContainerStyle={styles.typeStripContent}
-      >
-        {ORDERED_TAGS.map((t) => {
-          const active = tag === t.value;
-          return (
-            <Pressable
-              key={t.value}
-              accessibilityRole="radio"
-              accessibilityState={{ selected: active }}
-              style={[
-                styles.typeChip,
-                active && { backgroundColor: t.bg, borderColor: t.color },
-              ]}
-              onPress={() => setTag(t.value)}
-            >
-              <Ionicons
-                name={t.icon}
-                size={15}
-                color={active ? t.color : theme.textMuted}
-              />
-              <Text
-                style={[styles.typeChipText, active && { color: t.color }]}
-              >
-                {t.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
 
       <ScrollView
         style={styles.body}
@@ -693,33 +661,28 @@ export default function NewPostScreen() {
             ) : null}
           </View>
         ) : null}
-      </ScrollView>
 
-      {selectedTopics.length > 0 ? (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.topicStrip}
-          contentContainerStyle={styles.topicStripContent}
-        >
-          {selectedTopics.map((topic) => (
-            <Pressable
-              key={topic.slug}
-              accessibilityRole="button"
-              accessibilityLabel={`Remove topic ${topic.name}`}
-              style={styles.topicChip}
-              onPress={() =>
-                setSelectedTopicSlugs((current) =>
-                  current.filter((slug) => slug !== topic.slug)
-                )
-              }
-            >
-              <Text style={styles.topicChipText}>{topic.name}</Text>
-              <Ionicons name="close" size={13} color={theme.primaryDark} />
-            </Pressable>
-          ))}
-        </ScrollView>
-      ) : null}
+        {selectedTopics.length > 0 ? (
+          <View style={styles.topicWrap}>
+            {selectedTopics.map((topic) => (
+              <Pressable
+                key={topic.slug}
+                accessibilityRole="button"
+                accessibilityLabel={`Remove topic ${topic.name}`}
+                style={styles.topicChip}
+                onPress={() =>
+                  setSelectedTopicSlugs((current) =>
+                    current.filter((slug) => slug !== topic.slug)
+                  )
+                }
+              >
+                <Text style={styles.topicChipText}>{topic.name}</Text>
+                <Ionicons name="close" size={13} color={theme.primaryDark} />
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+      </ScrollView>
 
       {error ? (
         <View style={styles.errorBar}>
@@ -737,44 +700,68 @@ export default function NewPostScreen() {
 
       <View
         style={[
-          styles.toolbar,
-          { paddingBottom: Math.max(insets.bottom, 10) },
+          styles.composerDock,
+          {
+            paddingBottom: composerPadBottom,
+            marginBottom: keyboardHeight,
+          },
         ]}
       >
-        <ToolbarButton
-          icon="image-outline"
-          label="Add photos or videos"
-          count={media.length}
-          active={media.length > 0}
-          disabled={mediaEnabled !== true}
-          onPress={pickMedia}
-        />
-        <ToolbarButton
-          icon="stats-chart-outline"
-          label={
-            isEditing
-              ? pollEnabled
-                ? "Poll on this post"
-                : "Polls can’t be added after posting"
-              : "Add a poll"
-          }
-          active={pollEnabled}
-          disabled={isEditing}
-          onPress={() => {
-            if (isEditing) return;
-            setPollEnabled((current) => !current);
-          }}
-        />
-        <ToolbarButton
-          icon="pricetag-outline"
-          label="Add topics"
-          count={selectedTopicSlugs.length}
-          active={selectedTopicSlugs.length > 0}
-          disabled={topicOptions.length === 0}
-          onPress={() => setTopicsOpen(true)}
-        />
-        <View style={styles.toolbarSpacer} />
-        <Text style={styles.charCount}>{body.length}</Text>
+        <View style={styles.toolbar}>
+          <ToolbarButton
+            icon="image-outline"
+            label="Add photos or videos"
+            count={media.length}
+            active={media.length > 0}
+            disabled={mediaEnabled !== true}
+            onPress={pickMedia}
+          />
+          <ToolbarButton
+            icon="stats-chart-outline"
+            label={
+              isEditing
+                ? pollEnabled
+                  ? "Poll on this post"
+                  : "Polls can’t be added after posting"
+                : "Add a poll"
+            }
+            active={pollEnabled}
+            disabled={isEditing}
+            onPress={() => {
+              if (isEditing) return;
+              setPollEnabled((current) => !current);
+            }}
+          />
+          <ToolbarButton
+            icon="pricetag-outline"
+            label="Add topics"
+            count={selectedTopicSlugs.length}
+            active={selectedTopicSlugs.length > 0}
+            disabled={topicOptions.length === 0}
+            onPress={() => setTopicsOpen(true)}
+          />
+          <View style={styles.toolbarSpacer} />
+          <Text style={styles.charCount}>{body.length}</Text>
+        </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={isEditing ? "Save post" : "Publish post"}
+          accessibilityState={{ disabled: !canPost || loading || !editReady }}
+          style={[
+            styles.submitBtn,
+            (!canPost || loading || !editReady) && styles.submitBtnOff,
+          ]}
+          onPress={() => void submitRef.current()}
+          disabled={loading || !editReady || !canPost}
+        >
+          {loading ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Text style={styles.submitBtnText}>
+              {isEditing ? "Save" : "Post"}
+            </Text>
+          )}
+        </Pressable>
       </View>
 
       <AudienceSheet
@@ -787,6 +774,12 @@ export default function NewPostScreen() {
         onChange={setAdditionalCircleIds}
         locked={isEditing}
       />
+      <PostTypeSheet
+        visible={typeOpen}
+        onClose={() => setTypeOpen(false)}
+        value={tag}
+        onChange={setTag}
+      />
       <TopicsSheet
         visible={topicsOpen}
         onClose={() => setTopicsOpen(false)}
@@ -794,7 +787,7 @@ export default function NewPostScreen() {
         selectedSlugs={selectedTopicSlugs}
         onChange={setSelectedTopicSlugs}
       />
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -840,17 +833,17 @@ function ToolbarButton({
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.bg },
 
-  postBtn: {
-    minWidth: 62,
-    height: 32,
-    borderRadius: 16,
+  submitBtn: {
+    marginHorizontal: 12,
+    marginTop: 4,
+    minHeight: 48,
+    borderRadius: 14,
     backgroundColor: theme.primary,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 14,
   },
-  postBtnOff: { backgroundColor: theme.primaryLight },
-  postBtnText: { color: "#fff", fontSize: 14, fontWeight: "700" },
+  submitBtnOff: { backgroundColor: theme.primaryLight },
+  submitBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
 
   metaBar: {
     flexDirection: "row",
@@ -858,6 +851,7 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 16,
     paddingTop: 12,
+    flexWrap: "wrap",
   },
   audiencePill: {
     flexShrink: 1,
@@ -865,6 +859,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
     minHeight: 34,
+    maxWidth: "48%",
     paddingHorizontal: 12,
     borderRadius: 17,
     backgroundColor: theme.primarySoft,
@@ -876,6 +871,21 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
     color: theme.primaryDark,
+  },
+  typePill: {
+    flexShrink: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    minHeight: 34,
+    paddingHorizontal: 11,
+    borderRadius: 17,
+    borderWidth: 1,
+  },
+  typePillText: {
+    flexShrink: 1,
+    fontSize: 13,
+    fontWeight: "700",
   },
   anonPill: {
     flexDirection: "row",
@@ -893,25 +903,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: theme.textMuted,
   },
-
-  typeStrip: { flexGrow: 0, marginTop: 10 },
-  typeStripContent: {
-    paddingHorizontal: 16,
-    gap: 8,
-    paddingBottom: 2,
-  },
-  typeChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    minHeight: 34,
-    paddingHorizontal: 12,
-    borderRadius: 17,
-    borderWidth: 1,
-    borderColor: theme.border,
-    backgroundColor: theme.card,
-  },
-  typeChipText: { fontSize: 13, fontWeight: "600", color: theme.textMuted },
 
   body: { flex: 1 },
   bodyContent: { paddingHorizontal: 16, paddingBottom: 16 },
@@ -1000,15 +991,11 @@ const styles = StyleSheet.create({
     color: theme.primary,
   },
 
-  topicStrip: {
-    flexGrow: 0,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: theme.border,
-  },
-  topicStripContent: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+  topicWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 8,
+    marginTop: 12,
   },
   topicChip: {
     flexDirection: "row",
@@ -1045,15 +1032,17 @@ const styles = StyleSheet.create({
   },
   progressText: { fontSize: 13, color: theme.primaryDark, fontWeight: "600" },
 
+  composerDock: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: theme.border,
+    backgroundColor: theme.card,
+    paddingTop: 6,
+  },
   toolbar: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
     paddingHorizontal: 12,
-    paddingTop: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: theme.border,
-    backgroundColor: theme.card,
   },
   toolbarBtn: {
     width: 46,

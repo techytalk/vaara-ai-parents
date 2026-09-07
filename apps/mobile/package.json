@@ -20,6 +20,8 @@
     "@expo-google-fonts/plus-jakarta-sans": "^0.4.2",
     "@expo/vector-icons": "~14.0.4",
     "@react-native-community/datetimepicker": "8.2.0",
+    "@react-native-firebase/analytics": "^21.14.0",
+    "@react-native-firebase/app": "^21.14.0",
     "@react-native-google-signin/google-signin": "^16.1.4",
     "@react-navigation/native": "^7.0.14",
     "@tanstack/react-query": "^5.62.8",

@@ -32,6 +32,7 @@ Implementation for everything here lives in [Feature Implementation Plan](./FEAT
 | Later | Why wait |
 |-------|----------|
 | Pregnancy as a family type on add-child | School traction first. Expecting parents need hospitals and guidance, not only a new circle. See [Future: Pregnancy onboarding](./FUTURE_PREGNANCY_ONBOARDING.md). |
+| Post access + sharing | End-to-end specification complete. Covers prospective-parent threads, permission states, text/media sharing, short links, install/login routing, and non-member previews. See [Post access and sharing implementation](./POST_ACCESS_AND_SHARING_IMPLEMENTATION.md). |
 
 Growth mechanics are intentionally out of scope for this document and will be handled separately.
 

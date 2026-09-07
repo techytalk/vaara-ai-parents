@@ -86,6 +86,14 @@ export default function NotificationsScreen() {
         pathname: "/(app)/messages/[conversationId]",
         params: { conversationId: String(data.conversationId) },
       });
+    } else if (item.type === "circle_reply" && data.circleId && data.postId) {
+      router.push({
+        pathname: "/circles/[circleId]/posts/[postId]",
+        params: {
+          circleId: String(data.circleId),
+          postId: String(data.postId),
+        },
+      });
     } else if (item.type === "circle_post" && data.circleId) {
       router.push({
         pathname: "/circles/[circleId]",

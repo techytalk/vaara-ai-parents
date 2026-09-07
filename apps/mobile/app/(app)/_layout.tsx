@@ -37,6 +37,16 @@ export default function AppLayout() {
           pathname: "/(app)/messages/[conversationId]",
           params: { conversationId: String(data.conversationId) },
         });
+        return;
+      }
+      if (type === "circle_reply" && data.circleId && data.postId) {
+        router.push({
+          pathname: "/circles/[circleId]/posts/[postId]",
+          params: {
+            circleId: String(data.circleId),
+            postId: String(data.postId),
+          },
+        });
       }
     }
 
@@ -145,6 +155,10 @@ export default function AppLayout() {
       <Tabs.Screen
         name="saved"
         options={{ href: null, title: "Saved posts" }}
+      />
+      <Tabs.Screen
+        name="your-posts"
+        options={{ href: null, title: "Your posts" }}
       />
       <Tabs.Screen
         name="contact-details"

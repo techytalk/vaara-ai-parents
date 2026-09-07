@@ -9,7 +9,11 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { theme } from "@/components/circles/ui";
+import {
+  POST_TAGS,
+  theme,
+  type PostTagValue,
+} from "@/components/circles/ui";
 import { SearchField } from "@/components/ui";
 import type { Circle } from "@/lib/api";
 import { circleCardSubtitle, circleCardTitle } from "@/lib/circle-display";
@@ -218,6 +222,73 @@ export function AudienceSheet({
   );
 }
 
+export function PostTypeSheet({
+  visible,
+  onClose,
+  value,
+  onChange,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  value: PostTagValue;
+  onChange: (tag: PostTagValue) => void;
+}) {
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={onClose}
+    >
+      <SafeAreaView style={styles.sheet} edges={["top", "bottom"]}>
+        <SheetHeader
+          title="Post type"
+          subtitle="Helps other parents know what to expect"
+          onDone={onClose}
+        />
+        <FlatList
+          data={[...POST_TAGS]}
+          keyExtractor={(item) => item.value}
+          contentContainerStyle={styles.listContent}
+          renderItem={({ item }) => {
+            const selected = value === item.value;
+            return (
+              <Pressable
+                accessibilityRole="radio"
+                accessibilityState={{ selected }}
+                style={[styles.row, selected && styles.typeRowSelected]}
+                onPress={() => {
+                  onChange(item.value);
+                  onClose();
+                }}
+              >
+                <View
+                  style={[styles.typeIconWrap, { backgroundColor: item.bg }]}
+                >
+                  <Ionicons name={item.icon} size={18} color={item.color} />
+                </View>
+                <Text
+                  style={[
+                    styles.rowTitle,
+                    selected && { color: item.color },
+                  ]}
+                >
+                  {item.label}
+                </Text>
+                <Ionicons
+                  name={selected ? "checkmark-circle" : "ellipse-outline"}
+                  size={22}
+                  color={selected ? theme.primary : theme.tabInactive}
+                />
+              </Pressable>
+            );
+          }}
+        />
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
 export function TopicsSheet({
   visible,
   onClose,
@@ -416,6 +487,17 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "500",
     color: theme.text,
+  },
+  typeIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  typeRowSelected: {
+    borderColor: theme.primaryLight,
+    backgroundColor: theme.primarySoft,
   },
   emptyText: {
     textAlign: "center",

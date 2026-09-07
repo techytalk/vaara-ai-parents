@@ -16,6 +16,7 @@ import { VaaraLogo } from "@/components/VaaraLogo";
 import { Button, InlineError } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import { api } from "@/lib/api";
+import { trackAuthConversion } from "@/lib/analytics";
 import { routeAfterAuth } from "@/lib/auth-navigation";
 import { saveSession } from "@/lib/session";
 
@@ -30,9 +31,13 @@ export default function RegisterScreen() {
   const [loading, setLoading] = useState(false);
 
   const completeAuth = useCallback(
-    async (result: Awaited<ReturnType<typeof api.register>>) => {
+    async (
+      result: Awaited<ReturnType<typeof api.register>>,
+      method: "password" | "google" = "password"
+    ) => {
+      trackAuthConversion("sign_up", method);
       await saveSession(result.token, result.user);
-      routeAfterAuth(router, result.user);
+      await routeAfterAuth(router, result.user);
     },
     [router]
   );
@@ -106,7 +111,7 @@ export default function RegisterScreen() {
           </View>
 
           <GoogleAuthSection
-            onSuccess={completeAuth}
+            onSuccess={(result) => completeAuth(result, "google")}
             onError={setGoogleError}
             role={role}
             displayName={displayName}

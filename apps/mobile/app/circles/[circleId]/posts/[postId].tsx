@@ -5,7 +5,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -26,7 +25,8 @@ import {
   theme,
 } from "@/components/circles/ui";
 import { useRealtimeChannel } from "@/hooks/useRealtimeChannel";
-import { api, type CirclePost, type PostComment } from "@/lib/api";
+import { api, type CirclePost, type PostComment, type ThreadCapabilities } from "@/lib/api";
+import { sharePostLink, sharePostMedia } from "@/lib/share-post";
 import { getStoredUser, getToken } from "@/lib/session";
 import { useSubmitReport } from "@/providers/ReportProvider";
 
@@ -52,9 +52,10 @@ function CommentCard({ comment }: { comment: PostComment }) {
 }
 
 export default function PostThreadScreen() {
-  const { circleId, postId } = useLocalSearchParams<{
+  const { circleId, postId, shareId } = useLocalSearchParams<{
     circleId: string;
     postId: string;
+    shareId?: string;
   }>();
   const router = useRouter();
   const navigation = useNavigation();
@@ -63,6 +64,9 @@ export default function PostThreadScreen() {
   const [post, setPost] = useState<CirclePost | null>(null);
   const [comments, setComments] = useState<PostComment[]>([]);
   const [readOnly, setReadOnly] = useState(false);
+  const [capabilities, setCapabilities] = useState<ThreadCapabilities | null>(
+    null
+  );
   const [saved, setSaved] = useState(false);
   const [commentText, setCommentText] = useState("");
   const [loading, setLoading] = useState(true);
@@ -78,19 +82,20 @@ export default function PostThreadScreen() {
     setCurrentUserId(user?.id ?? null);
     try {
       const [data, savedData] = await Promise.all([
-        api.getPost(token, circleId, postId),
+        api.getPost(token, circleId, postId, shareId),
         api.getSaved(token).catch(() => ({ posts: [] })),
       ]);
       setPost(data.post);
       setComments(data.replies);
       setReadOnly(Boolean(data.readOnly ?? data.post.readOnly));
+      setCapabilities(data.capabilities ?? null);
       setSaved(savedData.posts.some((item) => item.id === postId));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Failed to load");
     } finally {
       setLoading(false);
     }
-  }, [circleId, postId]);
+  }, [circleId, postId, shareId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -99,7 +104,7 @@ export default function PostThreadScreen() {
   );
 
   useRealtimeChannel({
-    channel: circleId ? `circle:${circleId}` : null,
+    channel: postId ? `post:${postId}` : null,
     onEvent: (event) => {
       if (event.type === "reply.new" && event.postId === postId) {
         load();
@@ -154,7 +159,7 @@ export default function PostThreadScreen() {
       title: "Post",
       headerRight: () => (
         <View style={styles.headerActions}>
-          {isOwnPost && !readOnly ? (
+          {isOwnPost && (capabilities?.canEdit ?? !readOnly) ? (
             <Pressable
               onPress={() =>
                 router.push({
@@ -196,6 +201,7 @@ export default function PostThreadScreen() {
               />
             </Pressable>
           )}
+          {capabilities?.canSave !== false ? (
           <Pressable onPress={toggleSave} hitSlop={8} style={styles.headerSave}>
             <Ionicons
               name={saved ? "bookmark" : "bookmark-outline"}
@@ -203,6 +209,7 @@ export default function PostThreadScreen() {
               color={theme.primary}
             />
           </Pressable>
+          ) : null}
         </View>
       ),
     });
@@ -212,6 +219,7 @@ export default function PostThreadScreen() {
     currentUserId,
     post,
     deleting,
+    capabilities,
     readOnly,
     circleId,
     postId,
@@ -323,12 +331,38 @@ export default function PostThreadScreen() {
 
   async function onSharePost() {
     if (!post) return;
-    const preview = post.body.trim() || post.poll?.question || "A parent post";
-    try {
-      await Share.share({ message: `${preview}\n\n— via Vaara Parents` });
-    } catch {
-      // user dismissed the share sheet
-    }
+    const token = await getToken();
+    if (!token) return;
+    const hasMedia = (post.media?.length ?? 0) > 0;
+    Alert.alert("Share post", "Choose how you want to share.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Share post",
+        onPress: () => {
+          sharePostLink({
+            token,
+            circleId,
+            postId,
+            post,
+          }).catch(() => {});
+        },
+      },
+      ...(hasMedia
+        ? [
+            {
+              text: "Share media",
+              onPress: () => {
+                sharePostMedia({
+                  token,
+                  circleId,
+                  postId,
+                  post,
+                }).catch(() => {});
+              },
+            },
+          ]
+        : []),
+    ]);
   }
 
   async function onMessageAuthor() {
@@ -405,8 +439,13 @@ export default function PostThreadScreen() {
   const isOwnPost =
     Boolean(currentUserId) &&
     (post.authorId === currentUserId || post.author.userId === currentUserId);
+  const canReply = capabilities?.canReply ?? !readOnly;
+  const canVote = capabilities?.canVote ?? !readOnly;
+  const canMarkHelpful = capabilities?.canMarkHelpful ?? !readOnly;
   const canMessageAuthor =
-    !readOnly && !isOwnPost && Boolean(post.authorId ?? post.author.userId);
+    (capabilities?.canMessageAuthor ?? (!readOnly && !isOwnPost)) &&
+    !isOwnPost &&
+    Boolean(post.authorId ?? post.author.userId);
 
   return (
     <KeyboardAvoidingView
@@ -426,7 +465,12 @@ export default function PostThreadScreen() {
               <View style={styles.postInner}>
                 {readOnly ? (
                   <Text style={styles.discoveryBanner}>
-                    Suggested from another circle — preview only
+                    You’re not part of this circle.
+                  </Text>
+                ) : capabilities && !capabilities.canOpenCircle ? (
+                  <Text style={styles.discoveryBanner}>
+                    You can follow replies here. You are not a member of this
+                    circle.
                   </Text>
                 ) : null}
                 <AuthorRow
@@ -442,7 +486,7 @@ export default function PostThreadScreen() {
                     <Text style={styles.postBody}>{post.body}</Text>
                   ) : null}
                 </View>
-                {post.poll && !readOnly ? (
+                {post.poll && canVote ? (
                   <PollCard poll={post.poll} onVote={onPollVote} />
                 ) : post.poll ? (
                   <PollCard poll={post.poll} />
@@ -457,7 +501,7 @@ export default function PostThreadScreen() {
                 ) : null}
 
                 <View style={styles.actions}>
-                  {!readOnly ? (
+                  {canMarkHelpful ? (
                     <Pressable
                       style={styles.action}
                       onPress={toggleHelpful}
@@ -542,14 +586,7 @@ export default function PostThreadScreen() {
         </View>
       ) : null}
 
-      {readOnly ? (
-        <View style={[styles.composer, cardShadow()]}>
-          <Text style={styles.readOnlyNote}>
-            This post is from a circle you are not in yet. Browse your circles
-            to find parents in your school, class, or area.
-          </Text>
-        </View>
-      ) : (
+      {canReply ? (
       <View style={[styles.composer, cardShadow()]}>
         <TextInput
           style={styles.composerInput}
@@ -577,6 +614,13 @@ export default function PostThreadScreen() {
           )}
         </Pressable>
       </View>
+      ) : (
+        <View style={[styles.composer, cardShadow()]}>
+          <Text style={styles.readOnlyNote}>
+            You’re not part of this circle. You can view this shared post, but
+            you cannot comment or open the rest of the circle.
+          </Text>
+        </View>
       )}
     </KeyboardAvoidingView>
   );

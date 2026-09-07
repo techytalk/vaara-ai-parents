@@ -243,7 +243,12 @@ export function createSchoolsRoutes() {
     try {
       const question = await client.query(
         `SELECT sq.id, sq.body, sq.created_at, sq.circle_post_id, sq.school_id,
-                s.name AS school_name
+                s.name AS school_name,
+                (
+                  SELECT pct.circle_id FROM circle_post_targets pct
+                  WHERE pct.post_id = sq.circle_post_id AND pct.is_primary
+                  LIMIT 1
+                ) AS circle_id
          FROM school_questions sq
          JOIN schools s ON s.id = sq.school_id
          WHERE sq.id = $1 AND sq.asker_id = $2`,
@@ -277,6 +282,8 @@ export function createSchoolsRoutes() {
         schoolName: question.rows[0].school_name,
         body: question.rows[0].body,
         createdAt: question.rows[0].created_at,
+        circleId: question.rows[0].circle_id ?? null,
+        postId,
         post: post.rows[0]
           ? {
               id: post.rows[0].id,
@@ -636,7 +643,7 @@ export function createSchoolsRoutes() {
         `INSERT INTO circle_posts (circle_id, author_id, body, tag)
          VALUES ($1, $2, $3, 'question')
          RETURNING id`,
-        [circleId, userId, `[Prospective parent] ${text}`]
+        [circleId, userId, text]
       );
 
       await client.query(
@@ -659,6 +666,8 @@ export function createSchoolsRoutes() {
           id: question.rows[0].id,
           createdAt: question.rows[0].created_at,
           authorHandle: userRow.rows[0].anonymous_handle,
+          circleId,
+          postId: post.rows[0].id,
         },
         201
       );

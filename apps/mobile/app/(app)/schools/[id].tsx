@@ -54,12 +54,12 @@ export default function SchoolProfileScreen() {
     try {
       const token = await getToken();
       if (!token) return;
-      await api.askSchoolQuestion(token, id, text);
+      const created = await api.askSchoolQuestion(token, id, text);
       setQuestion("");
-      Alert.alert(
-        "Question posted",
-        "Current parents can reply in their school circle. You'll only see replies to your question."
-      );
+      router.push({
+        pathname: "/circles/[circleId]/posts/[postId]",
+        params: { circleId: created.circleId, postId: created.postId },
+      });
     } catch (cause) {
       Alert.alert("Error", cause instanceof Error ? cause.message : "Could not post");
     }

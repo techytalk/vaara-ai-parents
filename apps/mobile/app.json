@@ -28,6 +28,8 @@
       "supportsTablet": true,
       "icon": "./assets/icon.png",
       "bundleIdentifier": "com.vaara.parents",
+      "googleServicesFile": "./GoogleService-Info.plist",
+      "associatedDomains": ["applinks:vaara.ai", "applinks:www.vaara.ai"],
       "infoPlist": {
         "UIBackgroundModes": ["remote-notification"]
       }
@@ -39,7 +41,22 @@
         "backgroundColor": "#FFFCF7"
       },
       "package": "com.vaara.parents",
-      "versionCode": 7
+      "versionCode": 7,
+      "permissions": ["com.google.android.gms.permission.AD_ID"],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "vaara.ai",
+              "pathPrefix": "/p"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
     },
     "plugins": [
       "expo-router",
@@ -75,7 +92,8 @@
         {
           "iosUrlScheme": "com.googleusercontent.apps.375946640576-8eiut23u8r6kgpd460m19c5lh42ai9am"
         }
-      ]
+      ],
+      "@react-native-firebase/app"
     ],
     "experiments": {
       "typedRoutes": true

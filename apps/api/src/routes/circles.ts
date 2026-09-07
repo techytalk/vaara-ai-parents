@@ -6,6 +6,7 @@ import {
   invalidateCircleFeedCache,
   isRedisEnabled,
   publishCircleEvent,
+  publishPostEvent,
   publishUserInboxEvent,
   setCachedJson,
 } from "@vaara/redis";
@@ -14,6 +15,7 @@ import {
   assertCircleMember,
   assertSharedCircle,
   buildAuthorView,
+  buildAuthorViewForCircleAccess,
   isBlocked,
   mapAuthorView,
 } from "../lib/author.js";
@@ -47,11 +49,13 @@ import {
 } from "../lib/polls.js";
 import { applyMediaReplace, sameStringList } from "../lib/post-update.js";
 import { syncCircleMembership } from "../services/circle-sync.js";
-import { loadCircleFeed, isDiscoveryPostReadable } from "../services/feed.js";
+import { loadCircleFeed } from "../services/feed.js";
 import { dispatchPostCreated, dispatchMessageCreated } from "../lib/async-events.js";
 import { parseReportReason } from "../lib/report-reasons.js";
 import { rateLimitMiddleware } from "../middleware/rate-limit.js";
 import { authMiddleware, type AuthVariables } from "../middleware/auth.js";
+import { resolveThreadAccess } from "../lib/thread-access.js";
+import { getOrCreatePostShare } from "../lib/post-shares.js";
 import {
   deleteStoredMedia,
   MAX_POST_MEDIA,
@@ -597,37 +601,31 @@ export function createCirclesRoutes() {
     const userId = c.get("user").sub;
     const circleId = c.req.param("circleId");
     const postId = c.req.param("postId");
+    const shareId = c.req.query("shareId")?.trim() || null;
+    if (!circleId || !postId) {
+      return c.json({ error: "Post not found" }, 404);
+    }
 
     const client = await pool.connect();
     try {
-      let circle = await assertCircleMember(client, circleId, userId);
-      let readOnly = false;
-      if (!circle) {
-        const discoveryReadable = await isDiscoveryPostReadable(
-          client,
-          userId,
-          circleId,
-          postId
-        );
-        if (!discoveryReadable) {
-          return c.json({ error: "Circle not found" }, 404);
-        }
-        const { rows: circleRows } = await client.query(
-          `SELECT id, circle_type, key, display_name, metadata
-           FROM circles WHERE id = $1`,
-          [circleId]
-        );
-        if (circleRows.length === 0) {
-          return c.json({ error: "Circle not found" }, 404);
-        }
-        circle = circleRows[0];
-        readOnly = true;
+      const access = await resolveThreadAccess(client, {
+        userId,
+        circleId,
+        postId,
+        shareId,
+      });
+      if (!access.capabilities.canViewPost || !access.circle) {
+        return c.json({ error: "Post not found" }, 404);
+      }
+      if (
+        access.postAuthorId &&
+        (await isBlocked(client, userId, access.postAuthorId))
+      ) {
+        return c.json({ error: "Post not found" }, 404);
       }
 
-      if (!circle) {
-        return c.json({ error: "Circle not found" }, 404);
-      }
-      const resolvedCircle = circle;
+      const resolvedCircle = access.circle;
+      const previewOnly = !access.capabilities.canViewReplies;
 
       const postResult = await client.query(
         `SELECT p.id, p.body, p.tag, p.reply_count, p.created_at, p.edited_at, p.author_id,
@@ -657,10 +655,11 @@ export function createCirclesRoutes() {
         client,
         [postId],
         userId,
-        memberCount
+        memberCount,
+        { revealHiddenResults: access.state === "author" }
       );
       const topicsByPost = await loadTopicsForPosts(client, [postId]);
-      const postAuthor = await buildAuthorView(
+      const postAuthor = await buildAuthorViewForCircleAccess(
         client,
         postRow.author_id,
         postRow.anonymous_handle,
@@ -668,22 +667,27 @@ export function createCirclesRoutes() {
         postRow.avatar_key
       );
 
-      const repliesResult = readOnly
+      const repliesResult = previewOnly
         ? { rows: [] }
         : await client.query(
         `SELECT r.id, r.body, r.created_at, r.author_id, u.anonymous_handle, u.avatar_key
          FROM circle_post_replies r
          JOIN users u ON u.id = r.author_id
          WHERE r.post_id = $1
+           AND NOT EXISTS (
+             SELECT 1 FROM user_blocks b
+             WHERE (b.blocker_id = $2 AND b.blocked_id = r.author_id)
+                OR (b.blocker_id = r.author_id AND b.blocked_id = $2)
+           )
          ORDER BY r.created_at ASC`,
-        [postId]
+        [postId, userId]
       );
 
-      const replies = readOnly
+      const replies = previewOnly
         ? []
         : await Promise.all(
         repliesResult.rows.map(async (row) => {
-          const author = await buildAuthorView(
+          const author = await buildAuthorViewForCircleAccess(
             client,
             row.author_id,
             row.anonymous_handle,
@@ -713,6 +717,8 @@ export function createCirclesRoutes() {
         [postId, userId]
       );
 
+      const readOnly = previewOnly;
+
       return c.json({
         post: {
           ...mapPost(
@@ -726,10 +732,12 @@ export function createCirclesRoutes() {
           helpfulCount: helpfulResult.rows[0]?.count ?? 0,
           myHelpful: helpfulResult.rows[0]?.mine ?? false,
           readOnly,
-          discovery: readOnly,
+          discovery: access.state === "discovery_preview",
         },
         replies,
         readOnly,
+        accessState: access.state,
+        capabilities: access.capabilities,
       });
     } finally {
       client.release();
@@ -881,11 +889,16 @@ export function createCirclesRoutes() {
     try {
       await client.query("BEGIN");
 
-      const circle = await assertCircleMember(client, circleId, userId);
-      if (!circle) {
+      const access = await resolveThreadAccess(client, {
+        userId,
+        circleId,
+        postId,
+      });
+      if (!access.capabilities.canEdit || !access.circle) {
         await client.query("ROLLBACK");
         return c.json({ error: "Circle not found" }, 404);
       }
+      const circle = access.circle;
 
       const postResult = await client.query(
         `SELECT p.id, p.body, p.tag, p.reply_count, p.created_at, p.edited_at, p.author_id
@@ -1057,10 +1070,11 @@ export function createCirclesRoutes() {
         client,
         [postId],
         userId,
-        memberCountResult.rows[0]?.count ?? 0
+        memberCountResult.rows[0]?.count ?? 0,
+        { revealHiddenResults: true }
       );
       const topicsByPost = await loadTopicsForPosts(client, [postId]);
-      const author = await buildAuthorView(
+      const author = await buildAuthorViewForCircleAccess(
         client,
         userId,
         userRow.rows[0].anonymous_handle,
@@ -1112,8 +1126,12 @@ export function createCirclesRoutes() {
 
     const client = await pool.connect();
     try {
-      const circle = await assertCircleMember(client, circleId, userId);
-      if (!circle) {
+      const access = await resolveThreadAccess(client, {
+        userId,
+        circleId,
+        postId,
+      });
+      if (!access.capabilities.canDelete) {
         return c.json({ error: "Circle not found" }, 404);
       }
 
@@ -1188,6 +1206,35 @@ export function createCirclesRoutes() {
     }
   });
 
+  app.post("/:circleId/posts/:postId/shares", postRateLimit, async (c) => {
+    const userId = c.get("user").sub;
+    const circleId = c.req.param("circleId");
+    const postId = c.req.param("postId");
+    if (!circleId || !postId) {
+      return c.json({ error: "Post not found" }, 404);
+    }
+
+    const client = await pool.connect();
+    try {
+      const access = await resolveThreadAccess(client, {
+        userId,
+        circleId,
+        postId,
+      });
+      if (!access.capabilities.canViewReplies) {
+        return c.json({ error: "Post not found" }, 404);
+      }
+      const share = await getOrCreatePostShare(client, {
+        postId,
+        circleId,
+        userId,
+      });
+      return c.json(share, 201);
+    } finally {
+      client.release();
+    }
+  });
+
   app.post("/:circleId/posts/:postId/replies", async (c) => {
     const userId = c.get("user").sub;
     const circleId = c.req.param("circleId");
@@ -1201,10 +1248,15 @@ export function createCirclesRoutes() {
 
     const client = await pool.connect();
     try {
-      const circle = await assertCircleMember(client, circleId, userId);
-      if (!circle) {
+      const access = await resolveThreadAccess(client, {
+        userId,
+        circleId,
+        postId,
+      });
+      if (!access.capabilities.canReply || !access.circle) {
         return c.json({ error: "Circle not found" }, 404);
       }
+      const circle = access.circle;
 
       const postCheck = await client.query(
         `SELECT p.id, p.author_id
@@ -1218,6 +1270,9 @@ export function createCirclesRoutes() {
       );
       if (postCheck.rows.length === 0) {
         return c.json({ error: "Post not found" }, 404);
+      }
+      if (await isBlocked(client, userId, String(postCheck.rows[0].author_id))) {
+        return c.json({ error: "You cannot reply to this post" }, 403);
       }
 
       const { rows } = await client.query(
@@ -1237,7 +1292,7 @@ export function createCirclesRoutes() {
         "SELECT anonymous_handle, avatar_key FROM users WHERE id = $1",
         [userId]
       );
-      const author = await buildAuthorView(
+      const author = await buildAuthorViewForCircleAccess(
         client,
         userId,
         userRow.rows[0].anonymous_handle,
@@ -1269,6 +1324,12 @@ export function createCirclesRoutes() {
           });
         })
       );
+      await publishPostEvent(postId, {
+        type: "reply.new",
+        circleId,
+        postId,
+        replyId: rows[0].id,
+      });
 
       return c.json(
         {
@@ -1408,17 +1469,14 @@ export function createCirclesRoutes() {
 
     const client = await pool.connect();
     try {
-      let circle = await assertCircleMember(client, circleId, userId);
-      if (!circle) {
-        const discoveryReadable = await isDiscoveryPostReadable(
-          client,
-          userId,
-          circleId,
-          postId
-        );
-        if (!discoveryReadable) {
-          return c.json({ error: "Post not found" }, 404);
-        }
+      const access = await resolveThreadAccess(client, {
+        userId,
+        circleId,
+        postId,
+        shareId: c.req.query("shareId")?.trim() || null,
+      });
+      if (!access.capabilities.canReport) {
+        return c.json({ error: "Post not found" }, 404);
       }
 
       const postResult = await client.query(

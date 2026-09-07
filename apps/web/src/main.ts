@@ -1,4 +1,5 @@
 import { STORE_LINKS } from "./config";
+import { trackStoreClick } from "./analytics";
 import "./styles.css";
 
 function bindStoreLinks(): void {
@@ -16,6 +17,9 @@ function bindStoreLinks(): void {
         el.classList.remove("is-soon");
         el.removeAttribute("aria-disabled");
         el.querySelectorAll(".store-soon").forEach((badge) => badge.remove());
+        el.addEventListener("click", () => {
+          trackStoreClick(selector.includes("ios") ? "ios" : "android");
+        });
         return;
       }
 

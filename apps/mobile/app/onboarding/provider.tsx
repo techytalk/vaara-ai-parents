@@ -10,6 +10,7 @@ import { useRouter } from "expo-router";
 import { Button, Chip, InlineError, SectionHeader } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import { api } from "@/lib/api";
+import { trackOnboardingComplete } from "@/lib/analytics";
 import { getStoredUser, getToken, saveSession } from "@/lib/session";
 
 const PROVIDER_TYPES = [
@@ -59,6 +60,7 @@ export default function ProviderOnboardingScreen() {
         });
       }
 
+      trackOnboardingComplete();
       router.replace("/(provider)");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save");
