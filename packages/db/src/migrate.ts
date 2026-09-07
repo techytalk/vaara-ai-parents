@@ -37,6 +37,8 @@ const MIGRATIONS = [
   { version: "029_international_postal_codes", file: "029_international_postal_codes.sql" },
   { version: "030_post_edited_at", file: "030_post_edited_at.sql" },
   { version: "031_post_shares", file: "031_post_shares.sql" },
+  { version: "032_cross_post_groups", file: "032_cross_post_groups.sql" },
+  { version: "033_circle_post_target_access_mode", file: "033_circle_post_target_access_mode.sql" },
 ];
 
 async function isMigrationApplied(

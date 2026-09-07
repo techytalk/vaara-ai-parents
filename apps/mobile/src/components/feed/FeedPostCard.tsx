@@ -102,6 +102,7 @@ export function FeedPostCard({
         contextLabel={post.author.contextLabel}
         timestamp={post.createdAt}
         editedAt={post.editedAt}
+        isGuest={post.author.isGuest}
       />
       <View style={styles.body}>
         <PostTagBadge tag={post.tag} />

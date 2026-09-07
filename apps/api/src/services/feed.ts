@@ -34,6 +34,7 @@ export type FeedPost = {
     anonymousHandle: string;
     contextLabel: string;
     avatarKey: string;
+    isGuest?: boolean;
   };
 };
 
@@ -81,6 +82,7 @@ function mapPost(
     contextLabel: string;
     userId: string;
     avatarKey: string;
+    isGuest?: boolean;
   },
   media: PostMediaView[] = [],
   poll?: PollView | null,
@@ -101,6 +103,7 @@ function mapPost(
       anonymousHandle: author.anonymousHandle,
       contextLabel: author.contextLabel,
       avatarKey: author.avatarKey,
+      isGuest: Boolean(author.isGuest),
     },
   };
 }

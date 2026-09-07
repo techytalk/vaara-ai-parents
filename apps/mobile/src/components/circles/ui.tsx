@@ -257,6 +257,7 @@ export function AuthorRow({
   contextLabel,
   timestamp,
   editedAt,
+  isGuest,
   size = "md",
 }: {
   handle: string;
@@ -264,6 +265,7 @@ export function AuthorRow({
   contextLabel?: string;
   timestamp?: string;
   editedAt?: string | null;
+  isGuest?: boolean;
   size?: "sm" | "md";
 }) {
   const avatarSize = size === "sm" ? 32 : 40;
@@ -271,9 +273,16 @@ export function AuthorRow({
     <View style={styles.authorRow}>
       <AuthorAvatar handle={handle} avatarKey={avatarKey} size={avatarSize} />
       <View style={styles.authorMeta}>
-        <Text style={[styles.authorHandle, size === "sm" && styles.authorHandleSm]}>
-          {handle}
-        </Text>
+        <View style={styles.authorHandleRow}>
+          <Text style={[styles.authorHandle, size === "sm" && styles.authorHandleSm]}>
+            {handle}
+          </Text>
+          {isGuest ? (
+            <View style={styles.guestBadge}>
+              <Text style={styles.guestBadgeText}>Guest</Text>
+            </View>
+          ) : null}
+        </View>
         {contextLabel ? (
           <Text style={styles.authorContext}>{contextLabel}</Text>
         ) : null}
@@ -426,6 +435,12 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   authorMeta: { flex: 1 },
+  authorHandleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    flexWrap: "wrap",
+  },
   authorHandle: {
     fontSize: 15,
     fontFamily: typography.bold,
@@ -439,6 +454,17 @@ const styles = StyleSheet.create({
     color: theme.textMuted,
     fontFamily: typography.regular,
     marginTop: 2,
+  },
+  guestBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    backgroundColor: "#FEF3C7",
+  },
+  guestBadgeText: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#92400E",
   },
   timestamp: {
     fontSize: 12,

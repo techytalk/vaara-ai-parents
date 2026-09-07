@@ -18,6 +18,7 @@ import { createShareRoutes } from "./routes/shares.js";
 import { createAppRoutes } from "./routes/app.js";
 import { createSchoolsRoutes } from "./routes/schools.js";
 import { createMediaRoutes } from "./routes/media.js";
+import { createCrossPostRoutes } from "./routes/cross-posts.js";
 import {
   createProviderReviewReplyRoutes,
   createProviderReviewRoutes,
@@ -55,6 +56,7 @@ app.get("/health", async (c) => {
 app.route("/v1/auth", createAuthRoutes());
 app.route("/v1/me", createMeRoutes());
 app.route("/v1/circles", createCirclesRoutes());
+app.route("/v1/cross-posts", createCrossPostRoutes());
 app.route("/v1/conversations", createConversationsRoutes());
 app.route("/v1/reference", createReferenceRoutes());
 app.route("/v1/schools", createSchoolsRoutes());

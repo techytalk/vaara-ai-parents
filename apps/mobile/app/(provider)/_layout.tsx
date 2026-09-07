@@ -28,6 +28,7 @@ export default function ProviderLayout() {
         headerStyle: { backgroundColor: colors.card },
         headerTitleStyle: { fontFamily: typography.bold, color: colors.text },
         headerShadowVisible: false,
+        tabBarHideOnKeyboard: true,
         tabBarStyle: tabBarStyleForInsets(insets.bottom),
         tabBarLabelStyle: {
           fontSize: 11,

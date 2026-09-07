@@ -20,7 +20,7 @@ Firebase project `vaara-ai-parents` already exists for FCM and Google Sign-In. U
 - Same conversion events as Android after a native iOS rebuild
 - `IS_ANALYTICS_ENABLED` in the plist can be `false`; that is Firebase’s default. Collection is enabled in app code (`initAnalytics`). Still enable/link Google Analytics on the iOS app in the Firebase console.
 
-The `@react-native-firebase/analytics` Expo config plugin is omitted on purpose: Node’s ESM loader fails when Expo evaluates that package. The analytics native module still autolinks from the npm dependency. Keep `@react-native-firebase/app` in `app.json` plugins. iOS native builds require `expo-build-properties` `ios.useFrameworks: "static"` so Firebase pods resolve `FirebaseCore`.
+The `@react-native-firebase/analytics` Expo config plugin is omitted on purpose: Node’s ESM loader fails when Expo evaluates that package. The analytics native module still autolinks from the npm dependency. Keep `@react-native-firebase/app` in `app.json` plugins. iOS native builds require `use_frameworks! :linkage => :static` in the committed `ios/Podfile` (EAS must **not** run `expo prebuild --clean` for iOS, or that Podfile is wiped and Firebase compiles as `.a` libraries). `$RNFirebaseAsStaticFramework = true` is set at the top of the Podfile.
 
 **Marketing site (`apps/web`)**
 

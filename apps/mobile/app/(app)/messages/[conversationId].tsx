@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useNavigation } from "@react-navigation/native";
+import { useHeaderHeight } from "@react-navigation/elements";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { DisclosurePrompt } from "@/components/DisclosurePrompt";
@@ -36,6 +37,7 @@ export default function ChatScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const queryClient = useQueryClient();
+  const headerHeight = useHeaderHeight();
   const submitReport = useSubmitReport();
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -228,7 +230,7 @@ export default function ChatScreen() {
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={90}
+      keyboardVerticalOffset={Platform.OS === "ios" ? headerHeight : 0}
     >
       {peer ? (
         <View style={styles.peerCard}>
@@ -269,6 +271,7 @@ export default function ChatScreen() {
       ) : null}
 
       <FlatList
+        style={styles.listFlex}
         data={messages}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
@@ -323,6 +326,7 @@ export default function ChatScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
+  listFlex: { flex: 1 },
   peerCard: {
     backgroundColor: colors.card,
     marginHorizontal: spacing.md,

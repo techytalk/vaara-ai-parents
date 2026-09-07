@@ -76,9 +76,19 @@ export default function YourPostsScreen() {
             })
           }
         >
-          <Text style={styles.circle}>{item.circleName}</Text>
-          {item.accessState === "author" ? (
-            <Text style={styles.badge}>Not in this circle</Text>
+          <Text style={styles.circle}>
+            {item.targets && item.targets.length > 1
+              ? item.targets.map((t) => t.circleName).join(" · ")
+              : item.circleName}
+          </Text>
+          {item.accessState === "author" ||
+          item.postingContext === "guest" ||
+          item.targets?.some((t) => t.accessMode === "guest") ? (
+            <Text style={styles.badge}>
+              {item.targets && item.targets.length > 1
+                ? "Posted across circles · shared thread"
+                : "Guest · Not in this circle"}
+            </Text>
           ) : null}
           <Text style={styles.body} numberOfLines={3}>
             {item.body || "Poll"}

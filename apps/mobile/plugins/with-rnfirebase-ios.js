@@ -1,18 +1,18 @@
 const fs = require("fs");
 const path = require("path");
-const { withDangerousMod } = require("expo/config-plugins");
+const {
+  withDangerousMod,
+  withPodfileProperties,
+} = require("expo/config-plugins");
 
 const FLAG = "$RNFirebaseAsStaticFramework = true";
 
-const EXTRA_PODS = `
-  # Firebase iOS static frameworks: allow FirebaseInstallations to see FirebaseCore
-  pod 'FirebaseCore', :modular_headers => true
-  pod 'FirebaseCoreInternal', :modular_headers => true
-  pod 'FirebaseInstallations', :modular_headers => true
-  pod 'GoogleUtilities', :modular_headers => true
-`;
-
 function withRnFirebaseIos(config) {
+  config = withPodfileProperties(config, (mod) => {
+    mod.modResults["ios.useFrameworks"] = "static";
+    return mod;
+  });
+
   return withDangerousMod(config, [
     "ios",
     async (mod) => {
@@ -26,27 +26,15 @@ function withRnFirebaseIos(config) {
         contents = `${FLAG}\n${contents}`;
       }
 
-      if (!contents.includes("pod 'FirebaseCore'")) {
-        contents = contents.replace(
-          /target ['"]VaaraParents['"] do\n/,
-          `target 'VaaraParents' do\n${EXTRA_PODS}`
-        );
-      }
+      contents = contents.replace(
+        /  use_frameworks! :linkage => podfile_properties\['ios\.useFrameworks'\]\.to_sym if podfile_properties\['ios\.useFrameworks'\]\n  use_frameworks! :linkage => ENV\['USE_FRAMEWORKS'\]\.to_sym if ENV\['USE_FRAMEWORKS'\]\n/,
+        "  use_frameworks! :linkage => :static\n"
+      );
 
-      if (
-        !contents.includes(
-          "CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES"
-        )
-      ) {
+      if (!contents.includes("use_frameworks! :linkage => :static")) {
         contents = contents.replace(
-          "post_install do |installer|\n",
-          `post_install do |installer|
-    installer.pods_project.targets.each do |target|
-      target.build_configurations.each do |cfg|
-        cfg.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
-      end
-    end
-`
+          "  use_react_native!(",
+          "  use_frameworks! :linkage => :static\n\n  use_react_native!("
         );
       }
 

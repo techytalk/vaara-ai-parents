@@ -1173,11 +1173,28 @@ export function createMeRoutes() {
       }
       const { rows } = await client.query(
         `SELECT p.id, p.body, p.tag, p.reply_count, p.created_at, p.edited_at,
+                p.cross_post_group_id, p.posting_context,
                 pct.circle_id, c.display_name AS circle_name,
                 EXISTS (
                   SELECT 1 FROM circle_members cm
                   WHERE cm.circle_id = pct.circle_id AND cm.user_id = $1
-                ) AS is_member
+                ) AS is_member,
+                (
+                  SELECT COALESCE(
+                    json_agg(
+                      json_build_object(
+                        'circleId', t.circle_id,
+                        'circleName', tc.display_name,
+                        'accessMode', t.access_mode
+                      )
+                      ORDER BY t.is_primary DESC, tc.display_name
+                    ),
+                    '[]'::json
+                  )
+                  FROM circle_post_targets t
+                  JOIN circles tc ON tc.id = t.circle_id
+                  WHERE t.post_id = p.id
+                ) AS targets
          FROM circle_posts p
          JOIN circle_post_targets pct
            ON pct.post_id = p.id AND pct.is_primary
@@ -1199,6 +1216,9 @@ export function createMeRoutes() {
           circleId: row.circle_id,
           circleName: row.circle_name,
           accessState: row.is_member ? "member" : "author",
+          postingContext: row.posting_context ?? "member",
+          crossPostGroupId: row.cross_post_group_id ?? null,
+          targets: row.targets ?? [],
         })),
         nextCursor:
           rows.length === limit ? rows[rows.length - 1].created_at : null,

@@ -14,9 +14,14 @@ import {
   mapSchoolRow,
 } from "../lib/school.js";
 import { authMiddleware, type AuthVariables } from "../middleware/auth.js";
+import {
+  createCrossPosts,
+  dispatchCrossPostsCreated,
+  toCircleTargets,
+} from "../services/cross-posts.js";
+import { syncCircleMembership } from "../services/circle-sync.js";
 
 const PLACEHOLDER_SCHOOL_KEY = "school_not_specified||unknown";
-const MAX_QUESTIONS_PER_WEEK = 3;
 
 async function refreshSchoolRating(client: PoolClient, schoolId: string) {
   const { rows } = await client.query(
@@ -608,16 +613,7 @@ export function createSchoolsRoutes() {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-
-      const weekly = await client.query(
-        `SELECT COUNT(*)::int AS count FROM school_questions
-         WHERE asker_id = $1 AND created_at > now() - interval '7 days'`,
-        [userId]
-      );
-      if (weekly.rows[0].count >= MAX_QUESTIONS_PER_WEEK) {
-        await client.query("ROLLBACK");
-        return c.json({ error: "Question limit reached for this week" }, 400);
-      }
+      await syncCircleMembership(client, userId);
 
       const school = await client.query(
         `SELECT id FROM schools WHERE id = $1 AND normalized_key <> $2`,
@@ -639,35 +635,48 @@ export function createSchoolsRoutes() {
         [userId]
       );
 
-      const post = await client.query(
-        `INSERT INTO circle_posts (circle_id, author_id, body, tag)
-         VALUES ($1, $2, $3, 'question')
-         RETURNING id`,
-        [circleId, userId, text]
-      );
+      const result = await createCrossPosts(client, {
+        userId,
+        body: text,
+        tag: "question",
+        targetCircleIds: [circleId],
+        media: [],
+      });
 
-      await client.query(
-        `INSERT INTO circle_post_targets (post_id, circle_id, is_primary)
-         VALUES ($1, $2, true)`,
-        [post.rows[0].id, circleId]
-      );
+      if (!result.ok) {
+        await client.query("ROLLBACK");
+        return c.json({ error: result.error }, result.status);
+      }
+
+      const postId = result.postId;
 
       const question = await client.query(
         `INSERT INTO school_questions (school_id, asker_id, body, circle_post_id)
          VALUES ($1, $2, $3, $4)
          RETURNING id, created_at`,
-        [schoolId, userId, text, post.rows[0].id]
+        [schoolId, userId, text, postId]
       );
 
       await client.query("COMMIT");
+
+      const targets = toCircleTargets(result.circleRows);
+      await dispatchCrossPostsCreated({
+        userId,
+        body: text,
+        postId: result.postId,
+        classifiedTargets: targets,
+        topicIds: [],
+        topicSlugs: [],
+      });
 
       return c.json(
         {
           id: question.rows[0].id,
           createdAt: question.rows[0].created_at,
           authorHandle: userRow.rows[0].anonymous_handle,
-          circleId,
-          postId: post.rows[0].id,
+          circleId: result.primaryCircleId,
+          postId,
+          guestQuota: result.guestQuota,
         },
         201
       );

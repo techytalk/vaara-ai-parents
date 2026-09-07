@@ -4,7 +4,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
-  Keyboard,
+  KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
@@ -14,8 +14,9 @@ import {
   View,
 } from "react-native";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
+import { useHeaderHeight } from "@react-navigation/elements";
 import { Ionicons } from "@expo/vector-icons";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system";
 import {
@@ -30,7 +31,7 @@ import {
   PostTypeSheet,
   TopicsSheet,
 } from "@/components/circles/PostComposerPickers";
-import { api, type Circle } from "@/lib/api";
+import { api, type Circle, type GuestQuota } from "@/lib/api";
 import { getStoredUser, getToken } from "@/lib/session";
 
 type PendingMedia = {
@@ -64,8 +65,7 @@ export default function NewPostScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const queryClient = useQueryClient();
-  const insets = useSafeAreaInsets();
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const headerHeight = useHeaderHeight();
   const [body, setBody] = useState("");
   const [tag, setTag] = useState<PostTagValue>(() => {
     if (tagParam === "recommendation" || tagParam === "question" || tagParam === "heads_up" || tagParam === "general") {
@@ -95,28 +95,12 @@ export default function NewPostScreen() {
   const [audienceOpen, setAudienceOpen] = useState(false);
   const [topicsOpen, setTopicsOpen] = useState(false);
   const [typeOpen, setTypeOpen] = useState(false);
+  const [guestQuota, setGuestQuota] = useState<GuestQuota | null>(null);
 
   function showSubmitError(message: string) {
     setError(message);
     Alert.alert(isEditing ? "Could not save" : "Could not post", message);
   }
-
-  useEffect(() => {
-    const showEvent =
-      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-    const hideEvent =
-      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
-    const showSub = Keyboard.addListener(showEvent, (event) => {
-      setKeyboardHeight(event.endCoordinates.height);
-    });
-    const hideSub = Keyboard.addListener(hideEvent, () => {
-      setKeyboardHeight(0);
-    });
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
 
   useEffect(() => {
     getToken().then(async (token) => {
@@ -424,10 +408,13 @@ export default function NewPostScreen() {
       }
       const uploadedMedia = await uploadMedia(token);
       setUploadProgress("Publishing post…");
-      await api.createPost(token, circleId, {
+      const targetCircleIds = [
+        ...new Set([circleId, ...additionalCircleIds].filter(Boolean)),
+      ];
+      const result = await api.createCrossPosts(token, {
         body: text,
         tag,
-        targetCircleIds: additionalCircleIds,
+        targetCircleIds,
         media: uploadedMedia,
         poll: pollEnabled
           ? {
@@ -438,12 +425,22 @@ export default function NewPostScreen() {
         topicSlugs:
           selectedTopicSlugs.length > 0 ? selectedTopicSlugs : undefined,
       });
+      if (result.guestQuota) {
+        setGuestQuota(result.guestQuota);
+      }
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["circleFeed", circleId] }),
+        queryClient.invalidateQueries({ queryKey: ["circleFeed"] }),
         queryClient.invalidateQueries({ queryKey: ["homeFeed"] }),
         queryClient.invalidateQueries({ queryKey: ["circles"] }),
+        queryClient.invalidateQueries({ queryKey: ["myPosts"] }),
       ]);
-      router.back();
+      router.replace({
+        pathname: "/circles/[circleId]/posts/[postId]",
+        params: {
+          circleId: result.primaryCircleId,
+          postId: result.postId,
+        },
+      });
     } catch (e) {
       showSubmitError(e instanceof Error ? e.message : "Failed to post");
     } finally {
@@ -475,8 +472,6 @@ export default function NewPostScreen() {
     selectedTopicSlugs.includes(topic.slug)
   );
   const tagMeta = POST_TAGS.find((item) => item.value === tag) ?? POST_TAGS[3];
-  const composerPadBottom =
-    keyboardHeight > 0 ? 10 : Math.max(insets.bottom, 10);
 
   if (isEditing && !editReady) {
     return error ? (
@@ -492,14 +487,19 @@ export default function NewPostScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.safe} edges={["bottom"]}>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={Platform.OS === "ios" ? headerHeight : 0}
+      >
       <View style={styles.metaBar}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={
             isEditing
-              ? `Shared with ${audienceLabel}. Circles can’t be changed`
-              : `Share with ${audienceLabel}. Change circles`
+              ? `Posted to ${audienceLabel}. Circles can’t be changed`
+              : `Post to ${audienceLabel}. Change circles`
           }
           style={styles.audiencePill}
           onPress={() => setAudienceOpen(true)}
@@ -668,7 +668,7 @@ export default function NewPostScreen() {
               <Pressable
                 key={topic.slug}
                 accessibilityRole="button"
-                accessibilityLabel={`Remove topic ${topic.name}`}
+                accessibilityLabel={`Remove interest ${topic.name}`}
                 style={styles.topicChip}
                 onPress={() =>
                   setSelectedTopicSlugs((current) =>
@@ -698,15 +698,7 @@ export default function NewPostScreen() {
         </View>
       ) : null}
 
-      <View
-        style={[
-          styles.composerDock,
-          {
-            paddingBottom: composerPadBottom,
-            marginBottom: keyboardHeight,
-          },
-        ]}
-      >
+      <View style={[styles.composerDock, { paddingBottom: 10 }]}>
         <View style={styles.toolbar}>
           <ToolbarButton
             icon="image-outline"
@@ -734,7 +726,7 @@ export default function NewPostScreen() {
           />
           <ToolbarButton
             icon="pricetag-outline"
-            label="Add topics"
+            label="Add interests"
             count={selectedTopicSlugs.length}
             active={selectedTopicSlugs.length > 0}
             disabled={topicOptions.length === 0}
@@ -773,6 +765,8 @@ export default function NewPostScreen() {
         selectedIds={additionalCircleIds}
         onChange={setAdditionalCircleIds}
         locked={isEditing}
+        guestQuota={guestQuota}
+        onGuestQuotaChange={setGuestQuota}
       />
       <PostTypeSheet
         visible={typeOpen}
@@ -787,7 +781,8 @@ export default function NewPostScreen() {
         selectedSlugs={selectedTopicSlugs}
         onChange={setSelectedTopicSlugs}
       />
-    </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
@@ -831,6 +826,7 @@ function ToolbarButton({
 }
 
 const styles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: theme.bg },
   container: { flex: 1, backgroundColor: theme.bg },
 
   submitBtn: {

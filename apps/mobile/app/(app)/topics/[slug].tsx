@@ -71,14 +71,14 @@ export default function TopicFeedScreen() {
   }
 
   if (loading) {
-    return <ScreenLoader label="Loading topic feed" />;
+    return <ScreenLoader label="Loading interest feed" />;
   }
 
   return (
     <View style={styles.container}>
       <View style={styles.followRow}>
         <Button
-          label={following ? "Following" : "Follow topic"}
+          label={following ? "Following" : "Follow interest"}
           variant={following ? "secondary" : "primary"}
           onPress={toggleFollow}
         />
@@ -105,7 +105,7 @@ export default function TopicFeedScreen() {
           <EmptyState
             icon="chatbubble-ellipses-outline"
             title="No posts yet"
-            message="Tag posts with this topic when you share in your circles. Follow to get digest updates."
+            message="Tag posts with this interest when you share in your circles. Follow to get interest updates."
           />
         }
         renderItem={({ item }) => (

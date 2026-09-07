@@ -123,7 +123,7 @@ export default function NotificationsScreen() {
       <View style={styles.header}>
         <Text style={styles.hint}>
           Immediate alerts include messages and replies. Digests bundle circle
-          posts, topics, and nearby activity.
+          posts, interests, and nearby activity.
         </Text>
         {items.some((item) => !item.readAt) ? (
           <Pressable

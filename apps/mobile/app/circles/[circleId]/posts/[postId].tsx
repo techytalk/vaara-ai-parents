@@ -13,7 +13,9 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import { useHeaderHeight } from "@react-navigation/elements";
 import { Ionicons } from "@expo/vector-icons";
+import { SafeAreaView } from "react-native-safe-area-context";
 import {
   AuthorRow,
   cardShadow,
@@ -41,6 +43,7 @@ function CommentCard({ comment }: { comment: PostComment }) {
           contextLabel={comment.author.contextLabel}
           timestamp={comment.createdAt}
           size="sm"
+          isGuest={comment.author.isGuest}
         />
         <Text style={styles.commentBody}>{comment.body}</Text>
         <Text style={styles.commentTime}>
@@ -60,6 +63,7 @@ export default function PostThreadScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const queryClient = useQueryClient();
+  const headerHeight = useHeaderHeight();
   const submitReport = useSubmitReport();
   const [post, setPost] = useState<CirclePost | null>(null);
   const [comments, setComments] = useState<PostComment[]>([]);
@@ -448,12 +452,14 @@ export default function PostThreadScreen() {
     Boolean(post.authorId ?? post.author.userId);
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={90}
-    >
+    <SafeAreaView style={styles.safe} edges={["bottom"]}>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={Platform.OS === "ios" ? headerHeight : 0}
+      >
       <FlatList
+        style={styles.list}
         data={comments}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
@@ -479,6 +485,7 @@ export default function PostThreadScreen() {
                   contextLabel={post.author.contextLabel}
                   timestamp={post.createdAt}
                   editedAt={post.editedAt}
+                  isGuest={post.author.isGuest}
                 />
                 <View style={styles.postContent}>
                   <PostTagBadge tag={post.tag} />
@@ -622,7 +629,8 @@ export default function PostThreadScreen() {
           </Text>
         </View>
       )}
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
@@ -636,7 +644,9 @@ const styles = StyleSheet.create({
   headerDelete: { marginRight: 4 },
   headerMore: { marginRight: 4 },
   headerSave: { marginRight: 8 },
+  safe: { flex: 1, backgroundColor: theme.bg },
   container: { flex: 1, backgroundColor: theme.bg },
+  list: { flex: 1 },
   centered: {
     flex: 1,
     justifyContent: "center",

@@ -6,19 +6,23 @@ export type AuthorView = {
   anonymousHandle: string;
   contextLabel: string;
   avatarKey: string;
+  /** True when the author is not a member of the circle where this post is shown. */
+  isGuest?: boolean;
 };
 
 export function mapAuthorView(
   userId: string,
   anonymousHandle: string,
   contextLabel: string,
-  storedAvatarKey?: string | null
+  storedAvatarKey?: string | null,
+  isGuest = false
 ): AuthorView {
   return {
     userId,
     anonymousHandle,
     contextLabel,
     avatarKey: resolveAvatarKey(storedAvatarKey, anonymousHandle),
+    isGuest,
   };
 }
 
@@ -93,7 +97,8 @@ export async function getAuthorContextForCircle(
   return `${primary.curriculum_name} · ${primary.grade_label}`;
 }
 
-export const OUTSIDER_AUTHOR_LABEL = "Prospective parent · Not in this circle";
+/** Badge-only; normal profile context (curriculum · grade) still shows for guests. */
+export const OUTSIDER_AUTHOR_LABEL = "Guest";
 
 export async function buildAuthorView(
   client: PoolClient,
@@ -103,7 +108,7 @@ export async function buildAuthorView(
   storedAvatarKey?: string | null
 ): Promise<AuthorView> {
   const contextLabel = await getAuthorContextForCircle(client, userId, circle);
-  return mapAuthorView(userId, anonymousHandle, contextLabel, storedAvatarKey);
+  return mapAuthorView(userId, anonymousHandle, contextLabel, storedAvatarKey, false);
 }
 
 export async function buildAuthorViewForCircleAccess(
@@ -114,20 +119,13 @@ export async function buildAuthorViewForCircleAccess(
   storedAvatarKey?: string | null
 ): Promise<AuthorView> {
   const member = await assertCircleMember(client, circle.id, userId);
-  if (!member) {
-    return mapAuthorView(
-      userId,
-      anonymousHandle,
-      OUTSIDER_AUTHOR_LABEL,
-      storedAvatarKey
-    );
-  }
-  return buildAuthorView(
-    client,
+  const contextLabel = await getAuthorContextForCircle(client, userId, circle);
+  return mapAuthorView(
     userId,
     anonymousHandle,
-    circle,
-    storedAvatarKey
+    contextLabel,
+    storedAvatarKey,
+    !member
   );
 }
 

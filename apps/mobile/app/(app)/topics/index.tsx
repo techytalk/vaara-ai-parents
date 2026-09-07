@@ -38,7 +38,7 @@ export default function TopicsScreen() {
   }
 
   if (loading) {
-    return <ScreenLoader label="Loading topics" />;
+    return <ScreenLoader label="Loading interests" />;
   }
 
   const hasTopics =
@@ -49,8 +49,8 @@ export default function TopicsScreen() {
       {!hasTopics ? (
         <EmptyState
           icon="pricetags-outline"
-          title="No topics yet"
-          message="Topics appear as parents tag posts in your circles. Follow topics to see related posts in one feed."
+          title="No interests yet"
+          message="Interests appear as parents tag posts in your circles. Follow interests to see related posts in one feed."
         />
       ) : null}
 

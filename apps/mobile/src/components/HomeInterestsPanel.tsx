@@ -109,14 +109,14 @@ export function HomeInterestsPanel({
     <View style={styles.panel}>
       <View style={styles.dividerRow}>
         <View style={styles.dividerLine} />
-        <Text style={styles.dividerLabel}>Interest topics</Text>
+        <Text style={styles.dividerLabel}>Interests</Text>
         <View style={styles.dividerLine} />
       </View>
 
       <Text style={styles.panelTitle}>What you care about</Text>
       <Text style={styles.panelHint}>
-        Circles are who you know by school and area. Topics are what you want
-        to read about — screen time, fees, sleep, and more.
+        Circles are who you know by school and area. Interests help you find
+        and follow related posts — screen time, fees, sleep, and more.
       </Text>
 
       {followedTopics.length > 0 ? (

@@ -116,6 +116,7 @@ export type CircleAuthor = {
   anonymousHandle: string;
   contextLabel: string;
   avatarKey: string;
+  isGuest?: boolean;
 };
 
 export type CirclePostMedia = {
@@ -168,6 +169,43 @@ export type AuthoredPost = {
   circleId: string;
   circleName: string;
   accessState: "member" | "author";
+  postingContext?: "member" | "guest";
+  crossPostGroupId?: string | null;
+  targets?: Array<{
+    circleId: string;
+    circleName: string;
+    accessMode: "member" | "guest";
+  }>;
+};
+
+export type GuestQuota = {
+  used: number;
+  remaining: number;
+  limit: number;
+  timezone: string;
+};
+
+export type CircleDirectoryItem = {
+  id: string;
+  displayName: string;
+  circleType: string;
+  subtitle: string | null;
+  accessMode: "member" | "guest";
+  acceptsGuestPosts: boolean;
+};
+
+export type CrossPostResult = {
+  groupId: string;
+  postId: string;
+  primaryCircleId: string;
+  posts: Array<{
+    circleId: string;
+    postId: string;
+    accessMode: "member" | "guest";
+    displayName: string;
+    isPrimary?: boolean;
+  }>;
+  guestQuota: GuestQuota;
 };
 
 export type CirclePost = {
@@ -733,6 +771,49 @@ export const api = {
 
   getCircles: (token: string) =>
     request<Circle[]>("/v1/circles", {}, token),
+
+  searchCircleDirectory: (
+    token: string,
+    params?: { q?: string; type?: string; limit?: number }
+  ) => {
+    const qs = new URLSearchParams();
+    if (params?.q) qs.set("q", params.q);
+    if (params?.type) qs.set("type", params.type);
+    if (params?.limit) qs.set("limit", String(params.limit));
+    const q = qs.toString();
+    return request<{
+      circles: CircleDirectoryItem[];
+      guestQuota: GuestQuota;
+    }>(`/v1/circles/directory${q ? `?${q}` : ""}`, {}, token);
+  },
+
+  createCrossPosts: (
+    token: string,
+    body: {
+      body: string;
+      tag?: string;
+      targetCircleIds: string[];
+      media?: Array<{
+        storageKey: string;
+        mediaType: "image" | "video";
+        mimeType: string;
+        width?: number;
+        height?: number;
+        durationMs?: number;
+      }>;
+      poll?: {
+        question: string;
+        options: string[];
+        hideResultsUntilVote?: boolean;
+        closesAt?: string;
+      };
+      topicSlugs?: string[];
+    }
+  ) =>
+    request<CrossPostResult>("/v1/cross-posts", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }, token),
 
   markCircleRead: (token: string, circleId: string) =>
     request<{ ok: boolean }>(

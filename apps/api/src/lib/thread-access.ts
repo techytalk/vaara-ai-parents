@@ -194,6 +194,27 @@ export async function resolveThreadAccess(
     };
   }
 
+  // Shared multi-circle post: membership in any target grants full thread access.
+  // Keeps the door open for richer cross-circle feed surfacing later.
+  const anyTargetMember = await client.query(
+    `SELECT c.id, c.circle_type, c.key, c.display_name, c.metadata
+     FROM circle_post_targets pct
+     JOIN circle_members cm
+       ON cm.circle_id = pct.circle_id AND cm.user_id = $1
+     JOIN circles c ON c.id = pct.circle_id
+     WHERE pct.post_id = $2
+     LIMIT 1`,
+    [params.userId, params.postId]
+  );
+  if (anyTargetMember.rows.length > 0) {
+    return {
+      state: "member",
+      capabilities: capabilitiesFor("member", params.userId, postAuthorId),
+      circle: anyTargetMember.rows[0] as CircleRow,
+      postAuthorId,
+    };
+  }
+
   const circle = await loadCircleRow(client, params.circleId);
   if (!circle) return denied;
 

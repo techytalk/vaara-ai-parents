@@ -63,6 +63,7 @@ import {
   type MediaType,
   verifyUploadedMedia,
 } from "../lib/media-storage.js";
+import { registerCircleDirectoryRoute } from "./cross-posts.js";
 
 const POST_TAGS = ["question", "recommendation", "heads_up", "general"] as const;
 const UUID_PATTERN =
@@ -86,6 +87,7 @@ function mapPost(
     contextLabel: string;
     userId: string;
     avatarKey: string;
+    isGuest?: boolean;
   },
   media: PostMediaView[] = [],
   poll?: PollView | null,
@@ -107,6 +109,7 @@ function mapPost(
       anonymousHandle: author.anonymousHandle,
       contextLabel: author.contextLabel,
       avatarKey: author.avatarKey,
+      isGuest: Boolean(author.isGuest),
     },
   };
 }
@@ -208,6 +211,8 @@ export function createCirclesRoutes() {
       client.release();
     }
   });
+
+  registerCircleDirectoryRoute(app);
 
   app.post("/:circleId/mark-read", async (c) => {
     const userId = c.get("user").sub;
@@ -703,6 +708,7 @@ export function createCirclesRoutes() {
               anonymousHandle: author.anonymousHandle,
               contextLabel: author.contextLabel,
               avatarKey: author.avatarKey,
+              isGuest: Boolean(author.isGuest),
             },
           };
         })
@@ -1341,6 +1347,7 @@ export function createCirclesRoutes() {
             anonymousHandle: author.anonymousHandle,
             contextLabel: author.contextLabel,
             avatarKey: author.avatarKey,
+            isGuest: Boolean(author.isGuest),
           },
         },
         201

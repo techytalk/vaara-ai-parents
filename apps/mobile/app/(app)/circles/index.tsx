@@ -396,7 +396,7 @@ export default function CirclesScreen() {
                 style={[styles.tabChip, active && styles.tabChipActive]}
               >
                 <Text style={[styles.tabChipText, active && styles.tabChipTextActive]}>
-                  {tab === "circles" ? "Circles" : "Topics"}
+                  {tab === "circles" ? "Circles" : "Interests"}
                 </Text>
               </Pressable>
             );

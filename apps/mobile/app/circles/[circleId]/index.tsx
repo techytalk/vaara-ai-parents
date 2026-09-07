@@ -58,6 +58,7 @@ function PostCard({
         contextLabel={post.author.contextLabel}
         timestamp={post.createdAt}
         editedAt={post.editedAt}
+        isGuest={post.author.isGuest}
       />
       <View style={styles.postBody}>
         <PostTagBadge tag={post.tag} />

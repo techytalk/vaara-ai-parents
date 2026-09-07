@@ -22,7 +22,7 @@ const PREF_LABELS: Record<BooleanPrefKey, string> = {
   direct_messages: "Direct messages and parent connection requests",
   reminders: "Reminders",
   activity_nearby: "Nearby activities",
-  topics: "Topic digests",
+  topics: "Interest updates",
   listings: "Marketplace",
   disclosures: "Identity sharing",
   carpool: "Carpool updates",
@@ -148,7 +148,7 @@ export default function NotificationPreferencesScreen() {
       ) : null}
 
       <Text style={styles.sectionHint}>
-        Circle posts, topic digests, nearby activities, and marketplace updates
+        Circle posts, interest updates, nearby activities, and marketplace updates
         arrive as digests. Replies, messages, connection requests, reminders,
         identity sharing, carpool, school calendar, and expert session alerts
         are immediate.

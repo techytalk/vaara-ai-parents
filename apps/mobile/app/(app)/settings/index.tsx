@@ -66,7 +66,7 @@ export default function SettingsScreen() {
         />
         <MenuRow
           icon="pricetags-outline"
-          label="Interest topics"
+          label="Interests"
           color={colors.lavender}
           onPress={() => router.push("/(app)/topics")}
         />
