@@ -3,7 +3,7 @@ import { Ionicons } from "@expo/vector-icons";
 import {
   AuthorRow,
   cardShadow,
-  formatPostTime,
+  formatPostStamp,
   PollCard,
   PostMediaGallery,
   PostTagBadge,
@@ -101,6 +101,7 @@ export function FeedPostCard({
         avatarKey={post.author.avatarKey}
         contextLabel={post.author.contextLabel}
         timestamp={post.createdAt}
+        editedAt={post.editedAt}
       />
       <View style={styles.body}>
         <PostTagBadge tag={post.tag} />
@@ -181,7 +182,7 @@ export function FeedPostCard({
           ) : null}
         </View>
       </View>
-      <Text style={styles.time}>{formatPostTime(post.createdAt)}</Text>
+      <Text style={styles.time}>{formatPostStamp(post.createdAt, post.editedAt)}</Text>
     </Pressable>
   );
 }

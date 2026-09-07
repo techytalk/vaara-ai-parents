@@ -12,7 +12,9 @@
     "build:aab:production": "npx eas-cli build -p android --profile production",
     "build:apk:dev": "npx eas-cli build -p android --profile development",
     "build:ios": "npx eas-cli build -p ios --profile preview-ios",
-    "build:ios:production": "npx eas-cli build -p ios --profile production-ios"
+    "build:ios:production": "npx eas-cli build -p ios --profile production-ios",
+    "update:preview": "npx eas-cli update --channel preview",
+    "update:production": "npx eas-cli update --channel production"
   },
   "dependencies": {
     "@expo-google-fonts/plus-jakarta-sans": "^0.4.2",
@@ -36,6 +38,7 @@
     "expo-secure-store": "~14.0.1",
     "expo-splash-screen": "~0.29.24",
     "expo-status-bar": "~2.0.1",
+    "expo-updates": "~0.27.5",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "react-native": "0.76.9",

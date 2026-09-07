@@ -108,7 +108,7 @@ export function createTopicsRoutes() {
       const topicId = topic.rows[0].id;
 
       let query = `
-        SELECT DISTINCT p.id, p.body, p.tag, p.reply_count, p.created_at,
+        SELECT DISTINCT p.id, p.body, p.tag, p.reply_count, p.created_at, p.edited_at,
                p.author_id, u.anonymous_handle, u.avatar_key
         FROM circle_posts p
         JOIN post_topics pt ON pt.post_id = p.id
@@ -147,6 +147,7 @@ export function createTopicsRoutes() {
             tag: row.tag,
             replyCount: row.reply_count,
             createdAt: row.created_at,
+            editedAt: row.edited_at ?? null,
             media: mediaByPost.get(row.id) ?? [],
             author,
           };

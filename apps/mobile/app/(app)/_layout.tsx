@@ -2,7 +2,8 @@ import { useEffect } from "react";
 import { Tabs, useRouter } from "expo-router";
 import * as Notifications from "expo-notifications";
 import { Ionicons } from "@expo/vector-icons";
-import { colors, typography } from "@/constants/theme";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { colors, tabBarStyleForInsets, typography } from "@/constants/theme";
 import { setupPushNotifications } from "@/lib/push";
 
 type TabIconName = keyof typeof Ionicons.glyphMap;
@@ -15,6 +16,7 @@ function tabIcon(active: TabIconName, inactive: TabIconName) {
 
 export default function AppLayout() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     const stopPushRegistration = setupPushNotifications();
@@ -68,19 +70,7 @@ export default function AppLayout() {
         headerTitleStyle: { fontFamily: typography.bold, color: colors.text },
         headerShadowVisible: false,
         tabBarHideOnKeyboard: true,
-        tabBarStyle: {
-          height: 66,
-          paddingTop: 7,
-          paddingBottom: 7,
-          backgroundColor: colors.card,
-          borderTopColor: colors.border,
-          borderTopWidth: 1,
-          elevation: 10,
-          shadowColor: colors.shadow,
-          shadowOffset: { width: 0, height: -2 },
-          shadowOpacity: 0.06,
-          shadowRadius: 8,
-        },
+        tabBarStyle: tabBarStyleForInsets(insets.bottom),
         tabBarLabelStyle: {
           fontSize: 11,
           fontFamily: typography.semibold,

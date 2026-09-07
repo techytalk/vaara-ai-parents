@@ -35,6 +35,7 @@ const MIGRATIONS = [
   { version: "027_child_date_of_birth", file: "027_child_date_of_birth.sql" },
   { version: "028_pin_code_offices", file: "028_pin_code_offices.sql" },
   { version: "029_international_postal_codes", file: "029_international_postal_codes.sql" },
+  { version: "030_post_edited_at", file: "030_post_edited_at.sql" },
 ];
 
 async function isMigrationApplied(

@@ -102,6 +102,14 @@ export function formatPostTime(dateStr: string): string {
   });
 }
 
+export function formatPostStamp(
+  createdAt: string,
+  editedAt?: string | null
+): string {
+  const base = formatPostTime(createdAt);
+  return editedAt ? `${base} · Edited` : base;
+}
+
 export function cardShadow(style?: ViewStyle): ViewStyle {
   return {
     ...style,
@@ -248,12 +256,14 @@ export function AuthorRow({
   avatarKey,
   contextLabel,
   timestamp,
+  editedAt,
   size = "md",
 }: {
   handle: string;
   avatarKey?: string | null;
   contextLabel?: string;
   timestamp?: string;
+  editedAt?: string | null;
   size?: "sm" | "md";
 }) {
   const avatarSize = size === "sm" ? 32 : 40;
@@ -269,7 +279,9 @@ export function AuthorRow({
         ) : null}
       </View>
       {timestamp ? (
-        <Text style={styles.timestamp}>{formatPostTime(timestamp)}</Text>
+        <Text style={styles.timestamp}>
+          {formatPostStamp(timestamp, editedAt)}
+        </Text>
       ) : null}
     </View>
   );

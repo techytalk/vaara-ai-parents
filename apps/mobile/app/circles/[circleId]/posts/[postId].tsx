@@ -148,11 +148,28 @@ export default function PostThreadScreen() {
 
   useLayoutEffect(() => {
     const isOwnPost =
-      Boolean(currentUserId) && post?.author.userId === currentUserId;
+      Boolean(currentUserId) &&
+      (post?.authorId === currentUserId || post?.author.userId === currentUserId);
     navigation.setOptions({
       title: "Post",
       headerRight: () => (
         <View style={styles.headerActions}>
+          {isOwnPost && !readOnly ? (
+            <Pressable
+              onPress={() =>
+                router.push({
+                  pathname: "/circles/[circleId]/new-post",
+                  params: { circleId, postId },
+                })
+              }
+              hitSlop={8}
+              style={styles.headerEdit}
+              accessibilityRole="button"
+              accessibilityLabel="Edit post"
+            >
+              <Ionicons name="pencil-outline" size={22} color={theme.text} />
+            </Pressable>
+          ) : null}
           {isOwnPost ? (
             <Pressable
               onPress={confirmDelete}
@@ -195,6 +212,10 @@ export default function PostThreadScreen() {
     currentUserId,
     post,
     deleting,
+    readOnly,
+    circleId,
+    postId,
+    router,
     showPostSafetyActions,
   ]);
 
@@ -413,6 +434,7 @@ export default function PostThreadScreen() {
                   avatarKey={post.author.avatarKey}
                   contextLabel={post.author.contextLabel}
                   timestamp={post.createdAt}
+                  editedAt={post.editedAt}
                 />
                 <View style={styles.postContent}>
                   <PostTagBadge tag={post.tag} />
@@ -566,6 +588,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 4,
   },
+  headerEdit: { marginRight: 4 },
   headerDelete: { marginRight: 4 },
   headerMore: { marginRight: 4 },
   headerSave: { marginRight: 8 },

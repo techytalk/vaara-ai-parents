@@ -27,6 +27,12 @@ Implementation for everything here lives in [Feature Implementation Plan](./FEAT
 | AI parenting chatbot as a core feature | Commodity answer quality, zero network effect. Acceptable only as a small helper (summarise a thread, suggest a topic tag). |
 | City-wide feeds early | Dilutes local density, which is the only thing that matters before critical mass. |
 
+**Deferred** (wanted later, not in current scope):
+
+| Later | Why wait |
+|-------|----------|
+| Pregnancy as a family type on add-child | School traction first. Expecting parents need hospitals and guidance, not only a new circle. See [Future: Pregnancy onboarding](./FUTURE_PREGNANCY_ONBOARDING.md). |
+
 Growth mechanics are intentionally out of scope for this document and will be handled separately.
 
 ---

@@ -255,7 +255,7 @@ export function createSchoolsRoutes() {
 
       const postId = question.rows[0].circle_post_id;
       const post = await client.query(
-        `SELECT p.id, p.body, p.created_at, u.anonymous_handle
+        `SELECT p.id, p.body, p.created_at, p.edited_at, u.anonymous_handle
          FROM circle_posts p
          JOIN users u ON u.id = p.author_id
          WHERE p.id = $1`,
@@ -282,6 +282,7 @@ export function createSchoolsRoutes() {
               id: post.rows[0].id,
               body: post.rows[0].body,
               createdAt: post.rows[0].created_at,
+              editedAt: post.rows[0].edited_at ?? null,
               authorHandle: post.rows[0].anonymous_handle,
             }
           : null,

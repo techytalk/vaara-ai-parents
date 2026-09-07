@@ -12,6 +12,7 @@ import {
 import { AppErrorBoundary } from "@/components/AppErrorBoundary";
 import { UpdatePrompt } from "@/components/UpdatePrompt";
 import { useAppUpdateCheck } from "@/hooks/useAppUpdateCheck";
+import { useOTAUpdates } from "@/hooks/useOTAUpdates";
 import { AppQueryProvider } from "@/providers/QueryProvider";
 import { ReportProvider } from "@/providers/ReportProvider";
 import { colors } from "@/constants/theme";
@@ -20,6 +21,7 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function RootLayout() {
   const update = useAppUpdateCheck();
+  useOTAUpdates();
   const [fontsLoaded, fontError] = useFonts({
     PlusJakartaSans_400Regular,
     PlusJakartaSans_500Medium,

@@ -1,6 +1,7 @@
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { colors, typography } from "@/constants/theme";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { colors, tabBarStyleForInsets, typography } from "@/constants/theme";
 
 type TabIconName = keyof typeof Ionicons.glyphMap;
 
@@ -15,6 +16,8 @@ function tabIcon(
 }
 
 export default function ProviderLayout() {
+  const insets = useSafeAreaInsets();
+
   return (
     <Tabs
       screenOptions={{
@@ -25,14 +28,7 @@ export default function ProviderLayout() {
         headerStyle: { backgroundColor: colors.card },
         headerTitleStyle: { fontFamily: typography.bold, color: colors.text },
         headerShadowVisible: false,
-        tabBarStyle: {
-          height: 66,
-          paddingTop: 7,
-          paddingBottom: 7,
-          backgroundColor: colors.card,
-          borderTopColor: colors.border,
-          borderTopWidth: 1,
-        },
+        tabBarStyle: tabBarStyleForInsets(insets.bottom),
         tabBarLabelStyle: {
           fontSize: 11,
           fontFamily: typography.semibold,

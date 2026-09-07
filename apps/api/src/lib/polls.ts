@@ -10,7 +10,7 @@ export type PollView = {
   closesAt: string | null;
 };
 
-type PollInput = {
+export type PollInput = {
   question: string;
   options: string[];
   hideResultsUntilVote?: boolean;
@@ -57,6 +57,27 @@ export async function createPollForPost(
   );
 
   const pollId = rows[0].id as string;
+  for (const [index, label] of options.entries()) {
+    await client.query(
+      `INSERT INTO poll_options (poll_id, label, sort_order) VALUES ($1, $2, $3)`,
+      [pollId, label, index]
+    );
+  }
+}
+
+export async function replacePollContent(
+  client: PoolClient,
+  pollId: string,
+  poll: PollInput
+): Promise<void> {
+  const question = poll.question.trim();
+  const options = poll.options.map((o) => o.trim()).filter(Boolean);
+
+  await client.query(`UPDATE post_polls SET question = $2 WHERE id = $1`, [
+    pollId,
+    question,
+  ]);
+  await client.query(`DELETE FROM poll_options WHERE poll_id = $1`, [pollId]);
   for (const [index, label] of options.entries()) {
     await client.query(
       `INSERT INTO poll_options (poll_id, label, sort_order) VALUES ($1, $2, $3)`,
@@ -152,7 +173,7 @@ export async function castPollVote(
   }
 ): Promise<string | null> {
   const pollResult = await client.query(
-    `SELECT id, closes_at FROM post_polls WHERE id = $1`,
+    `SELECT id, closes_at FROM post_polls WHERE id = $1 FOR UPDATE`,
     [params.pollId]
   );
   if (pollResult.rows.length === 0) return "Poll not found";

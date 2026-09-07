@@ -40,6 +40,30 @@ export const colors = {
   tabInactive: "#89929B",
 } as const;
 
+/** Icon + label row height, matching a WhatsApp-style tab bar. */
+const TAB_BAR_CONTENT_HEIGHT = 56;
+
+/**
+ * Positions tab icons/labels above the iPhone home indicator and Android
+ * nav bar. The bar itself still extends to the screen edge.
+ */
+export function tabBarStyleForInsets(bottomInset: number) {
+  const paddingBottom = Math.max(bottomInset, 8);
+  return {
+    height: TAB_BAR_CONTENT_HEIGHT + paddingBottom,
+    paddingTop: 6,
+    paddingBottom,
+    backgroundColor: colors.card,
+    borderTopColor: colors.border,
+    borderTopWidth: 1,
+    elevation: 10,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+  };
+}
+
 export const spacing = {
   xxs: 4,
   xs: 8,

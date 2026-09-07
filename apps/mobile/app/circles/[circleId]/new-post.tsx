@@ -21,6 +21,7 @@ import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system";
 import {
   POST_TAGS,
+  ScreenLoader,
   theme,
   type PostTagValue,
 } from "@/components/circles/ui";
@@ -30,9 +31,10 @@ import {
   TopicsSheet,
 } from "@/components/circles/PostComposerPickers";
 import { api, type Circle } from "@/lib/api";
-import { getToken } from "@/lib/session";
+import { getStoredUser, getToken } from "@/lib/session";
 
 type PendingMedia = {
+  id?: string;
   uri: string;
   fileName: string;
   mediaType: "image" | "video";
@@ -62,12 +64,14 @@ const PLACEHOLDERS: Record<PostTagValue, string> = {
 };
 
 export default function NewPostScreen() {
-  const { circleId, title, compose, tag: tagParam } = useLocalSearchParams<{
+  const { circleId, title, compose, tag: tagParam, postId } = useLocalSearchParams<{
     circleId: string;
     title?: string;
     compose?: string;
     tag?: string;
+    postId?: string;
   }>();
+  const isEditing = Boolean(postId);
   const router = useRouter();
   const navigation = useNavigation();
   const queryClient = useQueryClient();
@@ -88,6 +92,8 @@ export default function NewPostScreen() {
   const [pollEnabled, setPollEnabled] = useState(compose === "poll");
   const [pollQuestion, setPollQuestion] = useState("");
   const [pollOptions, setPollOptions] = useState(["", ""]);
+  const [pollLocked, setPollLocked] = useState(false);
+  const [editReady, setEditReady] = useState(!isEditing);
   const [mediaEnabled, setMediaEnabled] = useState<boolean | null>(null);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -102,7 +108,7 @@ export default function NewPostScreen() {
 
   function showSubmitError(message: string) {
     setError(message);
-    Alert.alert("Could not post", message);
+    Alert.alert(isEditing ? "Could not save" : "Could not post", message);
   }
 
   useEffect(() => {
@@ -118,11 +124,65 @@ export default function NewPostScreen() {
         setMediaEnabled(mediaStatus.configured);
         const flat = Object.values(catalog.categories).flat();
         setTopicOptions(flat.map((t) => ({ slug: t.slug, name: t.name })));
-      } catch {
-        setError("Could not load your circles");
+
+        if (!isEditing || !postId || !circleId) {
+          setEditReady(true);
+          return;
+        }
+
+        const data = await api.getPost(token, circleId, postId);
+        const user = await getStoredUser();
+        const authorId = data.post.authorId ?? data.post.author.userId;
+        if (!user?.id || authorId !== user.id) {
+          Alert.alert(
+            "Can’t edit",
+            "You can only edit your own posts.",
+            [{ text: "OK", onPress: () => router.back() }]
+          );
+          return;
+        }
+
+        const post = data.post;
+        setBody(post.body ?? "");
+        if (
+          post.tag === "recommendation" ||
+          post.tag === "question" ||
+          post.tag === "heads_up" ||
+          post.tag === "general"
+        ) {
+          setTag(post.tag);
+        }
+        setSelectedTopicSlugs(post.topics?.map((topic) => topic.slug) ?? []);
+        setMedia(
+          (post.media ?? []).map((item, index) => ({
+            id: item.id,
+            uri: item.url,
+            fileName: `${item.type}-${index + 1}`,
+            mediaType: item.type,
+            mimeType: item.mimeType,
+            width: item.width ?? undefined,
+            height: item.height ?? undefined,
+            durationMs: item.durationMs ?? undefined,
+          }))
+        );
+        if (post.poll) {
+          setPollEnabled(true);
+          setPollQuestion(post.poll.question);
+          setPollOptions(post.poll.options.map((option) => option.label));
+          setPollLocked(post.poll.totalVotes > 0);
+        }
+        setEditReady(true);
+      } catch (cause) {
+        setError(
+          isEditing
+            ? cause instanceof Error
+              ? cause.message
+              : "Could not load this post"
+            : "Could not load your circles"
+        );
       }
     });
-  }, []);
+  }, [circleId, isEditing, postId, router]);
 
   async function pickMedia() {
     if (!mediaEnabled) {
@@ -174,10 +234,12 @@ export default function NewPostScreen() {
   }
 
   useEffect(() => {
-    if (compose !== "photo" || composeHandled || mediaEnabled !== true) return;
+    if (isEditing || compose !== "photo" || composeHandled || mediaEnabled !== true) {
+      return;
+    }
     setComposeHandled(true);
     void pickMedia();
-  }, [compose, composeHandled, mediaEnabled]);
+  }, [compose, composeHandled, isEditing, mediaEnabled]);
 
   async function uploadMedia(token: string) {
     const uploaded: Array<{
@@ -238,7 +300,7 @@ export default function NewPostScreen() {
       showSubmitError("Write something, add a poll, or add a photo or video");
       return;
     }
-    if (pollEnabled) {
+    if (pollEnabled && !pollLocked) {
       if (!pollQuestion.trim()) {
         showSubmitError("Enter a poll question");
         return;
@@ -273,6 +335,84 @@ export default function NewPostScreen() {
         showSubmitError(
           "One of the selected audience circles is no longer available."
         );
+        return;
+      }
+      if (isEditing && postId) {
+        const mediaPayload: Array<{
+          id?: string;
+          storageKey?: string;
+          mediaType?: "image" | "video";
+          mimeType?: string;
+          width?: number;
+          height?: number;
+          durationMs?: number;
+        }> = [];
+        const newItems = media.filter((item) => !item.id);
+        let uploadedCount = 0;
+        for (const item of media) {
+          if (item.id) {
+            mediaPayload.push({ id: item.id });
+            continue;
+          }
+          uploadedCount += 1;
+          setUploadProgress(`Uploading ${uploadedCount} of ${newItems.length}…`);
+          const fileInfo = await FileSystem.getInfoAsync(item.uri, { size: true });
+          if (!fileInfo.exists) throw new Error(`Could not read ${item.fileName}`);
+          const sizeBytes = fileInfo.size ?? item.fileSize ?? 0;
+          if (!sizeBytes) {
+            throw new Error(`Could not read file size for ${item.fileName}`);
+          }
+          const upload = await api.createMediaUpload(token, {
+            fileName: item.fileName,
+            mediaType: item.mediaType,
+            mimeType: item.mimeType,
+            sizeBytes,
+          });
+          const uploadResponse = await FileSystem.uploadAsync(
+            upload.uploadUrl,
+            item.uri,
+            {
+              httpMethod: "PUT",
+              uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+              headers: { "Content-Type": item.mimeType },
+            }
+          );
+          if (uploadResponse.status < 200 || uploadResponse.status >= 300) {
+            const detail = uploadResponse.body?.slice(0, 200);
+            throw new Error(
+              `Could not upload ${item.fileName} (HTTP ${uploadResponse.status}${detail ? `: ${detail}` : ""})`
+            );
+          }
+          mediaPayload.push({
+            storageKey: upload.storageKey,
+            mediaType: item.mediaType,
+            mimeType: item.mimeType,
+            width: item.width,
+            height: item.height,
+            durationMs: item.durationMs,
+          });
+        }
+        setUploadProgress("Saving post…");
+        await api.updatePost(token, circleId, postId, {
+          body: text,
+          tag,
+          media: mediaPayload,
+          poll:
+            pollEnabled && !pollLocked
+              ? {
+                  question: pollQuestion.trim(),
+                  options,
+                }
+              : undefined,
+          topicSlugs: selectedTopicSlugs,
+        });
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["circleFeed"] }),
+          queryClient.invalidateQueries({ queryKey: ["homeFeed"] }),
+          queryClient.invalidateQueries({ queryKey: ["circles"] }),
+          queryClient.invalidateQueries({ queryKey: ["topicFeed"] }),
+        ]);
+        router.back();
         return;
       }
       const uploadedMedia = await uploadMedia(token);
@@ -313,25 +453,29 @@ export default function NewPostScreen() {
 
   useLayoutEffect(() => {
     navigation.setOptions({
+      title: isEditing ? "Edit post" : "New post",
       headerRight: () => (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Publish post"
-          accessibilityState={{ disabled: !canPost || loading }}
+          accessibilityLabel={isEditing ? "Save post" : "Publish post"}
+          accessibilityState={{ disabled: !canPost || loading || !editReady }}
           hitSlop={8}
-          style={[styles.postBtn, (!canPost || loading) && styles.postBtnOff]}
+          style={[
+            styles.postBtn,
+            (!canPost || loading || !editReady) && styles.postBtnOff,
+          ]}
           onPress={() => void submitRef.current()}
-          disabled={loading}
+          disabled={loading || !editReady}
         >
           {loading ? (
             <ActivityIndicator size="small" color="#fff" />
           ) : (
-            <Text style={styles.postBtnText}>Post</Text>
+            <Text style={styles.postBtnText}>{isEditing ? "Save" : "Post"}</Text>
           )}
         </Pressable>
       ),
     });
-  }, [navigation, canPost, loading]);
+  }, [navigation, canPost, editReady, isEditing, loading]);
 
   const primaryCircle = circles.find((circle) => circle.id === circleId);
   const audienceLabel = audienceSummary({
@@ -343,6 +487,19 @@ export default function NewPostScreen() {
     selectedTopicSlugs.includes(topic.slug)
   );
 
+  if (isEditing && !editReady) {
+    return error ? (
+      <View style={styles.container}>
+        <View style={styles.errorBar}>
+          <Ionicons name="alert-circle" size={16} color={theme.error} />
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      </View>
+    ) : (
+      <ScreenLoader />
+    );
+  }
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -352,7 +509,11 @@ export default function NewPostScreen() {
       <View style={styles.metaBar}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={`Share with ${audienceLabel}. Change circles`}
+          accessibilityLabel={
+            isEditing
+              ? `Shared with ${audienceLabel}. Circles can’t be changed`
+              : `Share with ${audienceLabel}. Change circles`
+          }
           style={styles.audiencePill}
           onPress={() => setAudienceOpen(true)}
         >
@@ -360,13 +521,22 @@ export default function NewPostScreen() {
           <Text style={styles.audienceText} numberOfLines={1}>
             {audienceLabel}
           </Text>
-          <Ionicons name="chevron-down" size={14} color={theme.primaryDark} />
+          <Ionicons
+            name={isEditing ? "lock-closed" : "chevron-down"}
+            size={14}
+            color={theme.primaryDark}
+          />
         </Pressable>
         <View style={styles.anonPill}>
           <Ionicons name="eye-off" size={13} color={theme.textMuted} />
           <Text style={styles.anonText}>Anonymous</Text>
         </View>
       </View>
+      {isEditing ? (
+        <Text style={styles.audienceLockedHint}>
+          Circles can’t be changed after posting.
+        </Text>
+      ) : null}
 
       <ScrollView
         horizontal
@@ -414,7 +584,7 @@ export default function NewPostScreen() {
           placeholderTextColor={theme.textMuted}
           multiline
           textAlignVertical="top"
-          autoFocus
+          autoFocus={!isEditing}
           value={body}
           onChangeText={setBody}
         />
@@ -426,7 +596,7 @@ export default function NewPostScreen() {
             contentContainerStyle={styles.mediaStrip}
           >
             {media.map((item, index) => (
-              <View key={`${item.uri}-${index}`} style={styles.mediaThumb}>
+              <View key={item.id ?? `${item.uri}-${index}`} style={styles.mediaThumb}>
                 {item.mediaType === "image" ? (
                   <Image
                     source={{ uri: item.uri }}
@@ -464,21 +634,31 @@ export default function NewPostScreen() {
                 color={theme.primaryDark}
               />
               <Text style={styles.pollHeaderText}>Poll</Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Remove poll"
-                hitSlop={8}
-                onPress={() => setPollEnabled(false)}
-              >
-                <Ionicons name="close" size={18} color={theme.textMuted} />
-              </Pressable>
+              {isEditing ? null : (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Remove poll"
+                  hitSlop={8}
+                  onPress={() => setPollEnabled(false)}
+                >
+                  <Ionicons name="close" size={18} color={theme.textMuted} />
+                </Pressable>
+              )}
             </View>
+            {isEditing ? (
+              <Text style={styles.pollHint}>
+                {pollLocked
+                  ? "This poll already has votes, so the question and options can’t be changed."
+                  : "You can edit this poll until someone votes."}
+              </Text>
+            ) : null}
             <TextInput
               style={styles.pollInput}
               placeholder="Poll question"
               placeholderTextColor={theme.textMuted}
               value={pollQuestion}
               onChangeText={setPollQuestion}
+              editable={!pollLocked}
             />
             {pollOptions.map((option, index) => (
               <TextInput
@@ -494,9 +674,10 @@ export default function NewPostScreen() {
                     )
                   )
                 }
+                editable={!pollLocked}
               />
             ))}
-            {pollOptions.length < 6 ? (
+            {!pollLocked && pollOptions.length < 6 ? (
               <Pressable
                 accessibilityRole="button"
                 style={styles.addPollOption}
@@ -570,9 +751,19 @@ export default function NewPostScreen() {
         />
         <ToolbarButton
           icon="stats-chart-outline"
-          label="Add a poll"
+          label={
+            isEditing
+              ? pollEnabled
+                ? "Poll on this post"
+                : "Polls can’t be added after posting"
+              : "Add a poll"
+          }
           active={pollEnabled}
-          onPress={() => setPollEnabled((current) => !current)}
+          disabled={isEditing}
+          onPress={() => {
+            if (isEditing) return;
+            setPollEnabled((current) => !current);
+          }}
         />
         <ToolbarButton
           icon="pricetag-outline"
@@ -594,6 +785,7 @@ export default function NewPostScreen() {
         circles={circles}
         selectedIds={additionalCircleIds}
         onChange={setAdditionalCircleIds}
+        locked={isEditing}
       />
       <TopicsSheet
         visible={topicsOpen}
@@ -695,6 +887,12 @@ const styles = StyleSheet.create({
     backgroundColor: theme.surfaceMuted,
   },
   anonText: { fontSize: 12, fontWeight: "600", color: theme.textMuted },
+  audienceLockedHint: {
+    paddingHorizontal: 16,
+    paddingTop: 6,
+    fontSize: 12,
+    color: theme.textMuted,
+  },
 
   typeStrip: { flexGrow: 0, marginTop: 10 },
   typeStripContent: {
@@ -773,6 +971,11 @@ const styles = StyleSheet.create({
     color: theme.primaryDark,
     textTransform: "uppercase",
     letterSpacing: 0.4,
+  },
+  pollHint: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: theme.textMuted,
   },
   pollInput: {
     backgroundColor: theme.bg,

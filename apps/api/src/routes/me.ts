@@ -970,7 +970,7 @@ export function createMeRoutes() {
       for (const row of rows) {
         if (row.item_type !== "post") continue;
         const post = await client.query(
-          `SELECT p.id, p.body, p.tag, p.created_at, u.anonymous_handle, u.avatar_key,
+          `SELECT p.id, p.body, p.tag, p.created_at, p.edited_at, u.anonymous_handle, u.avatar_key,
                   EXISTS (
                     SELECT 1 FROM circle_post_targets pct
                     JOIN circle_members cm ON cm.circle_id = pct.circle_id
@@ -1000,6 +1000,7 @@ export function createMeRoutes() {
             body: post.rows[0].body,
             tag: post.rows[0].tag,
             createdAt: post.rows[0].created_at,
+            editedAt: post.rows[0].edited_at ?? null,
             authorHandle: post.rows[0].anonymous_handle,
             authorAvatarKey: resolveAvatarKey(
               post.rows[0].avatar_key,

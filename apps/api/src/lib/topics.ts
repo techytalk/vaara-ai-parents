@@ -61,6 +61,35 @@ export async function resolveTopicSlugs(
   return { topicIds, topics };
 }
 
+export async function replacePostTopics(
+  client: PoolClient,
+  postId: string,
+  topicIds: string[]
+) {
+  const existing = await client.query(
+    `SELECT topic_id FROM post_topics WHERE post_id = $1`,
+    [postId]
+  );
+  const existingIds = existing.rows.map((row) => String(row.topic_id));
+  const uniqueIncoming = [...new Set(topicIds)];
+  const toRemove = existingIds.filter((id) => !uniqueIncoming.includes(id));
+  const toAdd = uniqueIncoming.filter((id) => !existingIds.includes(id));
+
+  if (toRemove.length > 0) {
+    await client.query(
+      `DELETE FROM post_topics WHERE post_id = $1 AND topic_id = ANY($2::uuid[])`,
+      [postId, toRemove]
+    );
+    await client.query(
+      `UPDATE topics SET post_count = GREATEST(post_count - 1, 0)
+       WHERE id = ANY($1::uuid[])`,
+      [toRemove]
+    );
+  }
+
+  await attachTopicsToPost(client, postId, toAdd);
+}
+
 export async function attachTopicsToPost(
   client: PoolClient,
   postId: string,

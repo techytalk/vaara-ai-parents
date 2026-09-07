@@ -144,6 +144,7 @@ export type CirclePost = {
   tag: string;
   replyCount: number;
   createdAt: string;
+  editedAt?: string | null;
   media: CirclePostMedia[];
   poll: PollView | null;
   topics?: Array<{ slug: string; name: string; category: string | null }>;
@@ -202,6 +203,7 @@ export type SavedPost = {
   body?: string;
   tag?: string;
   createdAt?: string;
+  editedAt?: string | null;
   authorHandle?: string;
   authorAvatarKey?: string;
   savedAt: string;
@@ -767,6 +769,34 @@ export const api = {
   ) =>
     request<CirclePost>(`/v1/circles/${circleId}/posts`, {
       method: "POST",
+      body: JSON.stringify(body),
+    }, token),
+
+  updatePost: (
+    token: string,
+    circleId: string,
+    postId: string,
+    body: {
+      body?: string;
+      tag?: string;
+      media?: Array<{
+        id?: string;
+        storageKey?: string;
+        mediaType?: "image" | "video";
+        mimeType?: string;
+        width?: number;
+        height?: number;
+        durationMs?: number;
+      }>;
+      poll?: {
+        question: string;
+        options: string[];
+      };
+      topicSlugs?: string[];
+    }
+  ) =>
+    request<CirclePost>(`/v1/circles/${circleId}/posts/${postId}`, {
+      method: "PATCH",
       body: JSON.stringify(body),
     }, token),
 

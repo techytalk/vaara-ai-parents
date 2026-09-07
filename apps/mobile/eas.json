@@ -5,6 +5,7 @@
   },
   "build": {
     "development": {
+      "channel": "development",
       "developmentClient": true,
       "distribution": "internal",
       "env": {
@@ -20,6 +21,7 @@
       "prebuildCommand": "npx expo prebuild --platform android --clean"
     },
     "preview": {
+      "channel": "preview",
       "distribution": "internal",
       "env": {
         "EXPO_PUBLIC_API_URL": "https://api.vaara.ai",
@@ -34,6 +36,7 @@
       "prebuildCommand": "npx expo prebuild --platform android --clean"
     },
     "production-apk": {
+      "channel": "production",
       "distribution": "internal",
       "env": {
         "EXPO_PUBLIC_API_URL": "https://api.vaara.ai",
@@ -48,6 +51,7 @@
       "prebuildCommand": "npx expo prebuild --platform android --clean"
     },
     "production": {
+      "channel": "production",
       "distribution": "store",
       "env": {
         "EXPO_PUBLIC_API_URL": "https://api.vaara.ai",
@@ -62,6 +66,7 @@
       "prebuildCommand": "npx expo prebuild --platform android --clean"
     },
     "preview-ios": {
+      "channel": "preview",
       "distribution": "internal",
       "env": {
         "EXPO_PUBLIC_API_URL": "https://api.vaara.ai",
@@ -76,6 +81,7 @@
       "prebuildCommand": "npx expo prebuild --platform ios --clean"
     },
     "production-ios": {
+      "channel": "production",
       "distribution": "store",
       "env": {
         "EXPO_PUBLIC_API_URL": "https://api.vaara.ai",

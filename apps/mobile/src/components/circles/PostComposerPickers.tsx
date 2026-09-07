@@ -86,6 +86,7 @@ export function AudienceSheet({
   circles,
   selectedIds,
   onChange,
+  locked = false,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -94,10 +95,12 @@ export function AudienceSheet({
   circles: Circle[];
   selectedIds: string[];
   onChange: (ids: string[]) => void;
+  locked?: boolean;
 }) {
   const optionalCircles = circles.filter((c) => c.id !== primaryCircle?.id);
 
   function toggle(id: string) {
+    if (locked) return;
     if (selectedIds.includes(id)) {
       onChange(selectedIds.filter((item) => item !== id));
       return;
@@ -116,7 +119,11 @@ export function AudienceSheet({
       <SafeAreaView style={styles.sheet} edges={["top", "bottom"]}>
         <SheetHeader
           title="Share with"
-          subtitle={`${selectedIds.length + 1} of ${MAX_ADDITIONAL_CIRCLES + 1} circles`}
+          subtitle={
+            locked
+              ? "Circles can’t be changed after posting."
+              : `${selectedIds.length + 1} of ${MAX_ADDITIONAL_CIRCLES + 1} circles`
+          }
           onDone={onClose}
         />
 
@@ -155,7 +162,8 @@ export function AudienceSheet({
           renderItem={({ item }) => {
             const selected = selectedIds.includes(item.id);
             const disabled =
-              !selected && selectedIds.length >= MAX_ADDITIONAL_CIRCLES;
+              locked ||
+              (!selected && selectedIds.length >= MAX_ADDITIONAL_CIRCLES);
             return (
               <Pressable
                 accessibilityRole="checkbox"

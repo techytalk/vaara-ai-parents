@@ -16,7 +16,7 @@ import {
   AuthorRow,
   cardShadow,
   EmptyState,
-  formatPostTime,
+  formatPostStamp,
   PollCard,
   PostMediaGallery,
   PostTagBadge,
@@ -57,6 +57,7 @@ function PostCard({
         avatarKey={post.author.avatarKey}
         contextLabel={post.author.contextLabel}
         timestamp={post.createdAt}
+        editedAt={post.editedAt}
       />
       <View style={styles.postBody}>
         <PostTagBadge tag={post.tag} />
@@ -101,7 +102,9 @@ function PostCard({
             <Text style={[styles.footerStatText, styles.deleteText]}>Delete</Text>
           </Pressable>
         ) : null}
-        <Text style={styles.footerTime}>{formatPostTime(post.createdAt)}</Text>
+        <Text style={styles.footerTime}>
+          {formatPostStamp(post.createdAt, post.editedAt)}
+        </Text>
       </View>
     </Pressable>
   );

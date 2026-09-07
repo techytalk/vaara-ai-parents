@@ -8,7 +8,7 @@ import {
 } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams, useNavigation } from "expo-router";
-import { AuthorRow, formatPostTime } from "@/components/circles/ui";
+import { AuthorRow, formatPostStamp } from "@/components/circles/ui";
 import { Button, EmptyState, ScreenLoader } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import { useRealtimeChannel } from "@/hooks/useRealtimeChannel";
@@ -115,9 +115,12 @@ export default function TopicFeedScreen() {
               avatarKey={item.author.avatarKey}
               contextLabel={item.author.contextLabel}
               timestamp={item.createdAt}
+              editedAt={item.editedAt}
             />
             <Text style={styles.body}>{item.body}</Text>
-            <Text style={styles.time}>{formatPostTime(item.createdAt)}</Text>
+            <Text style={styles.time}>
+              {formatPostStamp(item.createdAt, item.editedAt)}
+            </Text>
           </View>
         )}
       />

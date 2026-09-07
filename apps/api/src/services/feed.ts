@@ -25,6 +25,7 @@ export type FeedPost = {
   tag: string;
   replyCount: number;
   createdAt: string;
+  editedAt: string | null;
   media: PostMediaView[];
   poll: PollView | null;
   topics: TopicSummary[];
@@ -91,6 +92,7 @@ function mapPost(
     tag: row.tag as string,
     replyCount: row.reply_count as number,
     createdAt: row.created_at as string,
+    editedAt: (row.edited_at as string | null) ?? null,
     media,
     poll: poll ?? null,
     topics,
@@ -124,7 +126,7 @@ export async function loadCircleFeed(params: {
       circle.circle_type === "curriculum" && scope === "local";
 
     let query = `
-      SELECT p.id, p.body, p.tag, p.reply_count, p.created_at, p.author_id,
+      SELECT p.id, p.body, p.tag, p.reply_count, p.created_at, p.edited_at, p.author_id,
              u.anonymous_handle, u.avatar_key
       FROM circle_posts p
       JOIN circle_post_targets pct ON pct.post_id = p.id
@@ -259,6 +261,7 @@ const MEMBER_HOME_FEED_SQL = `
       p.tag,
       p.reply_count,
       p.created_at,
+      p.edited_at,
       p.author_id,
       u.anonymous_handle,
       u.avatar_key,
@@ -317,6 +320,7 @@ const DISCOVERY_HOME_FEED_SQL = `
       p.tag,
       p.reply_count,
       p.created_at,
+      p.edited_at,
       p.author_id,
       u.anonymous_handle,
       u.avatar_key,

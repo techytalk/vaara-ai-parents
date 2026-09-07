@@ -3,6 +3,13 @@
     "name": "Vaara Parents",
     "slug": "vaara-parents",
     "version": "1.0.0",
+    "runtimeVersion": "1.0.0",
+    "updates": {
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0,
+      "url": "https://u.expo.dev/0cc4bc43-2bbe-410b-8cba-68ab1bc2bc21"
+    },
     "orientation": "portrait",
     "scheme": "vaara-parents",
     "userInterfaceStyle": "light",
@@ -32,10 +39,11 @@
         "backgroundColor": "#FFFCF7"
       },
       "package": "com.vaara.parents",
-      "versionCode": 5
+      "versionCode": 7
     },
     "plugins": [
       "expo-router",
+      "expo-updates",
       "expo-secure-store",
       [
         "expo-notifications",

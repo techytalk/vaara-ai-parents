@@ -22,6 +22,7 @@ import {
   attachTopicsToPost,
   loadTopicsForPosts,
   notifyTopicFollowers,
+  replacePostTopics,
   resolveTopicSlugs,
   type TopicSummary,
 } from "../lib/topics.js";
@@ -39,10 +40,12 @@ import {
   castPollVote,
   createPollForPost,
   getPollForPost,
+  replacePollContent,
   loadPostPolls,
   validatePollInput,
   type PollView,
 } from "../lib/polls.js";
+import { applyMediaReplace, sameStringList } from "../lib/post-update.js";
 import { syncCircleMembership } from "../services/circle-sync.js";
 import { loadCircleFeed, isDiscoveryPostReadable } from "../services/feed.js";
 import { dispatchPostCreated, dispatchMessageCreated } from "../lib/async-events.js";
@@ -90,6 +93,7 @@ function mapPost(
     tag: row.tag,
     replyCount: row.reply_count,
     createdAt: row.created_at,
+    editedAt: row.edited_at ?? null,
     media,
     poll: poll ?? null,
     topics,
@@ -462,7 +466,7 @@ export function createCirclesRoutes() {
       const { rows } = await client.query(
         `INSERT INTO circle_posts (circle_id, author_id, body, tag)
          VALUES ($1, $2, $3, $4)
-         RETURNING id, body, tag, reply_count, created_at, author_id`,
+         RETURNING id, body, tag, reply_count, created_at, edited_at, author_id`,
         [circleId, userId, text, tag]
       );
 
@@ -626,7 +630,7 @@ export function createCirclesRoutes() {
       const resolvedCircle = circle;
 
       const postResult = await client.query(
-        `SELECT p.id, p.body, p.tag, p.reply_count, p.created_at, p.author_id,
+        `SELECT p.id, p.body, p.tag, p.reply_count, p.created_at, p.edited_at, p.author_id,
                 u.anonymous_handle, u.avatar_key
          FROM circle_posts p
          JOIN users u ON u.id = p.author_id
@@ -655,6 +659,7 @@ export function createCirclesRoutes() {
         userId,
         memberCount
       );
+      const topicsByPost = await loadTopicsForPosts(client, [postId]);
       const postAuthor = await buildAuthorView(
         client,
         postRow.author_id,
@@ -714,7 +719,8 @@ export function createCirclesRoutes() {
             postRow,
             postAuthor,
             mediaByPost.get(postId) ?? [],
-            pollsByPost.get(postId)
+            pollsByPost.get(postId),
+            topicsByPost.get(postId) ?? []
           ),
           authorId: String(postRow.author_id),
           helpfulCount: helpfulResult.rows[0]?.count ?? 0,
@@ -725,6 +731,372 @@ export function createCirclesRoutes() {
         replies,
         readOnly,
       });
+    } finally {
+      client.release();
+    }
+  });
+
+  app.patch("/:circleId/posts/:postId", postRateLimit, async (c) => {
+    const userId = c.get("user").sub;
+    const circleId = c.req.param("circleId");
+    const postId = c.req.param("postId");
+    const body = await c.req.json<{
+      body?: string;
+      tag?: string;
+      targetCircleIds?: string[];
+      poll?: {
+        question?: string;
+        options?: string[];
+      };
+      media?: Array<{
+        id?: string;
+        storageKey?: string;
+        mediaType?: MediaType;
+        mimeType?: string;
+        width?: number;
+        height?: number;
+        durationMs?: number;
+      }>;
+      topicSlugs?: string[];
+    }>();
+
+    if (body.targetCircleIds !== undefined) {
+      return c.json({ error: "Circles can't be changed after posting" }, 400);
+    }
+
+    const hasBody = Object.prototype.hasOwnProperty.call(body, "body");
+    const hasTag = Object.prototype.hasOwnProperty.call(body, "tag");
+    const hasMedia = Object.prototype.hasOwnProperty.call(body, "media");
+    const hasTopics = Object.prototype.hasOwnProperty.call(body, "topicSlugs");
+    const hasPoll = Object.prototype.hasOwnProperty.call(body, "poll");
+
+    if (!hasBody && !hasTag && !hasMedia && !hasTopics && !hasPoll) {
+      return c.json({ error: "No changes provided" }, 400);
+    }
+
+    if (hasTag) {
+      const tag = body.tag ?? "general";
+      if (!POST_TAGS.includes(tag as (typeof POST_TAGS)[number])) {
+        return c.json({ error: "Invalid tag" }, 400);
+      }
+    }
+
+    if (hasPoll) {
+      if (!body.poll) {
+        return c.json({ error: "A poll cannot be removed from a post" }, 400);
+      }
+      const pollError = validatePollInput({
+        question: body.poll.question ?? "",
+        options: body.poll.options ?? [],
+      });
+      if (pollError) {
+        return c.json({ error: pollError }, 400);
+      }
+    }
+
+    const requestedMedia = hasMedia
+      ? Array.isArray(body.media)
+        ? body.media
+        : null
+      : null;
+    if (hasMedia && requestedMedia === null) {
+      return c.json({ error: "Invalid media attachment" }, 400);
+    }
+    if (requestedMedia && requestedMedia.length > MAX_POST_MEDIA) {
+      return c.json(
+        { error: `A post can include up to ${MAX_POST_MEDIA} attachments` },
+        400
+      );
+    }
+
+    const verifiedNewByKey = new Map<
+      string,
+      {
+        storageKey: string;
+        mediaType: MediaType;
+        mimeType: string;
+        sizeBytes: number;
+        width: number | null;
+        height: number | null;
+        durationMs: number | null;
+      }
+    >();
+
+    if (requestedMedia) {
+      const newItems = requestedMedia.filter(
+        (item) => item.storageKey && !item.id
+      );
+      try {
+        await Promise.all(
+          newItems.map(async (item) => {
+            if (
+              !item.storageKey ||
+              (item.mediaType !== "image" && item.mediaType !== "video") ||
+              !item.mimeType
+            ) {
+              throw new Error("INVALID_MEDIA");
+            }
+            const verified = await verifyUploadedMedia({
+              userId,
+              storageKey: item.storageKey,
+              mediaType: item.mediaType,
+              mimeType: item.mimeType,
+            });
+            verifiedNewByKey.set(item.storageKey, {
+              storageKey: item.storageKey,
+              mediaType: item.mediaType,
+              mimeType: verified.mimeType,
+              sizeBytes: verified.sizeBytes,
+              width:
+                Number.isInteger(item.width) && Number(item.width) > 0
+                  ? Number(item.width)
+                  : null,
+              height:
+                Number.isInteger(item.height) && Number(item.height) > 0
+                  ? Number(item.height)
+                  : null,
+              durationMs:
+                Number.isInteger(item.durationMs) && Number(item.durationMs) >= 0
+                  ? Number(item.durationMs)
+                  : null,
+            });
+          })
+        );
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.message === "MEDIA_STORAGE_NOT_CONFIGURED"
+        ) {
+          return c.json({ error: "Media uploads are not configured" }, 503);
+        }
+        return c.json({ error: "An uploaded attachment is invalid" }, 400);
+      }
+    }
+
+    const client = await pool.connect();
+    const droppedKeys: string[] = [];
+    try {
+      await client.query("BEGIN");
+
+      const circle = await assertCircleMember(client, circleId, userId);
+      if (!circle) {
+        await client.query("ROLLBACK");
+        return c.json({ error: "Circle not found" }, 404);
+      }
+
+      const postResult = await client.query(
+        `SELECT p.id, p.body, p.tag, p.reply_count, p.created_at, p.edited_at, p.author_id
+         FROM circle_posts p
+         WHERE p.id = $1
+           AND EXISTS (
+             SELECT 1 FROM circle_post_targets pct
+             WHERE pct.post_id = p.id AND pct.circle_id = $2
+           )
+         FOR UPDATE`,
+        [postId, circleId]
+      );
+      if (postResult.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return c.json({ error: "Post not found" }, 404);
+      }
+      if (String(postResult.rows[0].author_id) !== userId) {
+        await client.query("ROLLBACK");
+        return c.json({ error: "You can only edit your own posts" }, 403);
+      }
+
+      const current = postResult.rows[0] as {
+        id: string;
+        body: string;
+        tag: string;
+        author_id: string;
+      };
+      let changed = false;
+      const nextBody = hasBody ? (body.body ?? "").trim() : String(current.body);
+      const nextTag = hasTag ? (body.tag ?? "general") : String(current.tag);
+
+      if (nextBody !== String(current.body) || nextTag !== String(current.tag)) {
+        changed = true;
+      }
+
+      if (hasPoll) {
+        const pollRow = await client.query(
+          `SELECT id, question FROM post_polls WHERE post_id = $1 FOR UPDATE`,
+          [postId]
+        );
+        if (pollRow.rows.length === 0) {
+          await client.query("ROLLBACK");
+          return c.json({ error: "This post does not have a poll" }, 400);
+        }
+        const pollId = String(pollRow.rows[0].id);
+        const votes = await client.query(
+          `SELECT COUNT(*)::int AS count FROM poll_votes WHERE poll_id = $1`,
+          [pollId]
+        );
+        if ((votes.rows[0]?.count ?? 0) > 0) {
+          await client.query("ROLLBACK");
+          return c.json(
+            { error: "This poll already has votes and can't be changed" },
+            400
+          );
+        }
+
+        const nextQuestion = (body.poll?.question ?? "").trim();
+        const nextOptions = (body.poll?.options ?? [])
+          .map((option) => option.trim())
+          .filter(Boolean);
+        const currentOptions = await client.query(
+          `SELECT label FROM poll_options WHERE poll_id = $1 ORDER BY sort_order`,
+          [pollId]
+        );
+        const currentLabels = currentOptions.rows.map((row) =>
+          String(row.label)
+        );
+        if (
+          nextQuestion !== String(pollRow.rows[0].question) ||
+          !sameStringList(nextOptions, currentLabels)
+        ) {
+          await replacePollContent(client, pollId, {
+            question: nextQuestion,
+            options: nextOptions,
+          });
+          changed = true;
+        }
+      }
+
+      let nextMediaCount: number | null = null;
+      if (hasMedia && requestedMedia) {
+        try {
+          const mediaResult = await applyMediaReplace(
+            client,
+            postId,
+            requestedMedia,
+            verifiedNewByKey
+          );
+          droppedKeys.push(...mediaResult.droppedKeys);
+          if (mediaResult.changed) changed = true;
+          nextMediaCount = requestedMedia.length;
+        } catch (error) {
+          await client.query("ROLLBACK");
+          if (error instanceof Error && error.message === "UNKNOWN_MEDIA") {
+            return c.json({ error: "Invalid media attachment" }, 400);
+          }
+          return c.json({ error: "Invalid media attachment" }, 400);
+        }
+      }
+
+      if (hasTopics) {
+        const resolved = await resolveTopicSlugs(
+          client,
+          Array.isArray(body.topicSlugs) ? body.topicSlugs : []
+        );
+        if ("error" in resolved) {
+          await client.query("ROLLBACK");
+          return c.json({ error: resolved.error }, 400);
+        }
+        const currentTopics = await loadTopicsForPosts(client, [postId]);
+        const currentSlugs = (currentTopics.get(postId) ?? []).map(
+          (topic) => topic.slug
+        );
+        const nextSlugs = resolved.topics.map((topic) => topic.slug);
+        if (!sameStringList(nextSlugs, currentSlugs)) {
+          await replacePostTopics(client, postId, resolved.topicIds);
+          changed = true;
+        }
+      }
+
+      const mediaCountResult =
+        nextMediaCount === null
+          ? await client.query(
+              `SELECT COUNT(*)::int AS count FROM circle_post_media WHERE post_id = $1`,
+              [postId]
+            )
+          : { rows: [{ count: nextMediaCount }] };
+      const mediaCount = mediaCountResult.rows[0]?.count ?? 0;
+      const hasPollRow = await client.query(
+        `SELECT 1 FROM post_polls WHERE post_id = $1`,
+        [postId]
+      );
+      if (!nextBody && mediaCount === 0 && hasPollRow.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return c.json(
+          { error: "A message, poll, or attachment is required" },
+          400
+        );
+      }
+
+      if (!changed) {
+        await client.query("ROLLBACK");
+        return c.json({ error: "No changes provided" }, 400);
+      }
+
+      await client.query(
+        `UPDATE circle_posts
+         SET body = $2, tag = $3, edited_at = now(), updated_at = now()
+         WHERE id = $1`,
+        [postId, nextBody, nextTag]
+      );
+
+      const memberCountResult = await client.query(
+        `SELECT COUNT(*)::int AS count FROM circle_members WHERE circle_id = $1`,
+        [circleId]
+      );
+      const userRow = await client.query(
+        "SELECT anonymous_handle, avatar_key FROM users WHERE id = $1",
+        [userId]
+      );
+      const updated = await client.query(
+        `SELECT p.id, p.body, p.tag, p.reply_count, p.created_at, p.edited_at, p.author_id
+         FROM circle_posts p WHERE p.id = $1`,
+        [postId]
+      );
+      const mediaByPost = await loadPostMedia(client, [postId]);
+      const pollsByPost = await loadPostPolls(
+        client,
+        [postId],
+        userId,
+        memberCountResult.rows[0]?.count ?? 0
+      );
+      const topicsByPost = await loadTopicsForPosts(client, [postId]);
+      const author = await buildAuthorView(
+        client,
+        userId,
+        userRow.rows[0].anonymous_handle,
+        circle,
+        userRow.rows[0].avatar_key
+      );
+
+      await client.query("COMMIT");
+
+      if (droppedKeys.length > 0) {
+        try {
+          await deleteStoredMedia(droppedKeys);
+        } catch (error) {
+          console.error("[media] post edit S3 cleanup failed", error);
+        }
+      }
+
+      const targetResult = await client.query(
+        `SELECT circle_id FROM circle_post_targets WHERE post_id = $1`,
+        [postId]
+      );
+      await Promise.all(
+        targetResult.rows.map((row) =>
+          invalidateCircleFeedCache(String(row.circle_id))
+        )
+      );
+
+      return c.json(
+        mapPost(
+          updated.rows[0],
+          author,
+          mediaByPost.get(postId) ?? [],
+          pollsByPost.get(postId),
+          topicsByPost.get(postId) ?? []
+        )
+      );
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
     } finally {
       client.release();
     }
@@ -940,8 +1312,10 @@ export function createCirclesRoutes() {
         return c.json({ error: "Post not found" }, 404);
       }
 
+      await client.query("BEGIN");
       const poll = await getPollForPost(client, postId);
       if (!poll) {
+        await client.query("ROLLBACK");
         return c.json({ error: "This post has no poll" }, 404);
       }
 
@@ -951,6 +1325,7 @@ export function createCirclesRoutes() {
         userId,
       });
       if (voteError) {
+        await client.query("ROLLBACK");
         return c.json({ error: voteError }, 400);
       }
 
@@ -965,7 +1340,11 @@ export function createCirclesRoutes() {
         memberCountResult.rows[0]?.count ?? 0
       );
 
+      await client.query("COMMIT");
       return c.json({ poll: pollsByPost.get(postId) ?? null });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
     } finally {
       client.release();
     }
