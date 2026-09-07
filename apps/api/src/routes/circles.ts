@@ -740,6 +740,9 @@ export function createCirclesRoutes() {
     const userId = c.get("user").sub;
     const circleId = c.req.param("circleId");
     const postId = c.req.param("postId");
+    if (!circleId || !postId) {
+      return c.json({ error: "Post not found" }, 404);
+    }
     const body = await c.req.json<{
       body?: string;
       tag?: string;
