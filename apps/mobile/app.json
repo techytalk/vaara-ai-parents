@@ -36,13 +36,13 @@
     },
     "android": {
       "googleServicesFile": "./google-services.json",
-      "softwareKeyboardLayoutMode": "pan",
+      "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./assets/splash-icon.png",
         "backgroundColor": "#FFFCF7"
       },
       "package": "com.vaara.parents",
-      "versionCode": 7,
+      "versionCode": 9,
       "permissions": ["com.google.android.gms.permission.AD_ID"],
       "intentFilters": [
         {

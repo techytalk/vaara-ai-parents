@@ -2,12 +2,15 @@ import { useCallback, useLayoutEffect, useState } from "react";
 import {
   Alert,
   FlatList,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+import { useHeaderHeight } from "@react-navigation/elements";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useNavigation } from "@react-navigation/native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -15,10 +18,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { DisclosurePrompt } from "@/components/DisclosurePrompt";
 import { InlineError, ScreenLoader } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
-import {
-  composerDockPadding,
-  useKeyboardHeight,
-} from "@/hooks/useKeyboardHeight";
 import { useRealtimeChannel } from "@/hooks/useRealtimeChannel";
 import {
   api,
@@ -38,9 +37,7 @@ export default function ChatScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const queryClient = useQueryClient();
-  // Tab bar already owns the closed-state bottom inset; only lift for keyboard.
-  const keyboardHeight = useKeyboardHeight();
-  const dockPadBottom = composerDockPadding(keyboardHeight, 0, spacing.sm);
+  const headerHeight = useHeaderHeight();
   const submitReport = useSubmitReport();
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -230,7 +227,11 @@ export default function ChatScreen() {
     disclosure && disclosure.effectiveLevel < 2 && disclosure.ownOffer < 2;
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      keyboardVerticalOffset={Platform.OS === "ios" ? headerHeight : 0}
+    >
       {peer ? (
         <View style={styles.peerCard}>
           <Text style={styles.peerName}>{peerDisplayName(peer)}</Text>
@@ -296,7 +297,7 @@ export default function ChatScreen() {
 
       {error ? <InlineError message={error} /> : null}
 
-      <View style={[styles.inputRow, { paddingBottom: dockPadBottom }]}>
+      <View style={styles.inputRow}>
         <TextInput
           style={styles.input}
           placeholder="Type a message…"
@@ -320,7 +321,7 @@ export default function ChatScreen() {
         onCancel={() => setPromptLevel(null)}
         loading={disclosing}
       />
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -420,6 +421,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     paddingHorizontal: spacing.sm,
     paddingTop: spacing.sm,
+    paddingBottom: spacing.sm,
     gap: spacing.xs,
     borderTopWidth: 1,
     borderTopColor: colors.border,

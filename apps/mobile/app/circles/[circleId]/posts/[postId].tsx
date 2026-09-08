@@ -2,6 +2,8 @@ import { useCallback, useLayoutEffect, useState } from "react";
 import {
   Alert,
   FlatList,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -9,9 +11,11 @@ import {
   View,
 } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
+import { useHeaderHeight } from "@react-navigation/elements";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
+import { SafeAreaView } from "react-native-safe-area-context";
 import {
   AuthorRow,
   cardShadow,
@@ -22,11 +26,6 @@ import {
   ScreenLoader,
   theme,
 } from "@/components/circles/ui";
-import { useBottomChromeInset } from "@/hooks/useBottomChromeInset";
-import {
-  composerDockPadding,
-  useKeyboardHeight,
-} from "@/hooks/useKeyboardHeight";
 import { useRealtimeChannel } from "@/hooks/useRealtimeChannel";
 import { api, type CirclePost, type PostComment, type ThreadCapabilities } from "@/lib/api";
 import { sharePostLink, sharePostMedia } from "@/lib/share-post";
@@ -64,9 +63,7 @@ export default function PostThreadScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const queryClient = useQueryClient();
-  const bottomChrome = useBottomChromeInset();
-  const keyboardHeight = useKeyboardHeight();
-  const dockPadBottom = composerDockPadding(keyboardHeight, bottomChrome);
+  const headerHeight = useHeaderHeight();
   const submitReport = useSubmitReport();
   const [post, setPost] = useState<CirclePost | null>(null);
   const [comments, setComments] = useState<PostComment[]>([]);
@@ -455,8 +452,12 @@ export default function PostThreadScreen() {
     Boolean(post.authorId ?? post.author.userId);
 
   return (
-    <View style={styles.safe}>
-      <View style={styles.container}>
+    <SafeAreaView style={styles.safe} edges={["bottom"]}>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={Platform.OS === "ios" ? headerHeight : 0}
+      >
       <FlatList
         style={styles.list}
         data={comments}
@@ -593,7 +594,7 @@ export default function PostThreadScreen() {
       ) : null}
 
       {canReply ? (
-      <View style={[styles.composer, cardShadow(), { paddingBottom: dockPadBottom }]}>
+      <View style={[styles.composer, cardShadow()]}>
         <TextInput
           style={styles.composerInput}
           placeholder="Write a helpful comment…"
@@ -621,15 +622,15 @@ export default function PostThreadScreen() {
         </Pressable>
       </View>
       ) : (
-        <View style={[styles.composer, cardShadow(), { paddingBottom: dockPadBottom }]}>
+        <View style={[styles.composer, cardShadow()]}>
           <Text style={styles.readOnlyNote}>
             You’re not part of this circle. You can view this shared post, but
             you cannot comment or open the rest of the circle.
           </Text>
         </View>
       )}
-      </View>
-    </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
@@ -780,6 +781,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-end",
     paddingTop: 10,
+    paddingBottom: 10,
     paddingHorizontal: 14,
     gap: 10,
     backgroundColor: theme.card,

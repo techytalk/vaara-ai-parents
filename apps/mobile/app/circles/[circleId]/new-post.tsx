@@ -4,6 +4,9 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  InteractionManager,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,13 +14,10 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useHeaderHeight } from "@react-navigation/elements";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import {
-  composerDockPadding,
-  useKeyboardHeight,
-} from "@/hooks/useKeyboardHeight";
-import { useBottomChromeInset } from "@/hooks/useBottomChromeInset";
+import { SafeAreaView } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system";
 import {
@@ -66,9 +66,9 @@ export default function NewPostScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const queryClient = useQueryClient();
-  const bottomChrome = useBottomChromeInset();
-  const keyboardHeight = useKeyboardHeight();
-  const dockPadBottom = composerDockPadding(keyboardHeight, bottomChrome);
+  const headerHeight = useHeaderHeight();
+  const bodyInputRef = useRef<TextInput>(null);
+  const didFocusBody = useRef(false);
   const [body, setBody] = useState("");
   const [tag, setTag] = useState<PostTagValue>(() => {
     if (tagParam === "recommendation" || tagParam === "question" || tagParam === "heads_up" || tagParam === "general") {
@@ -104,6 +104,15 @@ export default function NewPostScreen() {
     setError(message);
     Alert.alert(isEditing ? "Could not save" : "Could not post", message);
   }
+
+  useEffect(() => {
+    if (isEditing || didFocusBody.current) return;
+    didFocusBody.current = true;
+    const task = InteractionManager.runAfterInteractions(() => {
+      bodyInputRef.current?.focus();
+    });
+    return () => task.cancel();
+  }, [isEditing]);
 
   useEffect(() => {
     getToken().then(async (token) => {
@@ -325,12 +334,6 @@ export default function NewPostScreen() {
         );
         return;
       }
-      if (additionalCircleIds.some((id) => !memberIds.has(id))) {
-        showSubmitError(
-          "One of the selected audience circles is no longer available."
-        );
-        return;
-      }
       if (isEditing && postId) {
         const mediaPayload: Array<{
           id?: string;
@@ -490,8 +493,12 @@ export default function NewPostScreen() {
   }
 
   return (
-    <View style={styles.safe}>
-      <View style={styles.container}>
+    <SafeAreaView style={styles.safe} edges={["bottom"]}>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={Platform.OS === "ios" ? headerHeight : 0}
+      >
       <View style={styles.metaBar}>
         <Pressable
           accessibilityRole="button"
@@ -546,12 +553,13 @@ export default function NewPostScreen() {
         keyboardDismissMode="interactive"
       >
         <TextInput
+          ref={bodyInputRef}
           style={styles.input}
           placeholder={PLACEHOLDERS[tag]}
           placeholderTextColor={theme.textMuted}
           multiline
           textAlignVertical="top"
-          autoFocus={!isEditing}
+          autoFocus={false}
           value={body}
           onChangeText={setBody}
         />
@@ -697,7 +705,7 @@ export default function NewPostScreen() {
         </View>
       ) : null}
 
-      <View style={[styles.composerDock, { paddingBottom: dockPadBottom }]}>
+      <View style={styles.composerDock}>
         <View style={styles.toolbar}>
           <ToolbarButton
             icon="image-outline"
@@ -780,8 +788,8 @@ export default function NewPostScreen() {
         selectedSlugs={selectedTopicSlugs}
         onChange={setSelectedTopicSlugs}
       />
-      </View>
-    </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
@@ -1032,6 +1040,7 @@ const styles = StyleSheet.create({
     borderTopColor: theme.border,
     backgroundColor: theme.card,
     paddingTop: 6,
+    paddingBottom: 10,
   },
   toolbar: {
     flexDirection: "row",
