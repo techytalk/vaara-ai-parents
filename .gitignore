@@ -21,3 +21,4 @@ web-build/
 # IDE
 .idea/
 .vscode/
+.vercel

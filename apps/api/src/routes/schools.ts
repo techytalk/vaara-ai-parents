@@ -643,7 +643,7 @@ export function createSchoolsRoutes() {
         media: [],
       });
 
-      if (!result.ok) {
+      if (result.ok === false) {
         await client.query("ROLLBACK");
         return c.json({ error: result.error }, result.status);
       }
