@@ -129,6 +129,13 @@ export type CirclePostMedia = {
   durationMs: number | null;
 };
 
+export type CirclePostDocument = {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+};
+
 export type PollView = {
   id: string;
   question: string;
@@ -216,6 +223,7 @@ export type CirclePost = {
   createdAt: string;
   editedAt?: string | null;
   media: CirclePostMedia[];
+  documents?: CirclePostDocument[];
   poll: PollView | null;
   topics?: Array<{ slug: string; name: string; category: string | null }>;
   circles?: Array<{ id: string; displayName: string; circleType: string }>;
@@ -802,6 +810,11 @@ export const api = {
         height?: number;
         durationMs?: number;
       }>;
+      documents?: Array<{
+        storageKey: string;
+        fileName: string;
+        mimeType: string;
+      }>;
       poll?: {
         question: string;
         options: string[];
@@ -909,6 +922,12 @@ export const api = {
         height?: number;
         durationMs?: number;
       }>;
+      documents?: Array<{
+        id?: string;
+        storageKey?: string;
+        fileName?: string;
+        mimeType?: string;
+      }>;
       poll?: {
         question: string;
         options: string[];
@@ -947,7 +966,7 @@ export const api = {
     token: string,
     body: {
       fileName: string;
-      mediaType: "image" | "video";
+      mediaType: "image" | "video" | "document";
       mimeType: string;
       sizeBytes: number;
       purpose?: "post" | "listing";
@@ -956,11 +975,48 @@ export const api = {
     request<{
       storageKey: string;
       uploadUrl: string;
-      publicUrl: string;
+      publicUrl?: string;
       expiresInSeconds: number;
     }>(
       "/v1/media/upload-url",
       { method: "POST", body: JSON.stringify(body) },
+      token
+    ),
+
+  verifyDocument: (
+    token: string,
+    body: { storageKey: string; fileName: string; mimeType: string }
+  ) =>
+    request<{
+      status: "scanning" | "clean";
+      storageKey: string;
+      fileName: string;
+      sizeBytes: number;
+      mimeType: string;
+    }>(
+      "/v1/media/documents/verify",
+      { method: "POST", body: JSON.stringify(body) },
+      token
+    ),
+
+  getDocumentStatus: (token: string, storageKey: string) =>
+    request<{
+      status: "scanning" | "clean" | "blocked" | "failed";
+      storageKey?: string;
+      fileName?: string;
+      sizeBytes?: number;
+      mimeType?: string;
+      reason?: string;
+    }>(
+      `/v1/media/documents/status?storageKey=${encodeURIComponent(storageKey)}`,
+      {},
+      token
+    ),
+
+  getDocumentDownloadUrl: (token: string, mediaId: string) =>
+    request<{ downloadUrl: string; expiresInSeconds: number }>(
+      `/v1/media/${mediaId}/download`,
+      {},
       token
     ),
 

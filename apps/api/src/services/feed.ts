@@ -4,24 +4,18 @@ import {
   assertCircleMember,
   buildAuthorViewForCircleAccess,
 } from "../lib/author.js";
-import { mediaPublicUrl, type MediaType } from "../lib/media-storage.js";
 import { loadPostPolls } from "../lib/polls.js";
+import {
+  loadPostAttachments,
+  type PostDocumentView,
+  type PostMediaView,
+} from "../lib/post-attachments.js";
 import {
   loadCirclesForPosts,
   type PostCircleSummary,
 } from "../lib/post-circles.js";
 import { loadTopicsForPosts, type TopicSummary } from "../lib/topics.js";
 import type { PollView } from "../lib/polls.js";
-
-type PostMediaView = {
-  id: string;
-  type: MediaType;
-  url: string;
-  mimeType: string;
-  width: number | null;
-  height: number | null;
-  durationMs: number | null;
-};
 
 export type FeedPost = {
   id: string;
@@ -31,6 +25,7 @@ export type FeedPost = {
   createdAt: string;
   editedAt: string | null;
   media: PostMediaView[];
+  documents: PostDocumentView[];
   poll: PollView | null;
   topics: TopicSummary[];
   circles: PostCircleSummary[];
@@ -48,38 +43,6 @@ export type CircleFeedResult = {
   nextCursor: string | null;
 };
 
-async function loadPostMedia(
-  client: PoolClient,
-  postIds: string[]
-): Promise<Map<string, PostMediaView[]>> {
-  const result = new Map<string, PostMediaView[]>();
-  if (postIds.length === 0) return result;
-
-  const { rows } = await client.query(
-    `SELECT id, post_id, storage_key, media_type, mime_type,
-            width, height, duration_ms
-     FROM circle_post_media
-     WHERE post_id = ANY($1::uuid[])
-     ORDER BY post_id, sort_order`,
-    [postIds]
-  );
-
-  for (const row of rows) {
-    const media = result.get(row.post_id) ?? [];
-    media.push({
-      id: row.id,
-      type: row.media_type,
-      url: mediaPublicUrl(row.storage_key),
-      mimeType: row.mime_type,
-      width: row.width,
-      height: row.height,
-      durationMs: row.duration_ms,
-    });
-    result.set(row.post_id, media);
-  }
-  return result;
-}
-
 function mapPost(
   row: Record<string, unknown>,
   author: {
@@ -92,7 +55,8 @@ function mapPost(
   media: PostMediaView[] = [],
   poll?: PollView | null,
   topics: TopicSummary[] = [],
-  circles: PostCircleSummary[] = []
+  circles: PostCircleSummary[] = [],
+  documents: PostDocumentView[] = []
 ): FeedPost {
   return {
     id: row.id as string,
@@ -102,6 +66,7 @@ function mapPost(
     createdAt: row.created_at as string,
     editedAt: (row.edited_at as string | null) ?? null,
     media,
+    documents,
     poll: poll ?? null,
     topics,
     circles,
@@ -171,7 +136,7 @@ export async function loadCircleFeed(params: {
     sqlParams.push(limit);
 
     const { rows } = await client.query(query, sqlParams);
-    const mediaByPost = await loadPostMedia(
+    const attachmentsByPost = await loadPostAttachments(
       client,
       rows.map((row) => row.id)
     );
@@ -204,13 +169,15 @@ export async function loadCircleFeed(params: {
           circle,
           row.avatar_key
         );
+        const attachments = attachmentsByPost.get(row.id);
         return mapPost(
           row,
           author,
-          mediaByPost.get(row.id) ?? [],
+          attachments?.media ?? [],
           pollsByPost.get(row.id),
           topicsByPost.get(row.id) ?? [],
-          circlesByPost.get(row.id) ?? []
+          circlesByPost.get(row.id) ?? [],
+          attachments?.documents ?? []
         );
       })
     );
@@ -406,7 +373,7 @@ async function hydrateHomeFeedPosts(
   discovery: boolean
 ): Promise<HomeFeedPost[]> {
   const postIds = rows.map((row) => row.id as string);
-  const mediaByPost = await loadPostMedia(client, postIds);
+  const attachmentsByPost = await loadPostAttachments(client, postIds);
   const topicsByPost = await loadTopicsForPosts(client, postIds);
   const circlesByPost = await loadCirclesForPosts(client, postIds);
   const helpfulByPost = await loadPostHelpfulCounts(client, postIds, userId);
@@ -462,14 +429,16 @@ async function hydrateHomeFeedPosts(
         count: 0,
         mine: false,
       };
+      const attachments = attachmentsByPost.get(row.id as string);
       return {
         ...mapPost(
           row,
           author,
-          mediaByPost.get(row.id as string) ?? [],
+          attachments?.media ?? [],
           pollsByPost.get(row.id as string),
           topicsByPost.get(row.id as string) ?? [],
-          circlesByPost.get(row.id as string) ?? []
+          circlesByPost.get(row.id as string) ?? [],
+          attachments?.documents ?? []
         ),
         circleId: row.circle_id as string,
         circleName: row.circle_name as string,

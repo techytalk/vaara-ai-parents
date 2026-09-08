@@ -11,13 +11,13 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import * as FileSystem from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";
 import { SafetyNotice } from "@/components/SafetyNotice";
 import { Button, Chip, InlineError, SectionHeader } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import { trackEvent } from "@/lib/analytics";
 import { api } from "@/lib/api";
+import { resolveMediaBytes, uploadMediaBytes } from "@/lib/media-local";
 import { getToken } from "@/lib/session";
 
 const KINDS = [
@@ -88,6 +88,7 @@ export default function NewListingScreen() {
       allowsMultipleSelection: true,
       selectionLimit: 5 - photos.length,
       quality: 0.85,
+      copyToCacheDirectory: true,
     });
     if (result.canceled) return;
     const selected = result.assets.map((asset, index) => ({
@@ -110,14 +111,11 @@ export default function NewListingScreen() {
     }> = [];
 
     for (const photo of photos) {
-      const info = await FileSystem.getInfoAsync(photo.uri, { size: true });
-      const sizeBytes =
-        (info.exists && "size" in info ? Number(info.size) : 0) ||
-        photo.fileSize ||
-        0;
-      if (!sizeBytes) {
-        throw new Error(`Could not read file size for ${photo.fileName}`);
-      }
+      const { sizeBytes, body } = await resolveMediaBytes(
+        photo.uri,
+        photo.fileName,
+        photo.fileSize
+      );
       const upload = await api.createMediaUpload(token, {
         fileName: photo.fileName,
         mediaType: "image",
@@ -125,10 +123,12 @@ export default function NewListingScreen() {
         sizeBytes,
         purpose: "listing",
       });
-      await FileSystem.uploadAsync(upload.uploadUrl, photo.uri, {
-        httpMethod: "PUT",
-        headers: { "Content-Type": photo.mimeType },
-      });
+      await uploadMediaBytes(
+        upload.uploadUrl,
+        body,
+        photo.mimeType,
+        photo.fileName
+      );
       uploaded.push({
         storageKey: upload.storageKey,
         mimeType: photo.mimeType,

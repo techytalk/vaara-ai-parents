@@ -24,7 +24,6 @@ import {
   useKeyboardHeight,
 } from "@/hooks/useKeyboardHeight";
 import * as ImagePicker from "expo-image-picker";
-import * as FileSystem from "expo-file-system";
 import {
   POST_TAGS,
   ScreenLoader,
@@ -38,6 +37,16 @@ import {
   TopicsSheet,
 } from "@/components/circles/PostComposerPickers";
 import { api, type Circle, type GuestQuota } from "@/lib/api";
+import { resolveMediaBytes, uploadMediaBytes } from "@/lib/media-local";
+import {
+  cleanDocumentsForCreate,
+  cleanDocumentsForPayload,
+  documentsBusy,
+  MAX_POST_DOCUMENTS,
+  pickDocuments,
+  type PendingDocument,
+  uploadAndScanDocument,
+} from "@/lib/document-upload";
 import { getStoredUser, getToken } from "@/lib/session";
 
 type PendingMedia = {
@@ -92,6 +101,7 @@ export default function NewPostScreen() {
   const [circles, setCircles] = useState<Circle[]>([]);
   const [additionalCircleIds, setAdditionalCircleIds] = useState<string[]>([]);
   const [media, setMedia] = useState<PendingMedia[]>([]);
+  const [documents, setDocuments] = useState<PendingDocument[]>([]);
   const [pollEnabled, setPollEnabled] = useState(compose === "poll");
   const [pollQuestion, setPollQuestion] = useState("");
   const [pollOptions, setPollOptions] = useState(["", ""]);
@@ -179,6 +189,16 @@ export default function NewPostScreen() {
             durationMs: item.durationMs ?? undefined,
           }))
         );
+        setDocuments(
+          (post.documents ?? []).map((item) => ({
+            localId: item.id,
+            id: item.id,
+            fileName: item.fileName,
+            mimeType: item.mimeType,
+            sizeBytes: item.sizeBytes,
+            status: "clean" as const,
+          }))
+        );
         if (post.poll) {
           setPollEnabled(true);
           setPollQuestion(post.poll.question);
@@ -205,7 +225,9 @@ export default function NewPostScreen() {
     }
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      setError("Allow photo access to add images or videos");
+      setError(
+        "Photos permission is required. Open Android Settings → Apps → Vaara Parents → Permissions → Photos and videos → Allow, then try again."
+      );
       return;
     }
 
@@ -247,6 +269,35 @@ export default function NewPostScreen() {
     setError(null);
   }
 
+
+  async function pickDocs() {
+    if (!mediaEnabled) {
+      setError("Document uploads require media storage to be configured");
+      return;
+    }
+    const remaining = MAX_POST_DOCUMENTS - documents.length;
+    if (remaining <= 0) {
+      setError(`A post can include up to ${MAX_POST_DOCUMENTS} documents`);
+      return;
+    }
+    const picked = await pickDocuments(remaining);
+    if (picked.length === 0) return;
+    setDocuments((current) => [...current, ...picked].slice(0, MAX_POST_DOCUMENTS));
+    setError(null);
+    const token = await getToken();
+    if (!token) return;
+    for (const doc of picked) {
+      if (doc.status !== "uploading") continue;
+      await uploadAndScanDocument(token, doc, (next) => {
+        setDocuments((current) =>
+          current.map((item) =>
+            item.localId === next.localId ? next : item
+          )
+        );
+      });
+    }
+  }
+
   useEffect(() => {
     if (isEditing || compose !== "photo" || composeHandled || mediaEnabled !== true) {
       return;
@@ -266,33 +317,23 @@ export default function NewPostScreen() {
     }> = [];
     for (const [index, item] of media.entries()) {
       setUploadProgress(`Uploading ${index + 1} of ${media.length}…`);
-      const fileInfo = await FileSystem.getInfoAsync(item.uri, { size: true });
-      if (!fileInfo.exists) throw new Error(`Could not read ${item.fileName}`);
-      const sizeBytes = fileInfo.size ?? item.fileSize ?? 0;
-      if (!sizeBytes) {
-        throw new Error(`Could not read file size for ${item.fileName}`);
-      }
+      const { sizeBytes, body } = await resolveMediaBytes(
+        item.uri,
+        item.fileName,
+        item.fileSize
+      );
       const upload = await api.createMediaUpload(token, {
         fileName: item.fileName,
         mediaType: item.mediaType,
         mimeType: item.mimeType,
         sizeBytes,
       });
-      const uploadResponse = await FileSystem.uploadAsync(
+      await uploadMediaBytes(
         upload.uploadUrl,
-        item.uri,
-        {
-          httpMethod: "PUT",
-          uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
-          headers: { "Content-Type": item.mimeType },
-        }
+        body,
+        item.mimeType,
+        item.fileName
       );
-      if (uploadResponse.status < 200 || uploadResponse.status >= 300) {
-        const detail = uploadResponse.body?.slice(0, 200);
-        throw new Error(
-          `Could not upload ${item.fileName} (HTTP ${uploadResponse.status}${detail ? `: ${detail}` : ""})`
-        );
-      }
       uploaded.push({
         storageKey: upload.storageKey,
         mediaType: item.mediaType,
@@ -309,9 +350,13 @@ export default function NewPostScreen() {
     const text = body.trim();
     const options = pollOptions.map((o) => o.trim()).filter(Boolean);
     const hasContent =
-      text.length > 0 || media.length > 0 || pollEnabled;
+      text.length > 0 || media.length > 0 || documents.some((d) => d.status === "clean") || pollEnabled;
     if (!hasContent) {
-      showSubmitError("Write something, add a poll, or add a photo or video");
+      showSubmitError("Write something, add a poll, photo, video, or document");
+      return;
+    }
+    if (documentsBusy(documents)) {
+      showSubmitError("Wait for document checks to finish before posting");
       return;
     }
     if (pollEnabled && !pollLocked) {
@@ -364,33 +409,23 @@ export default function NewPostScreen() {
           }
           uploadedCount += 1;
           setUploadProgress(`Uploading ${uploadedCount} of ${newItems.length}…`);
-          const fileInfo = await FileSystem.getInfoAsync(item.uri, { size: true });
-          if (!fileInfo.exists) throw new Error(`Could not read ${item.fileName}`);
-          const sizeBytes = fileInfo.size ?? item.fileSize ?? 0;
-          if (!sizeBytes) {
-            throw new Error(`Could not read file size for ${item.fileName}`);
-          }
+          const { sizeBytes, body } = await resolveMediaBytes(
+            item.uri,
+            item.fileName,
+            item.fileSize
+          );
           const upload = await api.createMediaUpload(token, {
             fileName: item.fileName,
             mediaType: item.mediaType,
             mimeType: item.mimeType,
             sizeBytes,
           });
-          const uploadResponse = await FileSystem.uploadAsync(
+          await uploadMediaBytes(
             upload.uploadUrl,
-            item.uri,
-            {
-              httpMethod: "PUT",
-              uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
-              headers: { "Content-Type": item.mimeType },
-            }
+            body,
+            item.mimeType,
+            item.fileName
           );
-          if (uploadResponse.status < 200 || uploadResponse.status >= 300) {
-            const detail = uploadResponse.body?.slice(0, 200);
-            throw new Error(
-              `Could not upload ${item.fileName} (HTTP ${uploadResponse.status}${detail ? `: ${detail}` : ""})`
-            );
-          }
           mediaPayload.push({
             storageKey: upload.storageKey,
             mediaType: item.mediaType,
@@ -405,6 +440,7 @@ export default function NewPostScreen() {
           body: text,
           tag,
           media: mediaPayload,
+          documents: cleanDocumentsForPayload(documents),
           poll:
             pollEnabled && !pollLocked
               ? {
@@ -433,6 +469,7 @@ export default function NewPostScreen() {
         tag,
         targetCircleIds,
         media: uploadedMedia,
+        documents: cleanDocumentsForCreate(documents),
         poll: pollEnabled
           ? {
               question: pollQuestion.trim(),
@@ -470,7 +507,11 @@ export default function NewPostScreen() {
   submitRef.current = onSubmit;
 
   const canPost =
-    body.trim().length > 0 || media.length > 0 || pollEnabled;
+    (body.trim().length > 0 ||
+      media.length > 0 ||
+      documents.some((d) => d.status === "clean") ||
+      pollEnabled) &&
+    !documentsBusy(documents);
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -614,6 +655,72 @@ export default function NewPostScreen() {
           </ScrollView>
         ) : null}
 
+        {documents.length > 0 ? (
+          <View style={styles.docList}>
+            <Text style={styles.docPrivacyHint}>
+              File names are visible to everyone in the circle.
+            </Text>
+            {documents.map((doc) => {
+              const subtitle =
+                doc.status === "uploading"
+                  ? `${formatDocSize(doc.sizeBytes)} · Uploading…`
+                  : doc.status === "scanning"
+                    ? `${formatDocSize(doc.sizeBytes)} · Checking file…`
+                    : doc.status === "clean"
+                      ? `${docTypeLabel(doc.mimeType)} · ${formatDocSize(doc.sizeBytes)} · Ready`
+                      : doc.status === "blocked"
+                        ? doc.reason ??
+                          "Blocked — this file failed the safety check and was not uploaded"
+                        : doc.reason ??
+                          "Could not check this file. Remove it and try again.";
+              return (
+                <View
+                  key={doc.localId}
+                  style={[
+                    styles.docRow,
+                    (doc.status === "blocked" || doc.status === "failed") &&
+                      styles.docRowBad,
+                  ]}
+                >
+                  <Ionicons
+                    name={
+                      doc.status === "blocked" || doc.status === "failed"
+                        ? "warning-outline"
+                        : "document-attach-outline"
+                    }
+                    size={18}
+                    color={
+                      doc.status === "blocked" || doc.status === "failed"
+                        ? theme.error
+                        : theme.primaryDark
+                    }
+                  />
+                  <View style={styles.docMeta}>
+                    <Text style={styles.docName} numberOfLines={1}>
+                      {doc.fileName}
+                    </Text>
+                    <Text style={styles.docSub} numberOfLines={2}>
+                      {subtitle}
+                    </Text>
+                  </View>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove ${doc.fileName}`}
+                    hitSlop={6}
+                    onPress={() =>
+                      setDocuments((current) =>
+                        current.filter((item) => item.localId !== doc.localId)
+                      )
+                    }
+                  >
+                    <Ionicons name="close" size={18} color={theme.textMuted} />
+                  </Pressable>
+                </View>
+              );
+            })}
+          </View>
+        ) : null}
+
         {pollEnabled ? (
           <View style={styles.pollPanel}>
             <View style={styles.pollHeader}>
@@ -753,6 +860,14 @@ export default function NewPostScreen() {
             }}
           />
           <ToolbarButton
+            icon="attach-outline"
+            label="Add a document"
+            count={documents.length}
+            active={documents.length > 0}
+            disabled={mediaEnabled !== true}
+            onPress={() => void pickDocs()}
+          />
+          <ToolbarButton
             icon="pricetag-outline"
             label="Add interests"
             count={selectedTopicSlugs.length}
@@ -812,6 +927,30 @@ export default function NewPostScreen() {
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
+}
+
+function formatDocSize(sizeBytes: number): string {
+  if (!sizeBytes) return "0 B";
+  if (sizeBytes < 1024) return `${sizeBytes} B`;
+  if (sizeBytes < 1024 * 1024) return `${(sizeBytes / 1024).toFixed(0)} KB`;
+  return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function docTypeLabel(mimeType: string): string {
+  if (mimeType === "application/pdf") return "PDF";
+  if (
+    mimeType ===
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  ) {
+    return "Word";
+  }
+  if (
+    mimeType ===
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  ) {
+    return "Excel";
+  }
+  return "File";
 }
 
 function ToolbarButton({
@@ -939,6 +1078,38 @@ const styles = StyleSheet.create({
   },
 
   mediaStrip: { gap: 10, paddingVertical: 4 },
+  docList: { gap: 8, marginTop: 12 },
+  docPrivacyHint: {
+    fontSize: 12,
+    color: theme.textMuted,
+    marginBottom: 2,
+  },
+  docRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.border,
+    backgroundColor: theme.card,
+  },
+  docRowBad: {
+    borderColor: theme.error,
+    backgroundColor: theme.errorSoft,
+  },
+  docMeta: { flex: 1, minWidth: 0 },
+  docName: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: theme.text,
+  },
+  docSub: {
+    marginTop: 2,
+    fontSize: 12,
+    color: theme.textMuted,
+  },
   mediaThumb: {
     width: 92,
     height: 92,

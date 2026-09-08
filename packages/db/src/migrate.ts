@@ -39,6 +39,8 @@ const MIGRATIONS = [
   { version: "031_post_shares", file: "031_post_shares.sql" },
   { version: "032_cross_post_groups", file: "032_cross_post_groups.sql" },
   { version: "033_circle_post_target_access_mode", file: "033_circle_post_target_access_mode.sql" },
+  { version: "034_post_media_document_enum", file: "034_post_media_document_enum.sql" },
+  { version: "035_post_document_media", file: "035_post_document_media.sql" },
 ];
 
 async function isMigrationApplied(

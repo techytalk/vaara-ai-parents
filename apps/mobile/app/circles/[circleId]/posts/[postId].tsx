@@ -27,6 +27,7 @@ import {
   theme,
 } from "@/components/circles/ui";
 import { PostContextChips } from "@/components/circles/PostContextChips";
+import { PostDocumentList } from "@/components/circles/PostDocumentList";
 import { useBottomChromeInset } from "@/hooks/useBottomChromeInset";
 import {
   androidImeDockOffset,
@@ -514,6 +515,7 @@ export default function PostThreadScreen() {
                   <PollCard poll={post.poll} />
                 ) : null}
                 <PostMediaGallery media={post.media ?? []} />
+                <PostDocumentList documents={post.documents} />
                 <PostContextChips
                   circles={post.circles}
                   topics={post.topics}

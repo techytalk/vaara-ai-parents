@@ -10,7 +10,7 @@ in Postgres. **Reads** go through CloudFront (`CDN_BASE_URL`), not the S3 API.
 |---------|--------|
 | **Bucket** | `vaara-parents-connect` |
 | **Region** | `ap-south-1` (Mumbai) |
-| **Object prefixes** | `circle-media/{userId}/…`, `listing-media/{userId}/…` |
+| **Object prefixes** | `circle-media/{userId}/…`, `listing-media/{userId}/…`, `quarantine/{userId}/…` (docs pending scan), `post-docs/{userId}/…` (clean docs, no CDN) |
 | **Recommended CDN domain** | `https://media.vaara.ai` (or CloudFront default URL until DNS is ready) |
 
 ---
@@ -59,10 +59,32 @@ this policy (replace bucket name if it changes):
         "arn:aws:s3:::vaara-parents-connect/circle-media/*",
         "arn:aws:s3:::vaara-parents-connect/listing-media/*"
       ]
+    },
+    {
+      "Sid": "VaaraDocumentObjects",
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject",
+        "s3:GetObject",
+        "s3:GetObjectTagging",
+        "s3:DeleteObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::vaara-parents-connect/quarantine/*",
+        "arn:aws:s3:::vaara-parents-connect/post-docs/*"
+      ]
     }
   ]
 }
 ```
+
+Also:
+
+1. **CloudFront** — add a behaviour (or default deny) so paths outside `circle-media/*` and `listing-media/*` return **403**. Documents must never be publicly fetchable via CDN.
+2. **S3 lifecycle** — expire `quarantine/` objects after **1 day**.
+3. **GuardDuty Malware Protection for S3** — scope to `quarantine/`, tag scan results, EventBridge → `POST /v1/media/documents/scan-callback` with `x-vaara-scan-secret` (`GUARDDUTY_CALLBACK_SECRET`). Set `GUARDDUTY_MALWARE_PROTECTION_ENABLED=true` on the API when live (without it, verify promotes after magic-byte checks for local/dev).
+
+Full product/API detail: [POST_DOCUMENT_ATTACHMENTS.md](./POST_DOCUMENT_ATTACHMENTS.md).
 
 Save the **Access key ID** and **Secret access key** — you add them to Vercel once.
 
@@ -109,6 +131,8 @@ Project → **Settings → Environment Variables** → **Production** (and Previ
 | `AWS_SECRET_ACCESS_KEY` | from IAM user |
 | `S3_BUCKET` | `vaara-parents-connect` |
 | `CDN_BASE_URL` | `https://dxxxx.cloudfront.net` or `https://media.vaara.ai` |
+| `GUARDDUTY_CALLBACK_SECRET` | shared secret for EventBridge → `/v1/media/documents/scan-callback` |
+| `GUARDDUTY_MALWARE_PROTECTION_ENABLED` | `true` in production once GuardDuty is wired (omit/false promotes docs after format checks) |
 
 Redeploy the API after saving.
 

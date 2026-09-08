@@ -42,8 +42,12 @@
         "backgroundColor": "#FFFCF7"
       },
       "package": "com.vaara.parents",
-      "versionCode": 9,
-      "permissions": ["com.google.android.gms.permission.AD_ID"],
+      "versionCode": 12,
+      "permissions": [
+        "com.google.android.gms.permission.AD_ID",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO"
+      ],
       "intentFilters": [
         {
           "action": "VIEW",
@@ -88,6 +92,7 @@
           "photosPermission": "Allow Vaara Parents to select photos and videos for circle posts."
         }
       ],
+      "expo-document-picker",
       [
         "@react-native-google-signin/google-signin",
         {

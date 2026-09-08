@@ -1,8 +1,10 @@
 import { Hono } from "hono";
 import { pool } from "@vaara/db";
 import {
+  MAX_POST_DOCUMENTS,
   MAX_POST_MEDIA,
   type MediaType,
+  verifyCleanDocumentForPost,
   verifyUploadedMedia,
 } from "../lib/media-storage.js";
 import { validatePollInput } from "../lib/polls.js";
@@ -50,13 +52,20 @@ export function createCrossPostRoutes() {
         height?: number;
         durationMs?: number;
       }>;
+      documents?: Array<{
+        storageKey?: string;
+        fileName?: string;
+        mimeType?: string;
+      }>;
       topicSlugs?: string[];
     }>();
 
     const text = body.body?.trim() ?? "";
+    const requestedDocuments = Array.isArray(body.documents) ? body.documents : [];
     if (
       !text &&
       (!Array.isArray(body.media) || body.media.length === 0) &&
+      requestedDocuments.length === 0 &&
       !body.poll
     ) {
       return c.json(
@@ -122,6 +131,9 @@ export function createCrossPostRoutes() {
           const storageKey = item.storageKey as string;
           const mediaType = item.mediaType as MediaType;
           const mimeType = item.mimeType as string;
+          if (mediaType !== "image" && mediaType !== "video") {
+            throw new Error("INVALID_MEDIA");
+          }
           const verified = await verifyUploadedMedia({
             userId,
             storageKey,
@@ -158,6 +170,51 @@ export function createCrossPostRoutes() {
       return c.json({ error: "An uploaded attachment is invalid" }, 400);
     }
 
+    if (requestedDocuments.length > MAX_POST_DOCUMENTS) {
+      return c.json(
+        { error: `A post can include up to ${MAX_POST_DOCUMENTS} documents` },
+        400
+      );
+    }
+    for (const item of requestedDocuments) {
+      if (!item.storageKey || !item.fileName || !item.mimeType) {
+        return c.json({ error: "Invalid document attachment" }, 400);
+      }
+    }
+
+    let verifiedDocuments: Array<{
+      storageKey: string;
+      fileName: string;
+      mimeType: string;
+      sizeBytes: number;
+    }> = [];
+    try {
+      verifiedDocuments = await Promise.all(
+        requestedDocuments.map(async (item) => {
+          const verified = await verifyCleanDocumentForPost({
+            userId,
+            storageKey: item.storageKey as string,
+            fileName: item.fileName as string,
+            mimeType: item.mimeType as string,
+          });
+          return {
+            storageKey: item.storageKey as string,
+            fileName: verified.fileName,
+            mimeType: verified.mimeType,
+            sizeBytes: verified.sizeBytes,
+          };
+        })
+      );
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === "MEDIA_STORAGE_NOT_CONFIGURED"
+      ) {
+        return c.json({ error: "Media uploads are not configured" }, 503);
+      }
+      return c.json({ error: "An uploaded document is invalid" }, 400);
+    }
+
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -169,6 +226,7 @@ export function createCrossPostRoutes() {
         tag,
         targetCircleIds,
         media: verifiedMedia,
+        documents: verifiedDocuments,
         poll: body.poll
           ? {
               question: body.poll.question ?? "",
@@ -196,6 +254,8 @@ export function createCrossPostRoutes() {
         classifiedTargets: targets,
         topicIds: result.topicIds,
         topicSlugs: result.topicSlugs,
+        mediaCount: verifiedMedia.length,
+        documentCount: verifiedDocuments.length,
       });
 
       return c.json(

@@ -10,6 +10,7 @@ import {
   theme,
 } from "@/components/circles/ui";
 import { PostContextChips } from "@/components/circles/PostContextChips";
+import { PostDocumentList } from "@/components/circles/PostDocumentList";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import type { CirclePost } from "@/lib/api";
 
@@ -115,6 +116,7 @@ export function FeedPostCard({
         <PollCard poll={post.poll} compact onVote={onPollVote} />
       ) : null}
       <PostMediaGallery media={post.media ?? []} />
+      <PostDocumentList documents={post.documents} />
       <PostContextChips
         circles={post.circles}
         topics={post.topics}

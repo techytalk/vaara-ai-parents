@@ -24,6 +24,7 @@ import {
   theme,
 } from "@/components/circles/ui";
 import { PostContextChips } from "@/components/circles/PostContextChips";
+import { PostDocumentList } from "@/components/circles/PostDocumentList";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import { useRealtimeChannel } from "@/hooks/useRealtimeChannel";
 import { api, type CirclePost } from "@/lib/api";
@@ -73,6 +74,7 @@ function PostCard({
         />
       ) : null}
       <PostMediaGallery media={post.media ?? []} />
+      <PostDocumentList documents={post.documents} />
       <PostContextChips
         circles={post.circles}
         topics={post.topics}

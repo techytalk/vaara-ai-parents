@@ -5,6 +5,7 @@ import {
 } from "../lib/topics.js";
 import { createPollForPost, type PollInput } from "../lib/polls.js";
 import { type MediaType } from "../lib/media-storage.js";
+import { insertPostDocuments, type VerifiedDocument } from "../lib/post-attachments.js";
 import { dispatchPostCreated } from "../lib/async-events.js";
 import type { CircleTarget } from "@vaara/redis";
 
@@ -22,6 +23,8 @@ export type VerifiedMediaItem = {
   height: number | null;
   durationMs: number | null;
 };
+
+export type VerifiedDocumentItem = VerifiedDocument;
 
 export type CrossPostTargetResult = {
   circleId: string;
@@ -248,6 +251,7 @@ export async function createCrossPosts(
     tag: string;
     targetCircleIds: string[];
     media: VerifiedMediaItem[];
+    documents?: VerifiedDocumentItem[];
     poll?: PollInput;
     topicSlugs?: string[];
   }
@@ -409,6 +413,10 @@ export async function createCrossPosts(
     );
   }
 
+  if (params.documents && params.documents.length > 0) {
+    await insertPostDocuments(client, postId, params.documents, params.media.length);
+  }
+
   if (params.poll) {
     await createPollForPost(client, postId, params.poll);
   }
@@ -463,11 +471,14 @@ export async function dispatchCrossPostsCreated(params: {
   classifiedTargets: CircleTarget[];
   topicIds: string[];
   topicSlugs: string[];
+  mediaCount?: number;
+  documentCount?: number;
 }) {
   const preview =
     params.body ||
-    (params.pollQuestion?.trim()
-      ? params.pollQuestion.trim()
+    params.pollQuestion?.trim() ||
+    ((params.mediaCount ?? 0) === 0 && (params.documentCount ?? 0) > 0
+      ? "Shared a document"
       : "Shared a photo or video");
 
   await dispatchPostCreated({

@@ -1,47 +1,8 @@
 import { Hono } from "hono";
 import { pool } from "@vaara/db";
 import { buildAuthorViewForPost } from "../lib/author.js";
-import { mediaPublicUrl, type MediaType } from "../lib/media-storage.js";
+import { loadPostAttachments } from "../lib/post-attachments.js";
 import { authMiddleware, type AuthVariables } from "../middleware/auth.js";
-
-async function loadPostMedia(client: import("pg").PoolClient, postIds: string[]) {
-  const result = new Map<
-    string,
-    Array<{
-      id: string;
-      type: MediaType;
-      url: string;
-      mimeType: string;
-      width: number | null;
-      height: number | null;
-      durationMs: number | null;
-    }>
-  >();
-  if (postIds.length === 0) return result;
-
-  const { rows } = await client.query(
-    `SELECT id, post_id, storage_key, media_type, mime_type, width, height, duration_ms
-     FROM circle_post_media
-     WHERE post_id = ANY($1::uuid[])
-     ORDER BY sort_order`,
-    [postIds]
-  );
-
-  for (const row of rows) {
-    const list = result.get(row.post_id) ?? [];
-    list.push({
-      id: row.id,
-      type: row.media_type,
-      url: mediaPublicUrl(row.storage_key),
-      mimeType: row.mime_type,
-      width: row.width,
-      height: row.height,
-      durationMs: row.duration_ms,
-    });
-    result.set(row.post_id, list);
-  }
-  return result;
-}
 
 export function createTopicsRoutes() {
   const app = new Hono<{ Variables: AuthVariables }>();
@@ -129,7 +90,7 @@ export function createTopicsRoutes() {
 
       const { rows } = await client.query(query, params);
       const postIds = rows.map((r) => r.id);
-      const mediaByPost = await loadPostMedia(client, postIds);
+      const attachmentsByPost = await loadPostAttachments(client, postIds);
 
       const posts = await Promise.all(
         rows.map(async (row) => {
@@ -141,6 +102,7 @@ export function createTopicsRoutes() {
             row.anonymous_handle,
             row.avatar_key
           );
+          const attachments = attachmentsByPost.get(row.id);
           return {
             id: row.id,
             body: row.body,
@@ -148,7 +110,8 @@ export function createTopicsRoutes() {
             replyCount: row.reply_count,
             createdAt: row.created_at,
             editedAt: row.edited_at ?? null,
-            media: mediaByPost.get(row.id) ?? [],
+            media: attachments?.media ?? [],
+            documents: attachments?.documents ?? [],
             author,
           };
         })

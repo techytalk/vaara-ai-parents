@@ -51,7 +51,7 @@ import {
   validatePollInput,
   type PollView,
 } from "../lib/polls.js";
-import { applyMediaReplace, sameStringList } from "../lib/post-update.js";
+import { applyDocumentReplace, applyMediaReplace, sameStringList } from "../lib/post-update.js";
 import { syncCircleMembership } from "../services/circle-sync.js";
 import { loadCircleFeed } from "../services/feed.js";
 import { dispatchPostCreated, dispatchMessageCreated } from "../lib/async-events.js";
@@ -62,27 +62,26 @@ import { resolveThreadAccess } from "../lib/thread-access.js";
 import { getOrCreatePostShare } from "../lib/post-shares.js";
 import {
   deleteStoredMedia,
+  MAX_POST_DOCUMENTS,
   MAX_POST_MEDIA,
   mediaPublicUrl,
   type MediaType,
+  verifyCleanDocumentForPost,
   verifyUploadedMedia,
 } from "../lib/media-storage.js";
+import {
+  emptyAttachments,
+  insertPostDocuments,
+  loadPostAttachments,
+  type PostDocumentView,
+  type PostMediaView,
+} from "../lib/post-attachments.js";
 import { registerCircleDirectoryRoute } from "./cross-posts.js";
 
 const POST_TAGS = ["question", "recommendation", "heads_up", "general"] as const;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_POST_CIRCLES = 5;
-
-type PostMediaView = {
-  id: string;
-  type: MediaType;
-  url: string;
-  mimeType: string;
-  width: number | null;
-  height: number | null;
-  durationMs: number | null;
-};
 
 function mapPost(
   row: Record<string, unknown>,
@@ -96,7 +95,8 @@ function mapPost(
   media: PostMediaView[] = [],
   poll?: PollView | null,
   topics: TopicSummary[] = [],
-  circles: PostCircleSummary[] = []
+  circles: PostCircleSummary[] = [],
+  documents: PostDocumentView[] = []
 ) {
   return {
     id: row.id,
@@ -106,6 +106,7 @@ function mapPost(
     createdAt: row.created_at,
     editedAt: row.edited_at ?? null,
     media,
+    documents,
     poll: poll ?? null,
     topics,
     circles,
@@ -118,38 +119,6 @@ function mapPost(
       isGuest: Boolean(author.isGuest),
     },
   };
-}
-
-async function loadPostMedia(
-  client: PoolClient,
-  postIds: string[]
-): Promise<Map<string, PostMediaView[]>> {
-  const result = new Map<string, PostMediaView[]>();
-  if (postIds.length === 0) return result;
-
-  const { rows } = await client.query(
-    `SELECT id, post_id, storage_key, media_type, mime_type,
-            width, height, duration_ms
-     FROM circle_post_media
-     WHERE post_id = ANY($1::uuid[])
-     ORDER BY post_id, sort_order`,
-    [postIds]
-  );
-
-  for (const row of rows) {
-    const media = result.get(row.post_id) ?? [];
-    media.push({
-      id: row.id,
-      type: row.media_type,
-      url: mediaPublicUrl(row.storage_key),
-      mimeType: row.mime_type,
-      width: row.width,
-      height: row.height,
-      durationMs: row.duration_ms,
-    });
-    result.set(row.post_id, media);
-  }
-  return result;
 }
 
 export function createCirclesRoutes() {
@@ -342,11 +311,22 @@ export function createCirclesRoutes() {
         height?: number;
         durationMs?: number;
       }>;
+      documents?: Array<{
+        storageKey?: string;
+        fileName?: string;
+        mimeType?: string;
+      }>;
       topicSlugs?: string[];
     }>();
 
     const text = body.body?.trim() ?? "";
-    if (!text && (!Array.isArray(body.media) || body.media.length === 0) && !body.poll) {
+    const requestedDocuments = Array.isArray(body.documents) ? body.documents : [];
+    if (
+      !text &&
+      (!Array.isArray(body.media) || body.media.length === 0) &&
+      requestedDocuments.length === 0 &&
+      !body.poll
+    ) {
       return c.json({ error: "A message, poll, or attachment is required" }, 400);
     }
 
@@ -402,7 +382,7 @@ export function createCirclesRoutes() {
 
     let verifiedMedia: Array<{
       storageKey: string;
-      mediaType: MediaType;
+      mediaType: "image" | "video";
       mimeType: string;
       sizeBytes: number;
       width: number | null;
@@ -415,6 +395,9 @@ export function createCirclesRoutes() {
           const storageKey = item.storageKey as string;
           const mediaType = item.mediaType as MediaType;
           const mimeType = item.mimeType as string;
+          if (mediaType !== "image" && mediaType !== "video") {
+            throw new Error("INVALID_MEDIA");
+          }
           const verified = await verifyUploadedMedia({
             userId,
             storageKey,
@@ -449,6 +432,51 @@ export function createCirclesRoutes() {
         return c.json({ error: "Media uploads are not configured" }, 503);
       }
       return c.json({ error: "An uploaded attachment is invalid" }, 400);
+    }
+
+    if (requestedDocuments.length > MAX_POST_DOCUMENTS) {
+      return c.json(
+        { error: `A post can include up to ${MAX_POST_DOCUMENTS} documents` },
+        400
+      );
+    }
+    for (const item of requestedDocuments) {
+      if (!item.storageKey || !item.fileName || !item.mimeType) {
+        return c.json({ error: "Invalid document attachment" }, 400);
+      }
+    }
+
+    let verifiedDocuments: Array<{
+      storageKey: string;
+      fileName: string;
+      mimeType: string;
+      sizeBytes: number;
+    }> = [];
+    try {
+      verifiedDocuments = await Promise.all(
+        requestedDocuments.map(async (item) => {
+          const verified = await verifyCleanDocumentForPost({
+            userId,
+            storageKey: item.storageKey as string,
+            fileName: item.fileName as string,
+            mimeType: item.mimeType as string,
+          });
+          return {
+            storageKey: item.storageKey as string,
+            fileName: verified.fileName,
+            mimeType: verified.mimeType,
+            sizeBytes: verified.sizeBytes,
+          };
+        })
+      );
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === "MEDIA_STORAGE_NOT_CONFIGURED"
+      ) {
+        return c.json({ error: "Media uploads are not configured" }, 503);
+      }
+      return c.json({ error: "An uploaded document is invalid" }, 400);
     }
 
     const client = await pool.connect();
@@ -523,6 +551,13 @@ export function createCirclesRoutes() {
         });
       }
 
+      const documentViews = await insertPostDocuments(
+        client,
+        rows[0].id,
+        verifiedDocuments,
+        mediaViews.length
+      );
+
       if (body.poll) {
         await createPollForPost(client, rows[0].id, {
           question: body.poll.question ?? "",
@@ -586,7 +621,9 @@ export function createCirclesRoutes() {
           text ||
           (body.poll
             ? body.poll.question?.trim() || "Shared a poll"
-            : "Shared a photo or video"),
+            : mediaViews.length > 0
+              ? "Shared a photo or video"
+              : "Shared a document"),
         targets: targetResult.rows,
         topicIds: topicIds.map((id) => String(id)),
         topicPreview: text || "New post in a topic you follow",
@@ -607,7 +644,8 @@ export function createCirclesRoutes() {
           mediaViews,
           pollsByPost.get(rows[0].id),
           attachedTopics,
-          circlesByPost.get(String(rows[0].id)) ?? []
+          circlesByPost.get(String(rows[0].id)) ?? [],
+          documentViews
         ),
         201
       );
@@ -667,7 +705,9 @@ export function createCirclesRoutes() {
       }
 
       const postRow = postResult.rows[0];
-      const mediaByPost = await loadPostMedia(client, [postId]);
+      const attachments =
+        (await loadPostAttachments(client, [postId])).get(postId) ??
+        emptyAttachments();
       const memberCountResult = await client.query(
         `SELECT COUNT(*)::int AS count FROM circle_members WHERE circle_id = $1`,
         [circleId]
@@ -748,10 +788,11 @@ export function createCirclesRoutes() {
           ...mapPost(
             postRow,
             postAuthor,
-            mediaByPost.get(postId) ?? [],
+            attachments.media,
             pollsByPost.get(postId),
             topicsByPost.get(postId) ?? [],
-            circlesByPost.get(postId) ?? []
+            circlesByPost.get(postId) ?? [],
+            attachments.documents
           ),
           authorId: String(postRow.author_id),
           helpfulCount: helpfulResult.rows[0]?.count ?? 0,
@@ -793,6 +834,12 @@ export function createCirclesRoutes() {
         height?: number;
         durationMs?: number;
       }>;
+      documents?: Array<{
+        id?: string;
+        storageKey?: string;
+        fileName?: string;
+        mimeType?: string;
+      }>;
       topicSlugs?: string[];
     }>();
 
@@ -803,10 +850,21 @@ export function createCirclesRoutes() {
     const hasBody = Object.prototype.hasOwnProperty.call(body, "body");
     const hasTag = Object.prototype.hasOwnProperty.call(body, "tag");
     const hasMedia = Object.prototype.hasOwnProperty.call(body, "media");
+    const hasDocuments = Object.prototype.hasOwnProperty.call(
+      body,
+      "documents"
+    );
     const hasTopics = Object.prototype.hasOwnProperty.call(body, "topicSlugs");
     const hasPoll = Object.prototype.hasOwnProperty.call(body, "poll");
 
-    if (!hasBody && !hasTag && !hasMedia && !hasTopics && !hasPoll) {
+    if (
+      !hasBody &&
+      !hasTag &&
+      !hasMedia &&
+      !hasDocuments &&
+      !hasTopics &&
+      !hasPoll
+    ) {
       return c.json({ error: "No changes provided" }, 400);
     }
 
@@ -845,11 +903,26 @@ export function createCirclesRoutes() {
       );
     }
 
+    const requestedDocuments = hasDocuments
+      ? Array.isArray(body.documents)
+        ? body.documents
+        : null
+      : null;
+    if (hasDocuments && requestedDocuments === null) {
+      return c.json({ error: "Invalid document attachment" }, 400);
+    }
+    if (requestedDocuments && requestedDocuments.length > MAX_POST_DOCUMENTS) {
+      return c.json(
+        { error: `A post can include up to ${MAX_POST_DOCUMENTS} documents` },
+        400
+      );
+    }
+
     const verifiedNewByKey = new Map<
       string,
       {
         storageKey: string;
-        mediaType: MediaType;
+        mediaType: "image" | "video";
         mimeType: string;
         sizeBytes: number;
         width: number | null;
@@ -906,6 +979,51 @@ export function createCirclesRoutes() {
           return c.json({ error: "Media uploads are not configured" }, 503);
         }
         return c.json({ error: "An uploaded attachment is invalid" }, 400);
+      }
+    }
+
+    const verifiedNewDocumentsByKey = new Map<
+      string,
+      {
+        storageKey: string;
+        fileName: string;
+        mimeType: string;
+        sizeBytes: number;
+      }
+    >();
+
+    if (requestedDocuments) {
+      const newItems = requestedDocuments.filter(
+        (item) => item.storageKey && !item.id
+      );
+      try {
+        await Promise.all(
+          newItems.map(async (item) => {
+            if (!item.storageKey || !item.fileName || !item.mimeType) {
+              throw new Error("INVALID_DOCUMENT");
+            }
+            const verified = await verifyCleanDocumentForPost({
+              userId,
+              storageKey: item.storageKey,
+              fileName: item.fileName,
+              mimeType: item.mimeType,
+            });
+            verifiedNewDocumentsByKey.set(item.storageKey, {
+              storageKey: item.storageKey,
+              fileName: verified.fileName,
+              mimeType: verified.mimeType,
+              sizeBytes: verified.sizeBytes,
+            });
+          })
+        );
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.message === "MEDIA_STORAGE_NOT_CONFIGURED"
+        ) {
+          return c.json({ error: "Media uploads are not configured" }, 503);
+        }
+        return c.json({ error: "An uploaded document is invalid" }, 400);
       }
     }
 
@@ -1005,6 +1123,7 @@ export function createCirclesRoutes() {
       }
 
       let nextMediaCount: number | null = null;
+      let nextDocumentCount: number | null = null;
       if (hasMedia && requestedMedia) {
         try {
           const mediaResult = await applyMediaReplace(
@@ -1022,6 +1141,26 @@ export function createCirclesRoutes() {
             return c.json({ error: "Invalid media attachment" }, 400);
           }
           return c.json({ error: "Invalid media attachment" }, 400);
+        }
+      }
+
+      if (hasDocuments && requestedDocuments) {
+        try {
+          const documentResult = await applyDocumentReplace(
+            client,
+            postId,
+            requestedDocuments,
+            verifiedNewDocumentsByKey
+          );
+          droppedKeys.push(...documentResult.droppedKeys);
+          if (documentResult.changed) changed = true;
+          nextDocumentCount = requestedDocuments.length;
+        } catch (error) {
+          await client.query("ROLLBACK");
+          if (error instanceof Error && error.message === "UNKNOWN_MEDIA") {
+            return c.json({ error: "Invalid document attachment" }, 400);
+          }
+          return c.json({ error: "Invalid document attachment" }, 400);
         }
       }
 
@@ -1048,16 +1187,33 @@ export function createCirclesRoutes() {
       const mediaCountResult =
         nextMediaCount === null
           ? await client.query(
-              `SELECT COUNT(*)::int AS count FROM circle_post_media WHERE post_id = $1`,
+              `SELECT COUNT(*)::int AS count
+               FROM circle_post_media
+               WHERE post_id = $1 AND media_type IN ('image', 'video')`,
               [postId]
             )
           : { rows: [{ count: nextMediaCount }] };
+      const documentCountResult =
+        nextDocumentCount === null
+          ? await client.query(
+              `SELECT COUNT(*)::int AS count
+               FROM circle_post_media
+               WHERE post_id = $1 AND media_type = 'document'`,
+              [postId]
+            )
+          : { rows: [{ count: nextDocumentCount }] };
       const mediaCount = mediaCountResult.rows[0]?.count ?? 0;
+      const documentCount = documentCountResult.rows[0]?.count ?? 0;
       const hasPollRow = await client.query(
         `SELECT 1 FROM post_polls WHERE post_id = $1`,
         [postId]
       );
-      if (!nextBody && mediaCount === 0 && hasPollRow.rows.length === 0) {
+      if (
+        !nextBody &&
+        mediaCount === 0 &&
+        documentCount === 0 &&
+        hasPollRow.rows.length === 0
+      ) {
         await client.query("ROLLBACK");
         return c.json(
           { error: "A message, poll, or attachment is required" },
@@ -1090,7 +1246,9 @@ export function createCirclesRoutes() {
          FROM circle_posts p WHERE p.id = $1`,
         [postId]
       );
-      const mediaByPost = await loadPostMedia(client, [postId]);
+      const attachments =
+        (await loadPostAttachments(client, [postId])).get(postId) ??
+        emptyAttachments();
       const pollsByPost = await loadPostPolls(
         client,
         [postId],
@@ -1132,10 +1290,11 @@ export function createCirclesRoutes() {
         mapPost(
           updated.rows[0],
           author,
-          mediaByPost.get(postId) ?? [],
+          attachments.media,
           pollsByPost.get(postId),
           topicsByPost.get(postId) ?? [],
-          circlesByPost.get(postId) ?? []
+          circlesByPost.get(postId) ?? [],
+          attachments.documents
         )
       );
     } catch (error) {
