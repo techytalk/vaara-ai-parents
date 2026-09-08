@@ -9,11 +9,13 @@ import {
   PostTagBadge,
   theme,
 } from "@/components/circles/ui";
+import { PostContextChips } from "@/components/circles/PostContextChips";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import type { CirclePost } from "@/lib/api";
 
 export function FeedPostCard({
   post,
+  circleId,
   circleName,
   discovery,
   saved,
@@ -26,6 +28,7 @@ export function FeedPostCard({
   onReport,
 }: {
   post: CirclePost;
+  circleId?: string;
   circleName?: string;
   discovery?: boolean;
   saved?: boolean;
@@ -112,6 +115,11 @@ export function FeedPostCard({
         <PollCard poll={post.poll} compact onVote={onPollVote} />
       ) : null}
       <PostMediaGallery media={post.media ?? []} />
+      <PostContextChips
+        circles={post.circles}
+        topics={post.topics}
+        excludeCircleId={circleId}
+      />
       {engagementParts.length > 0 ? (
         <Text style={styles.engagement}>{engagementParts.join(" · ")}</Text>
       ) : null}

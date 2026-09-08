@@ -218,6 +218,7 @@ export type CirclePost = {
   media: CirclePostMedia[];
   poll: PollView | null;
   topics?: Array<{ slug: string; name: string; category: string | null }>;
+  circles?: Array<{ id: string; displayName: string; circleType: string }>;
   author: CircleAuthor;
   authorId?: string;
   helpfulCount?: number;

@@ -18,6 +18,11 @@ import { Ionicons } from "@expo/vector-icons";
 import { DisclosurePrompt } from "@/components/DisclosurePrompt";
 import { InlineError, ScreenLoader } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
+import { useBottomChromeInset } from "@/hooks/useBottomChromeInset";
+import {
+  androidImeDockOffset,
+  useKeyboardHeight,
+} from "@/hooks/useKeyboardHeight";
 import { useRealtimeChannel } from "@/hooks/useRealtimeChannel";
 import {
   api,
@@ -38,6 +43,9 @@ export default function ChatScreen() {
   const navigation = useNavigation();
   const queryClient = useQueryClient();
   const headerHeight = useHeaderHeight();
+  const bottomChrome = useBottomChromeInset();
+  const keyboardHeight = useKeyboardHeight();
+  const androidDockOffset = androidImeDockOffset(keyboardHeight, bottomChrome);
   const submitReport = useSubmitReport();
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -297,7 +305,14 @@ export default function ChatScreen() {
 
       {error ? <InlineError message={error} /> : null}
 
-      <View style={styles.inputRow}>
+      <View
+        style={[
+          styles.inputRow,
+          androidDockOffset > 0
+            ? { marginBottom: androidDockOffset }
+            : null,
+        ]}
+      >
         <TextInput
           style={styles.input}
           placeholder="Type a message…"

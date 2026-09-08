@@ -23,6 +23,7 @@ import {
   ScreenLoader,
   theme,
 } from "@/components/circles/ui";
+import { PostContextChips } from "@/components/circles/PostContextChips";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import { useRealtimeChannel } from "@/hooks/useRealtimeChannel";
 import { api, type CirclePost } from "@/lib/api";
@@ -72,6 +73,11 @@ function PostCard({
         />
       ) : null}
       <PostMediaGallery media={post.media ?? []} />
+      <PostContextChips
+        circles={post.circles}
+        topics={post.topics}
+        excludeCircleId={circleId}
+      />
       <View style={styles.postFooter}>
         <View style={styles.footerStat}>
           <Ionicons

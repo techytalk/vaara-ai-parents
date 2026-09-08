@@ -1,5 +1,11 @@
 # Mobile bottom insets and keyboard fixes
 
+> Superseded for composer keyboard behavior. The current diagnosis and
+> seven-point remediation plan are in
+> [`ANDROID_COMPOSER_KEYBOARD_REMEDIATION.md`](./ANDROID_COMPOSER_KEYBOARD_REMEDIATION.md).
+> This older document is retained as historical context and should not be used
+> as the implementation checklist.
+
 ## Status
 
 Implemented in the mobile app (New Post, Post thread, Messages, Provider tabs).

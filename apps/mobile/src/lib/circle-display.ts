@@ -38,6 +38,30 @@ export function circleCardSubtitle(circle: Circle): string {
   }
 }
 
+/**
+ * Short circle label for post chips. A post often lands in both a school class
+ * and the matching curriculum circle, so keep the school name on class chips to
+ * tell "Slate the school · Grade 5" apart from the plain "CBSE · Grade 5".
+ */
+export function circleChipLabel(circle: {
+  displayName: string;
+  circleType: string;
+}): string {
+  const parts = circle.displayName.split(" · ").map((part) => part.trim());
+
+  switch (circle.circleType) {
+    case "school_class":
+      if (parts.length >= 2) {
+        return `${parts[0]} · ${parts[parts.length - 1]}`;
+      }
+      return circle.displayName;
+    case "school":
+      return parts[0] ?? circle.displayName;
+    default:
+      return circle.displayName;
+  }
+}
+
 export function circleCardTitle(circle: Circle): string {
   const parts = circle.displayName.split(" · ").map((part) => part.trim());
 

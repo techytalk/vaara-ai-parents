@@ -18,6 +18,11 @@ import { useHeaderHeight } from "@react-navigation/elements";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useBottomChromeInset } from "@/hooks/useBottomChromeInset";
+import {
+  androidImeDockOffset,
+  useKeyboardHeight,
+} from "@/hooks/useKeyboardHeight";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system";
 import {
@@ -67,6 +72,12 @@ export default function NewPostScreen() {
   const navigation = useNavigation();
   const queryClient = useQueryClient();
   const headerHeight = useHeaderHeight();
+  const bottomChrome = useBottomChromeInset();
+  const keyboardHeight = useKeyboardHeight();
+  const androidDockOffset = androidImeDockOffset(
+    keyboardHeight,
+    bottomChrome
+  );
   const bodyInputRef = useRef<TextInput>(null);
   const didFocusBody = useRef(false);
   const [body, setBody] = useState("");
@@ -493,7 +504,10 @@ export default function NewPostScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={["bottom"]}>
+    <SafeAreaView
+      style={styles.safe}
+      edges={Platform.OS === "ios" ? ["bottom"] : []}
+    >
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -705,7 +719,14 @@ export default function NewPostScreen() {
         </View>
       ) : null}
 
-      <View style={styles.composerDock}>
+      <View
+        style={[
+          styles.composerDock,
+          androidDockOffset > 0
+            ? { marginBottom: androidDockOffset }
+            : null,
+        ]}
+      >
         <View style={styles.toolbar}>
           <ToolbarButton
             icon="image-outline"

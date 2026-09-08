@@ -21,6 +21,10 @@ import {
 } from "../lib/author.js";
 import { resolveAvatarKey } from "../lib/avatar.js";
 import {
+  loadCirclesForPosts,
+  type PostCircleSummary,
+} from "../lib/post-circles.js";
+import {
   attachTopicsToPost,
   loadTopicsForPosts,
   notifyTopicFollowers,
@@ -91,7 +95,8 @@ function mapPost(
   },
   media: PostMediaView[] = [],
   poll?: PollView | null,
-  topics: TopicSummary[] = []
+  topics: TopicSummary[] = [],
+  circles: PostCircleSummary[] = []
 ) {
   return {
     id: row.id,
@@ -103,6 +108,7 @@ function mapPost(
     media,
     poll: poll ?? null,
     topics,
+    circles,
     authorId: author.userId,
     author: {
       userId: author.userId,
@@ -590,8 +596,19 @@ export function createCirclesRoutes() {
         circleIds: targetCircleIds.map((id) => String(id)),
       });
 
+      const circlesByPost = await loadCirclesForPosts(client, [
+        String(rows[0].id),
+      ]);
+
       return c.json(
-        mapPost(rows[0], author, mediaViews, pollsByPost.get(rows[0].id), attachedTopics),
+        mapPost(
+          rows[0],
+          author,
+          mediaViews,
+          pollsByPost.get(rows[0].id),
+          attachedTopics,
+          circlesByPost.get(String(rows[0].id)) ?? []
+        ),
         201
       );
     } catch (error) {
@@ -664,6 +681,7 @@ export function createCirclesRoutes() {
         { revealHiddenResults: access.state === "author" }
       );
       const topicsByPost = await loadTopicsForPosts(client, [postId]);
+      const circlesByPost = await loadCirclesForPosts(client, [postId]);
       const postAuthor = await buildAuthorViewForCircleAccess(
         client,
         postRow.author_id,
@@ -732,7 +750,8 @@ export function createCirclesRoutes() {
             postAuthor,
             mediaByPost.get(postId) ?? [],
             pollsByPost.get(postId),
-            topicsByPost.get(postId) ?? []
+            topicsByPost.get(postId) ?? [],
+            circlesByPost.get(postId) ?? []
           ),
           authorId: String(postRow.author_id),
           helpfulCount: helpfulResult.rows[0]?.count ?? 0,
@@ -1080,6 +1099,7 @@ export function createCirclesRoutes() {
         { revealHiddenResults: true }
       );
       const topicsByPost = await loadTopicsForPosts(client, [postId]);
+      const circlesByPost = await loadCirclesForPosts(client, [postId]);
       const author = await buildAuthorViewForCircleAccess(
         client,
         userId,
@@ -1114,7 +1134,8 @@ export function createCirclesRoutes() {
           author,
           mediaByPost.get(postId) ?? [],
           pollsByPost.get(postId),
-          topicsByPost.get(postId) ?? []
+          topicsByPost.get(postId) ?? [],
+          circlesByPost.get(postId) ?? []
         )
       );
     } catch (error) {

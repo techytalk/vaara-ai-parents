@@ -139,6 +139,10 @@ export async function searchCircleDirectory(
   if (type) {
     sqlParams.push(type);
     typeClause = `AND c.circle_type = $${sqlParams.length}`;
+  } else {
+    // Class-level school circles are too numerous for guest search; keep
+    // school / curriculum / locality / grade / community instead.
+    typeClause = `AND c.circle_type <> 'school_class'`;
   }
 
   let searchClause = "";

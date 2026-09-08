@@ -6,6 +6,10 @@ import {
 } from "../lib/author.js";
 import { mediaPublicUrl, type MediaType } from "../lib/media-storage.js";
 import { loadPostPolls } from "../lib/polls.js";
+import {
+  loadCirclesForPosts,
+  type PostCircleSummary,
+} from "../lib/post-circles.js";
 import { loadTopicsForPosts, type TopicSummary } from "../lib/topics.js";
 import type { PollView } from "../lib/polls.js";
 
@@ -29,6 +33,7 @@ export type FeedPost = {
   media: PostMediaView[];
   poll: PollView | null;
   topics: TopicSummary[];
+  circles: PostCircleSummary[];
   author: {
     userId: string;
     anonymousHandle: string;
@@ -86,7 +91,8 @@ function mapPost(
   },
   media: PostMediaView[] = [],
   poll?: PollView | null,
-  topics: TopicSummary[] = []
+  topics: TopicSummary[] = [],
+  circles: PostCircleSummary[] = []
 ): FeedPost {
   return {
     id: row.id as string,
@@ -98,6 +104,7 @@ function mapPost(
     media,
     poll: poll ?? null,
     topics,
+    circles,
     author: {
       userId: author.userId,
       anonymousHandle: author.anonymousHandle,
@@ -183,6 +190,10 @@ export async function loadCircleFeed(params: {
       client,
       rows.map((row) => row.id)
     );
+    const circlesByPost = await loadCirclesForPosts(
+      client,
+      rows.map((row) => row.id)
+    );
 
     const posts = await Promise.all(
       rows.map(async (row) => {
@@ -198,7 +209,8 @@ export async function loadCircleFeed(params: {
           author,
           mediaByPost.get(row.id) ?? [],
           pollsByPost.get(row.id),
-          topicsByPost.get(row.id) ?? []
+          topicsByPost.get(row.id) ?? [],
+          circlesByPost.get(row.id) ?? []
         );
       })
     );
@@ -396,6 +408,7 @@ async function hydrateHomeFeedPosts(
   const postIds = rows.map((row) => row.id as string);
   const mediaByPost = await loadPostMedia(client, postIds);
   const topicsByPost = await loadTopicsForPosts(client, postIds);
+  const circlesByPost = await loadCirclesForPosts(client, postIds);
   const helpfulByPost = await loadPostHelpfulCounts(client, postIds, userId);
 
   const circleIds = [...new Set(rows.map((row) => row.circle_id as string))];
@@ -455,7 +468,8 @@ async function hydrateHomeFeedPosts(
           author,
           mediaByPost.get(row.id as string) ?? [],
           pollsByPost.get(row.id as string),
-          topicsByPost.get(row.id as string) ?? []
+          topicsByPost.get(row.id as string) ?? [],
+          circlesByPost.get(row.id as string) ?? []
         ),
         circleId: row.circle_id as string,
         circleName: row.circle_name as string,

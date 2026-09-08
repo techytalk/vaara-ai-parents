@@ -26,6 +26,12 @@ import {
   ScreenLoader,
   theme,
 } from "@/components/circles/ui";
+import { PostContextChips } from "@/components/circles/PostContextChips";
+import { useBottomChromeInset } from "@/hooks/useBottomChromeInset";
+import {
+  androidImeDockOffset,
+  useKeyboardHeight,
+} from "@/hooks/useKeyboardHeight";
 import { useRealtimeChannel } from "@/hooks/useRealtimeChannel";
 import { api, type CirclePost, type PostComment, type ThreadCapabilities } from "@/lib/api";
 import { sharePostLink, sharePostMedia } from "@/lib/share-post";
@@ -64,6 +70,12 @@ export default function PostThreadScreen() {
   const navigation = useNavigation();
   const queryClient = useQueryClient();
   const headerHeight = useHeaderHeight();
+  const bottomChrome = useBottomChromeInset();
+  const keyboardHeight = useKeyboardHeight();
+  const androidDockOffset = androidImeDockOffset(
+    keyboardHeight,
+    bottomChrome
+  );
   const submitReport = useSubmitReport();
   const [post, setPost] = useState<CirclePost | null>(null);
   const [comments, setComments] = useState<PostComment[]>([]);
@@ -452,7 +464,10 @@ export default function PostThreadScreen() {
     Boolean(post.authorId ?? post.author.userId);
 
   return (
-    <SafeAreaView style={styles.safe} edges={["bottom"]}>
+    <SafeAreaView
+      style={styles.safe}
+      edges={Platform.OS === "ios" ? ["bottom"] : []}
+    >
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -499,6 +514,11 @@ export default function PostThreadScreen() {
                   <PollCard poll={post.poll} />
                 ) : null}
                 <PostMediaGallery media={post.media ?? []} />
+                <PostContextChips
+                  circles={post.circles}
+                  topics={post.topics}
+                  excludeCircleId={circleId}
+                />
 
                 {helpfulCount > 0 ? (
                   <Text style={styles.engagement}>
@@ -594,7 +614,15 @@ export default function PostThreadScreen() {
       ) : null}
 
       {canReply ? (
-      <View style={[styles.composer, cardShadow()]}>
+      <View
+        style={[
+          styles.composer,
+          cardShadow(),
+          androidDockOffset > 0
+            ? { marginBottom: androidDockOffset }
+            : null,
+        ]}
+      >
         <TextInput
           style={styles.composerInput}
           placeholder="Write a helpful comment…"
@@ -622,7 +650,15 @@ export default function PostThreadScreen() {
         </Pressable>
       </View>
       ) : (
-        <View style={[styles.composer, cardShadow()]}>
+        <View
+          style={[
+            styles.composer,
+            cardShadow(),
+            androidDockOffset > 0
+              ? { marginBottom: androidDockOffset }
+              : null,
+          ]}
+        >
           <Text style={styles.readOnlyNote}>
             You’re not part of this circle. You can view this shared post, but
             you cannot comment or open the rest of the circle.

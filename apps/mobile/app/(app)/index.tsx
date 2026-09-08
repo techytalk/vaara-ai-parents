@@ -387,6 +387,7 @@ export default function HomeScreen() {
         renderItem={({ item }) => (
           <FeedPostCard
             post={item}
+            circleId={item.circleId}
             circleName={item.circleName}
             discovery={item.discovery}
             saved={savedPostIds.has(item.id)}
