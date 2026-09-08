@@ -37,7 +37,11 @@ import {
   TopicsSheet,
 } from "@/components/circles/PostComposerPickers";
 import { api, type Circle, type GuestQuota } from "@/lib/api";
-import { resolveMediaBytes, uploadMediaBytes } from "@/lib/media-local";
+import {
+  persistPickedMediaUri,
+  resolveMediaBytes,
+  uploadMediaBytes,
+} from "@/lib/media-local";
 import {
   cleanDocumentsForCreate,
   cleanDocumentsForPayload,
@@ -246,25 +250,28 @@ export default function NewPostScreen() {
     });
     if (result.canceled) return;
 
-    const selected = result.assets
-      .filter((asset) => asset.type === "image" || asset.type === "video")
-      .map<PendingMedia>((asset, index) => {
-        const mediaType = asset.type === "video" ? "video" : "image";
-        return {
-          uri: asset.uri,
-          fileName:
-            asset.fileName ??
-            `${mediaType}-${Date.now()}-${index}.${mediaType === "video" ? "mp4" : "jpg"}`,
-          mediaType,
-          mimeType:
-            asset.mimeType ??
-            (mediaType === "video" ? "video/mp4" : "image/jpeg"),
-          fileSize: asset.fileSize,
-          width: asset.width,
-          height: asset.height,
-          durationMs: asset.duration ?? undefined,
-        };
+    const selected: PendingMedia[] = [];
+    for (const [index, asset] of result.assets.entries()) {
+      if (asset.type !== "image" && asset.type !== "video") continue;
+      const mediaType = asset.type === "video" ? "video" : "image";
+      const fileName =
+        asset.fileName ??
+        `${mediaType}-${Date.now()}-${index}.${mediaType === "video" ? "mp4" : "jpg"}`;
+      // Persist while gallery URI grant is valid — DocumentPicker revokes it.
+      const uri = await persistPickedMediaUri(asset.uri, fileName);
+      selected.push({
+        uri,
+        fileName,
+        mediaType,
+        mimeType:
+          asset.mimeType ??
+          (mediaType === "video" ? "video/mp4" : "image/jpeg"),
+        fileSize: asset.fileSize,
+        width: asset.width,
+        height: asset.height,
+        durationMs: asset.duration ?? undefined,
       });
+    }
     setMedia((current) => [...current, ...selected].slice(0, 4));
     setError(null);
   }
@@ -279,6 +286,17 @@ export default function NewPostScreen() {
     if (remaining <= 0) {
       setError(`A post can include up to ${MAX_POST_DOCUMENTS} documents`);
       return;
+    }
+    // DocumentPicker can revoke temporary gallery URI grants — persist first.
+    if (media.length > 0) {
+      const persisted = await Promise.all(
+        media.map(async (item) => {
+          if (item.id) return item;
+          const uri = await persistPickedMediaUri(item.uri, item.fileName);
+          return uri === item.uri ? item : { ...item, uri };
+        })
+      );
+      setMedia(persisted);
     }
     const picked = await pickDocuments(remaining);
     if (picked.length === 0) return;

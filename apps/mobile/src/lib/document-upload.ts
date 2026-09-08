@@ -1,4 +1,5 @@
 import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system";
 import { api } from "@/lib/api";
 import { resolveMediaBytes, uploadMediaBytes } from "@/lib/media-local";
 
@@ -53,6 +54,14 @@ export async function pickDocuments(
 
   const assets = result.assets ?? [];
   const picked: PendingDocument[] = [];
+  const cacheRoot = FileSystem.cacheDirectory;
+  const stableDir = cacheRoot ? `${cacheRoot}vaara-docs/` : null;
+  if (stableDir) {
+    await FileSystem.makeDirectoryAsync(stableDir, { intermediates: true }).catch(
+      () => undefined
+    );
+  }
+
   for (const asset of assets) {
     if (picked.length >= remaining) break;
     const mimeType = (asset.mimeType ?? "").toLowerCase();
@@ -63,12 +72,24 @@ export async function pickDocuments(
     ) {
       continue;
     }
+    const fileName = asset.name || "document";
+    let uri = asset.uri;
+    // Move out of DocumentPicker cache — Android may purge that folder quickly.
+    if (stableDir && uri) {
+      const dest = `${stableDir}${Date.now()}-${picked.length}-${fileName.replace(/[^a-zA-Z0-9._-]+/g, "_")}`;
+      try {
+        await FileSystem.copyAsync({ from: uri, to: dest });
+        uri = dest;
+      } catch {
+        // Keep picker URI; upload path will retry reading it.
+      }
+    }
     const sizeBytes = asset.size ?? 0;
     if (!sizeBytes || sizeBytes > maxBytesForMime(mimeType)) {
       picked.push({
-        localId: `${Date.now()}-${picked.length}-${asset.name}`,
-        uri: asset.uri,
-        fileName: asset.name || "document",
+        localId: `${Date.now()}-${picked.length}-${fileName}`,
+        uri,
+        fileName,
         mimeType,
         sizeBytes,
         status: "failed",
@@ -80,9 +101,9 @@ export async function pickDocuments(
       continue;
     }
     picked.push({
-      localId: `${Date.now()}-${picked.length}-${asset.name}`,
-      uri: asset.uri,
-      fileName: asset.name || "document",
+      localId: `${Date.now()}-${picked.length}-${fileName}`,
+      uri,
+      fileName,
       mimeType,
       sizeBytes,
       status: "uploading",
