@@ -42,7 +42,7 @@
         "backgroundColor": "#FFFCF7"
       },
       "package": "com.vaara.parents",
-      "versionCode": 12,
+      "versionCode": 13,
       "permissions": [
         "com.google.android.gms.permission.AD_ID",
         "android.permission.READ_MEDIA_IMAGES",
