@@ -45,6 +45,10 @@ module.exports = {
         process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim() ||
         appJson.expo.extra.googleWebClientId ||
         "",
+      googleIosClientId:
+        process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID?.trim() ||
+        appJson.expo.extra.googleIosClientId ||
+        "",
       googleAndroidClientId:
         process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID?.trim() || "",
       googleRedirectUri:

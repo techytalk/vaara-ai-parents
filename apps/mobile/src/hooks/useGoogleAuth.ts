@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Platform } from "react-native";
 import {
   GoogleSignin,
   isErrorWithCode,
@@ -7,6 +8,7 @@ import {
 } from "@react-native-google-signin/google-signin";
 import { api } from "@/lib/api";
 import {
+  GOOGLE_IOS_CLIENT_ID,
   GOOGLE_WEB_CLIENT_ID,
   isGoogleSignInConfigured,
 } from "@/constants/google-auth";
@@ -31,6 +33,10 @@ export function useGoogleAuth({
 
     GoogleSignin.configure({
       webClientId: GOOGLE_WEB_CLIENT_ID,
+      // Required on iOS when GoogleService-Info.plist has no CLIENT_ID (or isn't bundled).
+      ...(Platform.OS === "ios" && GOOGLE_IOS_CLIENT_ID
+        ? { iosClientId: GOOGLE_IOS_CLIENT_ID }
+        : {}),
       offlineAccess: false,
     });
   }, [configured]);

@@ -90,7 +90,7 @@
       [
         "@react-native-google-signin/google-signin",
         {
-          "iosUrlScheme": "com.googleusercontent.apps.375946640576-8eiut23u8r6kgpd460m19c5lh42ai9am"
+          "iosUrlScheme": "com.googleusercontent.apps.375946640576-bcoc1nonnurepmvq6ebnm0smfhnao0ol"
         }
       ],
       "@react-native-firebase/app"
@@ -101,7 +101,8 @@
     "extra": {
       "iosStoreUrl": "https://apps.apple.com/app/vaara-parents",
       "androidStoreUrl": "https://play.google.com/store/apps/details?id=com.vaara.parents",
-      "googleWebClientId": "375946640576-8eiut23u8r6kgpd460m19c5lh42ai9am.apps.googleusercontent.com"
+      "googleWebClientId": "375946640576-8eiut23u8r6kgpd460m19c5lh42ai9am.apps.googleusercontent.com",
+      "googleIosClientId": "375946640576-bcoc1nonnurepmvq6ebnm0smfhnao0ol.apps.googleusercontent.com"
     }
   }
 }

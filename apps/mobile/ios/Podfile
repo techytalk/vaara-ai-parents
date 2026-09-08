@@ -60,6 +60,10 @@ target 'VaaraParents' do
           cfg.build_settings['DEFINES_MODULE'] = 'YES'
           cfg.build_settings['CLANG_ENABLE_MODULES'] = 'YES'
         end
+        # Xcode 26+/Apple Clang: fmt 11 consteval fails; force C++17 for fmt only.
+        if target.name == 'fmt'
+          cfg.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++17'
+        end
       end
     end
 
@@ -71,6 +75,48 @@ target 'VaaraParents' do
         resource_bundle_target.build_configurations.each do |config|
           config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
         end
+      end
+    end
+
+    # Quote codegen / expo script paths so spaces in the project directory work.
+    pods_pbx = File.join(installer.sandbox.root, 'Pods.xcodeproj', 'project.pbxproj')
+    if File.exist?(pods_pbx)
+      content = File.read(pods_pbx)
+      broken = '/bin/sh -c \\"$WITH_ENVIRONMENT $SCRIPT_PHASES_SCRIPT\\"'
+      fixed = '/bin/sh -c \\"\\\\\\"$WITH_ENVIRONMENT\\\\\\" \\\\\\"$SCRIPT_PHASES_SCRIPT\\\\\\"\\"'
+      content = content.gsub(broken, fixed) if content.include?(broken)
+      content = content.gsub(
+        'bash -l -c \\"$PODS_TARGET_SRCROOT/../scripts/',
+        'bash -l -c \\"\\\\\\"$PODS_TARGET_SRCROOT/../scripts/'
+      )
+      content = content.gsub(
+        %r{(bash -l -c \\"\\\\\\"\$PODS_TARGET_SRCROOT/\.\./scripts/[^\\]+)\\";},
+        '\1\\\\\\"\\";'
+      )
+      File.chmod(0o644, pods_pbx)
+      File.write(pods_pbx, content)
+    end
+
+    # with-environment.sh runs `$1` unquoted; paths with spaces break Generate Specs.
+    with_env = File.join(config[:reactNativePath], 'scripts/xcode/with-environment.sh')
+    if File.exist?(with_env)
+      env_content = File.read(with_env)
+      if env_content.include?("  $1\n") && !env_content.include?("  \"$1\"\n")
+        File.chmod(0o644, with_env)
+        File.write(with_env, env_content.sub("  $1\n", "  \"$1\"\n"))
+      end
+    end
+
+    # expo-constants: basename $PROJECT_DIR breaks when PROJECT_DIR has spaces.
+    constants_script = File.join(
+      File.dirname(`node --print "require.resolve('expo-constants/package.json')"`.strip),
+      'scripts/get-app-config-ios.sh'
+    )
+    if File.exist?(constants_script)
+      c = File.read(constants_script)
+      if c.include?('basename $PROJECT_DIR') && !c.include?('basename "$PROJECT_DIR"')
+        File.chmod(0o644, constants_script)
+        File.write(constants_script, c.sub('basename $PROJECT_DIR', 'basename "$PROJECT_DIR"'))
       end
     end
   end

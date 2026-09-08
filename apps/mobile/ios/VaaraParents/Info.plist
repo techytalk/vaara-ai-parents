@@ -34,6 +34,7 @@
       <dict>
         <key>CFBundleURLSchemes</key>
         <array>
+          <string>com.googleusercontent.apps.375946640576-bcoc1nonnurepmvq6ebnm0smfhnao0ol</string>
           <string>com.googleusercontent.apps.375946640576-8eiut23u8r6kgpd460m19c5lh42ai9am</string>
         </array>
       </dict>
