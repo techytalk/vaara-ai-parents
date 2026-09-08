@@ -4,8 +4,6 @@ import {
   ActivityIndicator,
   Alert,
   Image,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,9 +12,12 @@ import {
   View,
 } from "react-native";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
-import { useHeaderHeight } from "@react-navigation/elements";
 import { Ionicons } from "@expo/vector-icons";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  composerDockPadding,
+  useKeyboardHeight,
+} from "@/hooks/useKeyboardHeight";
+import { useBottomChromeInset } from "@/hooks/useBottomChromeInset";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system";
 import {
@@ -65,7 +66,9 @@ export default function NewPostScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const queryClient = useQueryClient();
-  const headerHeight = useHeaderHeight();
+  const bottomChrome = useBottomChromeInset();
+  const keyboardHeight = useKeyboardHeight();
+  const dockPadBottom = composerDockPadding(keyboardHeight, bottomChrome);
   const [body, setBody] = useState("");
   const [tag, setTag] = useState<PostTagValue>(() => {
     if (tagParam === "recommendation" || tagParam === "question" || tagParam === "heads_up" || tagParam === "general") {
@@ -487,12 +490,8 @@ export default function NewPostScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={["bottom"]}>
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={Platform.OS === "ios" ? headerHeight : 0}
-      >
+    <View style={styles.safe}>
+      <View style={styles.container}>
       <View style={styles.metaBar}>
         <Pressable
           accessibilityRole="button"
@@ -698,7 +697,7 @@ export default function NewPostScreen() {
         </View>
       ) : null}
 
-      <View style={[styles.composerDock, { paddingBottom: 10 }]}>
+      <View style={[styles.composerDock, { paddingBottom: dockPadBottom }]}>
         <View style={styles.toolbar}>
           <ToolbarButton
             icon="image-outline"
@@ -781,8 +780,8 @@ export default function NewPostScreen() {
         selectedSlugs={selectedTopicSlugs}
         onChange={setSelectedTopicSlugs}
       />
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+      </View>
+    </View>
   );
 }
 

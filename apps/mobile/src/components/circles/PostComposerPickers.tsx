@@ -31,6 +31,9 @@ export const MAX_GUEST_CIRCLES = 5;
 export const MAX_ADDITIONAL_CIRCLES = 50;
 export const MAX_TOPICS = 3;
 
+/** Too many per school to browse in cross-post; post from that circle directly instead. */
+const CROSS_POST_HIDDEN_TYPES = new Set(["school_class"]);
+
 export type AudienceSelection = {
   id: string;
   displayName: string;
@@ -54,6 +57,10 @@ function circleTypeLabel(circleType: string): string {
     default:
       return "School";
   }
+}
+
+function isCrossPostAudienceCircle(circleType: string): boolean {
+  return !CROSS_POST_HIDDEN_TYPES.has(circleType);
 }
 
 /** Short label for the composer pill, e.g. "Grade 6 +2". */
@@ -151,7 +158,10 @@ export function AudienceSheet({
   const primaryId = primaryCircle?.id;
 
   const myCircles = useMemo(() => {
-    return circles.filter((c) => c.id !== primaryId);
+    return circles.filter(
+      (c) =>
+        c.id !== primaryId && isCrossPostAudienceCircle(c.circleType)
+    );
   }, [circles, primaryId]);
 
   const filteredMyCircles = useMemo(() => {
@@ -177,7 +187,11 @@ export function AudienceSheet({
         })
       );
     const fromDirectory = directory
-      .filter((c) => selectedIds.includes(c.id))
+      .filter(
+        (c) =>
+          selectedIds.includes(c.id) &&
+          isCrossPostAudienceCircle(c.circleType)
+      )
       .map(
         (c): AudienceSelection => ({
           id: c.id,
@@ -211,7 +225,10 @@ export function AudienceSheet({
   const otherCircles = useMemo(() => {
     const selected = new Set(selectedIds);
     return directory.filter(
-      (item) => item.id !== primaryId && !selected.has(item.id)
+      (item) =>
+        item.id !== primaryId &&
+        !selected.has(item.id) &&
+        isCrossPostAudienceCircle(item.circleType)
     );
   }, [directory, primaryId, selectedIds]);
 

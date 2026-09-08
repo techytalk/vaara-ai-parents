@@ -44,11 +44,11 @@ export const colors = {
 const TAB_BAR_CONTENT_HEIGHT = 56;
 
 /**
- * Positions tab icons/labels above the iPhone home indicator and Android
- * nav bar. The bar itself still extends to the screen edge.
+ * Positions tab icons/labels above the device home indicator / system nav.
+ * Pass the value from `useBottomChromeInset()` so padding is measured per device.
  */
 export function tabBarStyleForInsets(bottomInset: number) {
-  const paddingBottom = Math.max(bottomInset, 8);
+  const paddingBottom = Math.max(bottomInset, 0);
   return {
     height: TAB_BAR_CONTENT_HEIGHT + paddingBottom,
     paddingTop: 6,

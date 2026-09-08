@@ -2,8 +2,8 @@ import { useEffect } from "react";
 import { Tabs, useRouter } from "expo-router";
 import * as Notifications from "expo-notifications";
 import { Ionicons } from "@expo/vector-icons";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, tabBarStyleForInsets, typography } from "@/constants/theme";
+import { useBottomChromeInset } from "@/hooks/useBottomChromeInset";
 import { setupPushNotifications } from "@/lib/push";
 
 type TabIconName = keyof typeof Ionicons.glyphMap;
@@ -16,7 +16,7 @@ function tabIcon(active: TabIconName, inactive: TabIconName) {
 
 export default function AppLayout() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
+  const bottomInset = useBottomChromeInset();
 
   useEffect(() => {
     const stopPushRegistration = setupPushNotifications();
@@ -71,6 +71,7 @@ export default function AppLayout() {
   return (
     <Tabs
       initialRouteName="index"
+      safeAreaInsets={{ bottom: 0 }}
       screenOptions={{
         headerShown: true,
         tabBarActiveTintColor: colors.tabActive,
@@ -80,13 +81,14 @@ export default function AppLayout() {
         headerTitleStyle: { fontFamily: typography.bold, color: colors.text },
         headerShadowVisible: false,
         tabBarHideOnKeyboard: true,
-        tabBarStyle: tabBarStyleForInsets(insets.bottom),
+        tabBarStyle: tabBarStyleForInsets(bottomInset),
         tabBarLabelStyle: {
           fontSize: 11,
           fontFamily: typography.semibold,
           marginTop: 2,
         },
         tabBarIconStyle: { marginTop: 1 },
+        tabBarItemStyle: { paddingVertical: 2 },
       }}
     >
       <Tabs.Screen
@@ -95,6 +97,7 @@ export default function AppLayout() {
           title: "Feed",
           tabBarLabel: "Feed",
           tabBarIcon: tabIcon("home", "home-outline"),
+          href: "/",
         }}
       />
       <Tabs.Screen
@@ -104,6 +107,7 @@ export default function AppLayout() {
           tabBarLabel: "Circles",
           headerShown: false,
           tabBarIcon: tabIcon("people-circle", "people-circle-outline"),
+          href: "/circles",
         }}
       />
       <Tabs.Screen
@@ -113,6 +117,7 @@ export default function AppLayout() {
           tabBarLabel: "Messages",
           headerShown: false,
           tabBarIcon: tabIcon("chatbubbles", "chatbubbles-outline"),
+          href: "/messages",
         }}
       />
       <Tabs.Screen
@@ -122,6 +127,7 @@ export default function AppLayout() {
           tabBarLabel: "Discover",
           tabBarIcon: tabIcon("compass", "compass-outline"),
           headerShown: false,
+          href: "/activities",
         }}
       />
       <Tabs.Screen
@@ -130,6 +136,7 @@ export default function AppLayout() {
           title: "More",
           tabBarLabel: "More",
           tabBarIcon: tabIcon("grid", "grid-outline"),
+          href: "/profile",
         }}
       />
       <Tabs.Screen
