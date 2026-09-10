@@ -14,12 +14,7 @@ import { api, type Child, type Curriculum } from "@/lib/api";
 import { getToken } from "@/lib/session";
 import { GENDER_LABEL } from "@/constants/onboarding";
 import { formatChildDob } from "@/lib/dates";
-import {
-  colors,
-  DetailRow,
-  OnboardingHeader,
-  SecondaryButton,
-} from "@/components/onboarding/ui";
+import { colors, DetailRow, PrimaryButton, SecondaryButton } from "@/components/onboarding/ui";
 
 export default function ChildDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -117,10 +112,12 @@ export default function ChildDetailScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <OnboardingHeader
-        title={child.nickname?.trim() || "Child details"}
-        subtitle="This information helps match you with the right parent circles."
-      />
+      <Text style={styles.title}>
+        {child.nickname?.trim() || "Child details"}
+      </Text>
+      <Text style={styles.subtitle}>
+        This information helps match you with the right parent circles.
+      </Text>
 
       <View style={styles.card}>
         <DetailRow
@@ -149,6 +146,10 @@ export default function ChildDetailScreen() {
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
+      <PrimaryButton
+        label="Go to feed"
+        onPress={() => router.replace("/(app)" as never)}
+      />
       <SecondaryButton
         label="Edit child"
         onPress={() =>
@@ -175,6 +176,19 @@ export default function ChildDetailScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 20, paddingBottom: 40 },
+  title: {
+    fontSize: 26,
+    fontWeight: "800",
+    color: colors.text,
+    letterSpacing: -0.4,
+    marginBottom: 6,
+  },
+  subtitle: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: colors.textMuted,
+    marginBottom: 20,
+  },
   centered: {
     flex: 1,
     justifyContent: "center",

@@ -1,5 +1,3 @@
-import * as DocumentPicker from "expo-document-picker";
-import * as FileSystem from "expo-file-system";
 import { api } from "@/lib/api";
 import { resolveMediaBytes, uploadMediaBytes } from "@/lib/media-local";
 
@@ -45,6 +43,13 @@ export async function pickDocuments(
 ): Promise<PendingDocument[]> {
   if (remaining <= 0) return [];
 
+  const DocumentPicker = await import("expo-document-picker").catch(() => null);
+  if (!DocumentPicker?.getDocumentAsync) {
+    throw new Error(
+      "Document picker isn't in this app build. Rebuild the iOS app (npx expo run:ios) to attach files."
+    );
+  }
+
   const result = await DocumentPicker.getDocumentAsync({
     type: [...DOCUMENT_MIME_TYPES],
     multiple: true,
@@ -54,9 +59,10 @@ export async function pickDocuments(
 
   const assets = result.assets ?? [];
   const picked: PendingDocument[] = [];
-  const cacheRoot = FileSystem.cacheDirectory;
+  const FileSystem = await import("expo-file-system").catch(() => null);
+  const cacheRoot = FileSystem?.cacheDirectory;
   const stableDir = cacheRoot ? `${cacheRoot}vaara-docs/` : null;
-  if (stableDir) {
+  if (stableDir && FileSystem) {
     await FileSystem.makeDirectoryAsync(stableDir, { intermediates: true }).catch(
       () => undefined
     );
@@ -78,7 +84,7 @@ export async function pickDocuments(
     if (stableDir && uri) {
       const dest = `${stableDir}${Date.now()}-${picked.length}-${fileName.replace(/[^a-zA-Z0-9._-]+/g, "_")}`;
       try {
-        await FileSystem.copyAsync({ from: uri, to: dest });
+        await FileSystem?.copyAsync({ from: uri, to: dest });
         uri = dest;
       } catch {
         // Keep picker URI; upload path will retry reading it.

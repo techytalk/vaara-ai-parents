@@ -17,11 +17,7 @@ import {
 } from "@/constants/onboarding";
 import { isPlaceholderSchool } from "@/constants/circles";
 import { parseIsoDateOnly, toIsoDateOnly } from "@/lib/dates";
-import {
-  colors,
-  OnboardingHeader,
-  PrimaryButton,
-} from "@/components/onboarding/ui";
+import { colors, PrimaryButton } from "@/components/onboarding/ui";
 
 export default function EditChildScreen() {
   const { id, focus } = useLocalSearchParams<{ id: string; focus?: string }>();
@@ -117,10 +113,14 @@ export default function EditChildScreen() {
       if (dateOfBirth) body.dateOfBirth = toIsoDateOnly(dateOfBirth);
 
       await api.updateChild(token, id, body);
-      router.replace({
-        pathname: "/onboarding/children/[id]",
-        params: { id },
-      });
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.replace({
+          pathname: "/onboarding/children/[id]",
+          params: { id },
+        });
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update child");
     } finally {
@@ -152,10 +152,11 @@ export default function EditChildScreen() {
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
     >
-      <OnboardingHeader
-        title="Edit child"
-        subtitle="Update school, board or class anytime. Nickname and date of birth are optional and stay private."
-      />
+      <Text style={styles.title}>Edit child</Text>
+      <Text style={styles.subtitle}>
+        Update school, board or class anytime. Nickname and date of birth are
+        optional and stay private.
+      </Text>
 
       <ChildFormFields
         token={token}
@@ -199,6 +200,19 @@ export default function EditChildScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 20, paddingBottom: 40 },
+  title: {
+    fontSize: 26,
+    fontWeight: "800",
+    color: colors.text,
+    letterSpacing: -0.4,
+    marginBottom: 6,
+  },
+  subtitle: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: colors.textMuted,
+    marginBottom: 20,
+  },
   centered: { flex: 1, justifyContent: "center", alignItems: "center" },
   error: { color: colors.error, marginBottom: 8 },
 });

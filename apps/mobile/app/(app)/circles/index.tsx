@@ -41,7 +41,6 @@ import {
   hrefForCompletionPrompt,
 } from "@/lib/completion-prompts";
 import { pickPrimaryCircle } from "@/lib/home-feed";
-import { hasCompletedAppTour } from "@/lib/app-tour";
 import { getToken } from "@/lib/session";
 import { resolveParentOnboardingHref } from "@/lib/auth-navigation";
 
@@ -188,10 +187,6 @@ export default function CirclesScreen() {
       if (!me.onboardingComplete) {
         const href = await resolveParentOnboardingHref(token);
         router.replace(href as never);
-        return;
-      }
-      if (!(await hasCompletedAppTour())) {
-        router.replace("/tour/circles" as never);
         return;
       }
       setUser(me);

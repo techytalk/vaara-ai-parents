@@ -174,6 +174,23 @@ export default function PostThreadScreen() {
       (post?.authorId === currentUserId || post?.author.userId === currentUserId);
     navigation.setOptions({
       title: "Post",
+      headerLeft: () => (
+        <Pressable
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace("/(app)" as never);
+            }
+          }}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          style={styles.headerBack}
+        >
+          <Ionicons name="chevron-back" size={28} color={theme.text} />
+        </Pressable>
+      ),
       headerRight: () => (
         <View style={styles.headerActions}>
           {isOwnPost && (capabilities?.canEdit ?? !readOnly) ? (
@@ -680,6 +697,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 4,
   },
+  headerBack: { marginLeft: 4, paddingRight: 4 },
   headerEdit: { marginRight: 4 },
   headerDelete: { marginRight: 4 },
   headerMore: { marginRight: 4 },

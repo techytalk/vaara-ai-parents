@@ -11,7 +11,7 @@ export default function OnboardingLayout() {
       <Stack.Screen name="class" options={{ title: "Board and class" }} />
       <Stack.Screen
         name="ready"
-        options={{ title: "You're in", headerBackVisible: false }}
+        options={{ title: "You're connected", headerBackVisible: false }}
       />
       <Stack.Screen
         name="children"

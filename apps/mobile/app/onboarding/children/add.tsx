@@ -13,11 +13,7 @@ import { getToken } from "@/lib/session";
 import { ChildFormFields } from "@/components/onboarding/ChildFormFields";
 import { sortCurricula } from "@/constants/onboarding";
 import { toIsoDateOnly } from "@/lib/dates";
-import {
-  colors,
-  OnboardingHeader,
-  PrimaryButton,
-} from "@/components/onboarding/ui";
+import { colors, PrimaryButton } from "@/components/onboarding/ui";
 
 export default function AddChildScreen() {
   const router = useRouter();
@@ -122,10 +118,11 @@ export default function AddChildScreen() {
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
     >
-      <OnboardingHeader
-        title="Add a child"
-        subtitle="School, board and class place you in the right circles. Nickname and date of birth are optional and stay private."
-      />
+      <Text style={styles.title}>Add a child</Text>
+      <Text style={styles.subtitle}>
+        School, board and class place you in the right circles. Nickname and
+        date of birth are optional and stay private.
+      </Text>
 
       <ChildFormFields
         token={token}
@@ -173,6 +170,19 @@ export default function AddChildScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 20, paddingBottom: 40 },
+  title: {
+    fontSize: 26,
+    fontWeight: "800",
+    color: colors.text,
+    letterSpacing: -0.4,
+    marginBottom: 6,
+  },
+  subtitle: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: colors.textMuted,
+    marginBottom: 20,
+  },
   centered: { flex: 1, justifyContent: "center", alignItems: "center" },
   error: { color: colors.error, marginBottom: 8 },
 });

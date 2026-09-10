@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { router } from "expo-router";
 import { Button } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 
@@ -38,8 +39,11 @@ export class AppErrorBoundary extends Component<Props, State> {
           <Text style={styles.message}>{this.state.error.message}</Text>
         </ScrollView>
         <Button
-          label="Try again"
-          onPress={() => this.setState({ error: null })}
+          label="Go to feed"
+          onPress={() => {
+            this.setState({ error: null });
+            router.replace("/(app)");
+          }}
         />
       </View>
     );

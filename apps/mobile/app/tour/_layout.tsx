@@ -5,20 +5,15 @@ export default function TourLayout() {
   return (
     <Stack
       screenOptions={{
-        headerShown: true,
-        headerTintColor: colors.text,
-        headerStyle: { backgroundColor: colors.bg },
-        headerShadowVisible: false,
+        headerShown: false,
         contentStyle: { backgroundColor: colors.bg },
         gestureEnabled: false,
+        animation: "slide_from_right",
       }}
     >
-      <Stack.Screen
-        name="circles"
-        options={{ title: "Your circles", headerBackVisible: false }}
-      />
-      <Stack.Screen name="ask" options={{ title: "Ask anything" }} />
-      <Stack.Screen name="child" options={{ title: "Your child" }} />
+      <Stack.Screen name="circles" />
+      <Stack.Screen name="ask" />
+      <Stack.Screen name="child" />
     </Stack>
   );
 }

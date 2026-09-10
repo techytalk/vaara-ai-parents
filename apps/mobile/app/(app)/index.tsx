@@ -39,6 +39,7 @@ import { resolveParentOnboardingHref } from "@/lib/auth-navigation";
 import { sharePostLink } from "@/lib/share-post";
 import { useSubmitReport } from "@/providers/ReportProvider";
 import { CompletionPrompt } from "@/components/CompletionPrompt";
+import { HomeTourOverlay, useHomeTour } from "@/components/tour/HomeTourOverlay";
 
 function greetingForHour(hour: number) {
   if (hour < 12) return "Good morning";
@@ -76,16 +77,16 @@ export default function HomeScreen() {
       router.replace(href as never);
       return null;
     }
-    if (!(await hasCompletedAppTour())) {
-      router.replace("/tour/circles" as never);
-      return null;
-    }
     setUser(me);
     setCircles(circleList);
     setUnreadAlerts(notifications.filter((item) => !item.readAt).length);
     setSavedPostIds(new Set(saved.posts.map((post) => post.id)));
     const gaps = evaluateCompletionGaps({ children: kids, circles: circleList });
-    setActivePrompt(await pickActiveCompletionPrompt(gaps));
+    if (await hasCompletedAppTour()) {
+      setActivePrompt(await pickActiveCompletionPrompt(gaps));
+    } else {
+      setActivePrompt(null);
+    }
     return token;
   }, [router]);
 
@@ -162,6 +163,7 @@ export default function HomeScreen() {
 
   const primaryCircle = useMemo(() => pickPrimaryCircle(circles), [circles]);
   const loading = feedQuery.isLoading && posts.length === 0;
+  const tour = useHomeTour(!loading && Boolean(user));
 
   async function onDismissPrompt() {
     if (!activePrompt) return;
@@ -455,7 +457,7 @@ export default function HomeScreen() {
         )}
       />
 
-      {primaryCircle ? (
+      {primaryCircle && !tour.visible ? (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Create post"
@@ -466,6 +468,12 @@ export default function HomeScreen() {
           <Text style={styles.fabText}>Post</Text>
         </Pressable>
       ) : null}
+
+      <HomeTourOverlay
+        visible={tour.visible}
+        circles={circles}
+        onFinished={tour.dismiss}
+      />
     </View>
   );
 }

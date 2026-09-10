@@ -229,6 +229,10 @@ export default function ChildrenListScreen() {
             style={styles.primaryAction}
           />
         )}
+        <SecondaryButton
+          label="Go to feed"
+          onPress={() => router.replace("/(app)" as never)}
+        />
       </View>
     </SafeAreaView>
   );

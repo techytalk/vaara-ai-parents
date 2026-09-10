@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Pressable,
-  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
   StyleSheet,
   Text,
   View,
@@ -20,6 +20,7 @@ import {
   PrimaryButton,
   SecondaryButton,
 } from "@/components/onboarding/ui";
+import { TourFrame, TourHero } from "@/components/tour/TourFrame";
 
 export default function TourChildScreen() {
   const router = useRouter();
@@ -34,7 +35,6 @@ export default function TourChildScreen() {
 
   useEffect(() => {
     trackEvent("tour_step_view", { step: "child" });
-    // Reaching the last step retires the tour, whatever happens next.
     void completeAppTour();
     getToken().then(async (t) => {
       if (!t) {
@@ -94,8 +94,6 @@ export default function TourChildScreen() {
         await api.updateChild(token, child.id, body);
         trackEvent("child_identity_saved", { source: "tour" });
       }
-      // The tour ends here. Adding more children is a separate prompt that
-      // arrives later, once the parent has actually used the app.
       await leaveTour(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save");
@@ -114,103 +112,66 @@ export default function TourChildScreen() {
   const dobBounds = childDobBounds();
 
   return (
-    <ScrollView
-      style={styles.scroll}
-      contentContainerStyle={styles.container}
-      keyboardShouldPersistTaps="handled"
+    <KeyboardAvoidingView
+      style={styles.flex}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <Text style={styles.kicker}>3 of 3</Text>
-      <Text style={styles.title}>Your child</Text>
-      <Text style={styles.lead}>
-        Add a private nickname so your circles make sense to you. Other parents
-        never see it.
-      </Text>
-
-      {!child ? (
-        <Text style={styles.error}>
-          No child profile found. You can add one from My children later.
-        </Text>
-      ) : (
-        <>
-          <FieldInput
-            label="Nickname"
-            placeholder="e.g. Aarav — kept private"
-            value={nickname}
-            onChangeText={setNickname}
-            hint="Never shown to other parents"
-          />
-          <View style={styles.dobField}>
+      <TourFrame
+        step={3}
+        title="A private nickname"
+        subtitle="Only you see it. Other parents never do."
+        onSkip={onSkip}
+        footer={
+          <>
+            {error ? <Text style={styles.error}>{error}</Text> : null}
+            {child ? (
+              <PrimaryButton
+                label="Save"
+                onPress={onSave}
+                loading={submitting}
+                disabled={!nickname.trim() && !dateOfBirth}
+              />
+            ) : null}
+            <View style={styles.gap} />
+            <SecondaryButton label="Later" onPress={onLater} />
+          </>
+        }
+      >
+        <TourHero primaryIcon="heart" secondaryIcon="lock-closed" />
+        {!child ? (
+          <Text style={styles.error}>
+            You can add this later from My children.
+          </Text>
+        ) : (
+          <View>
+            <FieldInput
+              label="Nickname"
+              placeholder="e.g. Aarav"
+              value={nickname}
+              onChangeText={setNickname}
+            />
             <DateField
-              label="Date of birth"
+              label="Date of birth (optional)"
               value={dateOfBirth}
               onChange={setDateOfBirth}
               minimumDate={dobBounds.minimumDate}
               maximumDate={dobBounds.maximumDate}
-              hint="Optional — private, never shown to other parents"
             />
           </View>
-        </>
-      )}
-
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-
-      {child ? (
-        <PrimaryButton
-          label="Save"
-          onPress={onSave}
-          loading={submitting}
-          disabled={!nickname.trim() && !dateOfBirth}
-        />
-      ) : null}
-      <View style={styles.gap} />
-      <SecondaryButton label="Later" onPress={onLater} />
-
-      <Pressable accessibilityRole="button" onPress={onSkip} style={styles.skip}>
-        <Text style={styles.skipText}>Skip tour</Text>
-      </Pressable>
-    </ScrollView>
+        )}
+      </TourFrame>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll: { flex: 1, backgroundColor: colors.bg },
-  container: {
-    flexGrow: 1,
-    backgroundColor: colors.bg,
-    padding: 24,
-    justifyContent: "center",
-    paddingBottom: 40,
-  },
+  flex: { flex: 1, backgroundColor: colors.bg },
   centered: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: colors.bg,
   },
-  kicker: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: colors.primary,
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-    marginBottom: 6,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: "700",
-    color: colors.text,
-    letterSpacing: -0.6,
-  },
-  lead: {
-    fontSize: 16,
-    lineHeight: 24,
-    color: colors.text,
-    marginTop: 12,
-    marginBottom: 20,
-  },
-  dobField: { marginBottom: 16 },
   gap: { height: 10 },
   error: { color: colors.error, marginBottom: 12 },
-  skip: { alignItems: "center", marginTop: 16, padding: 8 },
-  skipText: { fontSize: 15, fontWeight: "600", color: colors.textMuted },
 });
