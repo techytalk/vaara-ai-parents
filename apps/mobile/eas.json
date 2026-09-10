@@ -60,6 +60,7 @@
     "production": {
       "channel": "production",
       "distribution": "store",
+      "environment": "production",
       "env": {
         "EXPO_PUBLIC_API_URL": "https://api.vaara.ai",
         "EXPO_PUBLIC_REALTIME_URL": "wss://vaara-realtime.fly.dev/ws",
