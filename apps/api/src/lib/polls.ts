@@ -90,7 +90,7 @@ export async function loadPostPolls(
   client: PoolClient,
   postIds: string[],
   viewerId: string,
-  circleMemberCount: number,
+  _circleMemberCount: number,
   viewerOptions?: { revealHiddenResults?: boolean }
 ): Promise<Map<string, PollView>> {
   const result = new Map<string, PollView>();
@@ -140,14 +140,12 @@ export async function loadPostPolls(
     );
     const myOptionId = myVoteByPoll.get(poll.id) ?? null;
     const hideUntilVote = poll.results_hidden_until_vote as boolean;
-    const smallCircle = circleMemberCount < 5;
-    const belowThreshold = totalVotes < 5;
+    // Social-app style: once you vote (or results aren't vote-gated),
+    // show the real percentage split — no minimum vote count.
     const resultsVisible =
-      !smallCircle &&
-      !belowThreshold &&
-      (!hideUntilVote ||
-        myOptionId !== null ||
-        Boolean(viewerOptions?.revealHiddenResults));
+      myOptionId !== null ||
+      Boolean(viewerOptions?.revealHiddenResults) ||
+      (!hideUntilVote && totalVotes > 0);
 
     result.set(poll.post_id, {
       id: poll.id,
@@ -192,11 +190,17 @@ export async function castPollVote(
   );
   if (optionResult.rows.length === 0) return "Invalid poll option";
 
+  const existing = await client.query(
+    `SELECT option_id FROM poll_votes WHERE poll_id = $1 AND user_id = $2`,
+    [params.pollId, params.userId]
+  );
+  if (existing.rows.length > 0) {
+    return "You already voted in this poll";
+  }
+
   await client.query(
     `INSERT INTO poll_votes (poll_id, user_id, option_id)
-     VALUES ($1, $2, $3)
-     ON CONFLICT (poll_id, user_id)
-     DO UPDATE SET option_id = EXCLUDED.option_id, updated_at = now()`,
+     VALUES ($1, $2, $3)`,
     [params.pollId, params.userId, params.optionId]
   );
   return null;

@@ -192,6 +192,34 @@ export function PostMediaGallery({
   );
 }
 
+/** Split votes into percentages that always sum to 100. */
+export function pollPercentages(
+  options: Array<{ id: string; voteCount: number }>,
+  totalVotes: number
+): Record<string, number> {
+  if (totalVotes <= 0 || options.length === 0) {
+    return Object.fromEntries(options.map((option) => [option.id, 0]));
+  }
+
+  const exact = options.map((option) => ({
+    id: option.id,
+    value: (option.voteCount / totalVotes) * 100,
+  }));
+  const floors = exact.map((item) => ({
+    id: item.id,
+    pct: Math.floor(item.value),
+    frac: item.value - Math.floor(item.value),
+  }));
+  let remaining = 100 - floors.reduce((sum, item) => sum + item.pct, 0);
+  const byFrac = [...floors].sort((a, b) => b.frac - a.frac);
+  for (const item of byFrac) {
+    if (remaining <= 0) break;
+    item.pct += 1;
+    remaining -= 1;
+  }
+  return Object.fromEntries(floors.map((item) => [item.id, item.pct]));
+}
+
 export function PollCard({
   poll,
   onVote,
@@ -201,27 +229,48 @@ export function PollCard({
   onVote?: (optionId: string) => void;
   compact?: boolean;
 }) {
-  const maxVotes = Math.max(...poll.options.map((o) => o.voteCount), 1);
+  const hasVoted = Boolean(poll.myOptionId);
+  const canVote = Boolean(onVote) && !hasVoted;
+  // Reveal the split as soon as you've voted. If production API still
+  // zeros counts until a threshold, treat your choice as 100% for now.
+  const showResults = poll.resultsVisible || hasVoted;
+  const options = poll.options.map((option) => {
+    if (poll.resultsVisible || !hasVoted) return option;
+    if (poll.totalVotes > 0) return option;
+    return {
+      ...option,
+      voteCount: option.id === poll.myOptionId ? 1 : 0,
+    };
+  });
+  const totalVotes = Math.max(
+    poll.resultsVisible ? poll.totalVotes : 0,
+    options.reduce((sum, option) => sum + option.voteCount, 0),
+    hasVoted ? 1 : 0
+  );
+  const pctById = pollPercentages(options, totalVotes);
 
   return (
     <View style={[styles.pollCard, compact && styles.pollCardCompact]}>
       <Text style={styles.pollQuestion}>{poll.question}</Text>
-      {poll.options.map((option) => {
+      {options.map((option) => {
         const selected = poll.myOptionId === option.id;
-        const widthPct = poll.resultsVisible
-          ? Math.max((option.voteCount / maxVotes) * 100, selected ? 8 : 0)
-          : 0;
+        const pct = showResults ? pctById[option.id] ?? 0 : 0;
+        const widthPct = showResults ? Math.max(pct, selected ? 8 : 0) : 0;
         return (
           <Pressable
             key={option.id}
             style={[
               styles.pollOption,
               selected && styles.pollOptionSelected,
+              hasVoted && !selected && styles.pollOptionLocked,
             ]}
-            onPress={() => onVote?.(option.id)}
-            disabled={!onVote}
+            onPress={() => {
+              if (!canVote) return;
+              onVote?.(option.id);
+            }}
+            disabled={!canVote}
           >
-            {poll.resultsVisible ? (
+            {showResults ? (
               <View
                 style={[styles.pollBar, { width: `${widthPct}%` }]}
               />
@@ -234,18 +283,18 @@ export function PollCard({
             >
               {option.label}
             </Text>
-            {poll.resultsVisible ? (
-              <Text style={styles.pollCount}>{option.voteCount}</Text>
+            {showResults ? (
+              <Text style={styles.pollCount}>{pct}%</Text>
             ) : null}
           </Pressable>
         );
       })}
       <Text style={styles.pollMeta}>
-        {poll.resultsVisible
-          ? `${poll.totalVotes} vote${poll.totalVotes === 1 ? "" : "s"}`
-          : poll.myOptionId
-            ? "Results appear after more parents vote"
-            : "Tap to vote — results may stay hidden in small circles"}
+        {showResults
+          ? hasVoted
+            ? "Your vote is locked"
+            : "Poll results"
+          : "Tap an option to vote — you can’t change it later"}
       </Text>
     </View>
   );
@@ -562,6 +611,9 @@ const styles = StyleSheet.create({
   pollOptionSelected: {
     borderColor: theme.primary,
     backgroundColor: theme.primarySoft,
+  },
+  pollOptionLocked: {
+    opacity: 0.85,
   },
   pollBar: {
     position: "absolute",

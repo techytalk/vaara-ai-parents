@@ -537,9 +537,26 @@ export default function NewPostScreen() {
   useLayoutEffect(() => {
     navigation.setOptions({
       title: isEditing ? "Edit post" : "New post",
+      headerLeft: () => (
+        <Pressable
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace("/(app)" as never);
+            }
+          }}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          style={styles.headerBack}
+        >
+          <Ionicons name="chevron-back" size={28} color={theme.text} />
+        </Pressable>
+      ),
       headerRight: () => null,
     });
-  }, [navigation, isEditing]);
+  }, [navigation, isEditing, router]);
 
   const primaryCircle = circles.find((circle) => circle.id === circleId);
   const audienceLabel = audienceSummary({
@@ -1027,6 +1044,7 @@ function ToolbarButton({
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: theme.bg },
+  headerBack: { marginLeft: 4, paddingRight: 4 },
   container: { flex: 1, backgroundColor: theme.bg },
 
   submitBtn: {
