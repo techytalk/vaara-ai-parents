@@ -1,5 +1,5 @@
 {
-  "installCommand": "cd ../.. && npm install --include=optional",
+  "installCommand": "cd ../.. && rm -rf node_modules && npm install --include=optional --foreground-scripts",
   "buildCommand": "cd ../.. && npm run build:web",
   "outputDirectory": "dist",
   "rewrites": [
