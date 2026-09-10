@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Link, useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { SocialAuthSection } from "@/components/SocialAuthSection";
 import { AuthPitchStrip } from "@/components/AuthPitchStrip";
 import { LegalFooter } from "@/components/LegalFooter";
@@ -74,7 +75,7 @@ export default function RegisterScreen() {
   const displayError = error ?? googleError;
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={["bottom", "left", "right"]}>
       <KeyboardAvoidingView
         style={styles.safe}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -82,12 +83,23 @@ export default function RegisterScreen() {
         <ScrollView
           contentContainerStyle={styles.container}
           keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
           <VaaraLogo compact />
+
           <View style={styles.heading}>
-            <Text style={styles.title}>Join Vaara</Text>
-            <Text style={styles.subtitle}>
-              Parents from the same school, class and locality.
+            <Text style={styles.kicker}>
+              {role === "parent" ? "New to Vaara" : "For schools & trainers"}
+            </Text>
+            <Text style={styles.title}>
+              {role === "parent"
+                ? "Create your parent account"
+                : "Create your school, trainer or institution account"}
+            </Text>
+            <Text style={styles.lead}>
+              {role === "parent"
+                ? "Free for parents. Join circles from your child’s school, class and locality."
+                : "For teachers, schools, trainers and institutions. You’ll add your organisation after sign-up."}
             </Text>
           </View>
 
@@ -96,12 +108,12 @@ export default function RegisterScreen() {
             onError={setGoogleError}
             role={role}
             displayName={displayName}
-            googleLabel="Continue with Google"
+            googleLabel="Sign up with Google"
             appleButtonType="signUp"
           />
 
           {showEmail ? (
-            <>
+            <View style={styles.emailForm}>
               <Text style={styles.label}>Your name (kept private)</Text>
               <TextInput
                 style={styles.input}
@@ -144,7 +156,17 @@ export default function RegisterScreen() {
                 disabled={!email.trim() || password.length < 8}
                 style={styles.button}
               />
-            </>
+
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setShowEmail(false)}
+                style={styles.quietLink}
+              >
+                <Text style={styles.quietLinkText}>
+                  Use Apple or Google instead
+                </Text>
+              </Pressable>
+            </View>
           ) : (
             <>
               {displayError ? <InlineError message={displayError} /> : null}
@@ -154,38 +176,45 @@ export default function RegisterScreen() {
                   trackEvent("signup_method_selected", { method: "email" });
                   setShowEmail(true);
                 }}
-                style={styles.emailToggle}
+                style={styles.emailButton}
               >
-                <Text style={styles.emailToggleText}>Use email instead</Text>
+                <Ionicons name="mail-outline" size={18} color={colors.text} />
+                <Text style={styles.emailButtonText}>Sign up with email</Text>
               </Pressable>
             </>
           )}
 
-          <Link href="/(auth)/login" style={styles.link}>
-            Already have an account? Log in
-          </Link>
+          <View style={styles.meta}>
+            <Link href="/(auth)/login" asChild>
+              <Pressable accessibilityRole="link" style={styles.loginRow}>
+                <Text style={styles.loginMuted}>Already have an account?</Text>
+                <Text style={styles.loginAction}> Sign in</Text>
+              </Pressable>
+            </Link>
+          </View>
 
           {role === "parent" ? (
             <Pressable
               accessibilityRole="button"
               onPress={() => setRole("provider")}
-              style={styles.providerLink}
+              style={styles.providerRow}
             >
-              <Text style={styles.providerLinkText}>
-                I&apos;m a teacher or school
+              <Ionicons name="school-outline" size={18} color={colors.primaryDark} />
+              <Text style={styles.providerRowText}>
+                I&apos;m a teacher, school or trainer
               </Text>
             </Pressable>
           ) : (
-            <View style={styles.providerNote}>
-              <Text style={styles.providerNoteText}>
-                Signing up as a teacher or institution. You&apos;ll add your
-                organisation next.
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setRole("parent")}
+              style={styles.providerRow}
+            >
+              <Ionicons name="people-outline" size={18} color={colors.primaryDark} />
+              <Text style={styles.providerRowText}>
+                I&apos;m a parent
               </Text>
-              <Pressable onPress={() => setRole("parent")}>
-                <Text style={styles.providerLinkText}>Join as a parent instead</Text>
-              </Pressable>
-            </View>
-          )}
+            </Pressable>          )}
 
           <AuthPitchStrip />
           <LegalFooter extra="Your real name stays private in circles." />
@@ -199,21 +228,43 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   container: {
     flexGrow: 1,
-    padding: spacing.xl,
-    paddingTop: spacing.lg,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.lg,
   },
-  heading: { marginTop: spacing.xl, marginBottom: spacing.lg },
+  heading: {
+    marginTop: spacing.lg,
+    marginBottom: spacing.lg,
+  },
+  kicker: {
+    ...typography.caption,
+    fontFamily: typography.bold,
+    color: colors.primaryDark,
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    marginBottom: 6,
+  },
   title: {
     ...typography.display,
     fontFamily: typography.bold,
     color: colors.text,
-    letterSpacing: -1,
+    letterSpacing: -0.8,
   },
-  subtitle: {
+  lead: {
     ...typography.body,
     color: colors.textMuted,
     fontFamily: typography.regular,
     marginTop: spacing.xs,
+    lineHeight: 22,
+  },
+  emailForm: {
+    marginTop: spacing.xs,
+  },
+  label: {
+    ...typography.supporting,
+    color: colors.text,
+    fontFamily: typography.semibold,
+    marginBottom: 6,
   },
   input: {
     minHeight: 50,
@@ -227,50 +278,103 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontFamily: typography.regular,
   },
-  button: { marginTop: spacing.md },
-  link: {
-    marginTop: spacing.lg,
-    textAlign: "center",
-    color: colors.primaryDark,
+  button: { marginTop: spacing.sm },
+  meta: {
+    marginTop: spacing.xl,
+    alignItems: "center",
+  },
+  emailButton: {
+    minHeight: 50,
+    marginTop: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+  },
+  emailButtonText: {
+    color: colors.text,
     fontSize: 15,
     fontFamily: typography.semibold,
   },
-  label: {
-    ...typography.supporting,
-    color: colors.text,
-    fontFamily: typography.semibold,
-    marginBottom: 6,
-  },
-  emailToggle: {
-    minHeight: 48,
+  quietLink: {
+    minHeight: 40,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: spacing.sm,
+    marginTop: spacing.xs,
   },
-  emailToggleText: {
+  quietLinkText: {
+    ...typography.supporting,
+    color: colors.textMuted,
+    fontFamily: typography.medium,
+  },
+  loginRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    minHeight: 44,
+  },
+  loginMuted: {
+    ...typography.body,
+    color: colors.textMuted,
+    fontFamily: typography.regular,
+  },
+  loginAction: {
+    ...typography.body,
+    color: colors.primaryDark,
+    fontFamily: typography.bold,
+  },
+  providerRow: {
+    marginTop: spacing.lg,
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: colors.primarySoft,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.md,
+  },
+  providerRowText: {
     ...typography.body,
     color: colors.primaryDark,
     fontFamily: typography.semibold,
   },
-  providerLink: {
-    marginTop: spacing.sm,
-    alignItems: "center",
-  },
-  providerLinkText: {
-    ...typography.supporting,
-    color: colors.textMuted,
-    fontFamily: typography.medium,
-    textAlign: "center",
-  },
   providerNote: {
-    marginTop: spacing.sm,
-    alignItems: "center",
+    marginTop: spacing.lg,
     gap: spacing.xs,
+    backgroundColor: colors.primarySoft,
+    borderRadius: radii.md,
+    padding: spacing.md,
+  },
+  providerNoteHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  providerNoteTitle: {
+    ...typography.body,
+    color: colors.primaryDark,
+    fontFamily: typography.bold,
+    textAlign: "center",
   },
   providerNoteText: {
     ...typography.supporting,
-    color: colors.textMuted,
+    color: colors.primaryDark,
     fontFamily: typography.regular,
+    textAlign: "center",
+  },
+  providerSwitchHit: {
+    minHeight: 40,
+    justifyContent: "center",
+  },
+  providerSwitch: {
+    ...typography.body,
+    color: colors.primaryDark,
+    fontFamily: typography.bold,
     textAlign: "center",
   },
 });

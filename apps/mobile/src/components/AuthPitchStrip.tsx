@@ -8,33 +8,36 @@ import {
   View,
   type ViewToken,
 } from "react-native";
-import { colors, radii, spacing, typography } from "@/constants/theme";
+import { Ionicons } from "@expo/vector-icons";
+import { colors, radii, shadows, spacing, typography } from "@/constants/theme";
 
 const slides = [
   {
     key: "circles",
-    title: "Same school, class and locality",
-    body: "Automatically join circles with parents from your child's school and neighbourhood.",
-  },
-  {
-    key: "tutors",
-    title: "Verified tutors nearby",
-    body: "Discover reviewed teachers, trainers and institutions serving your area.",
+    icon: "people-outline" as const,
+    tint: colors.teal,
+    title: "School and class circles",
+    body: "Meet parents from your child’s school, class and neighbourhood.",
   },
   {
     key: "curriculum",
+    icon: "library-outline" as const,
+    tint: colors.amber,
     title: "Advice from the same board",
-    body: "Hear from IB, IGCSE, CBSE and Cambridge parents making the same decisions.",
+    body: "Hear from IB, CBSE, IGCSE and Cambridge parents facing the same choices.",
   },
   {
     key: "community",
-    title: "One safe parent community",
-    body: "Discussions, activities, marketplace and polls — without exposing your family.",
+    icon: "shield-checkmark-outline" as const,
+    tint: colors.coral,
+    title: "Ask anything, stay private",
+    body: "Questions and local tips — without sharing your real name.",
   },
 ] as const;
 
 export function AuthPitchStrip() {
   const { width } = useWindowDimensions();
+  const listRef = useRef<FlatList<(typeof slides)[number]>>(null);
   const [page, setPage] = useState(0);
   const slideWidth = Math.max(width - spacing.xl * 2, 240);
   const onViewableItemsChanged = useRef(
@@ -47,6 +50,7 @@ export function AuthPitchStrip() {
   return (
     <View style={styles.wrap}>
       <FlatList
+        ref={listRef}
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
@@ -60,18 +64,30 @@ export function AuthPitchStrip() {
           index,
         })}
         renderItem={({ item }) => (
-          <Pressable style={[styles.slide, { width: slideWidth }]}>
-            <Text style={styles.title}>{item.title}</Text>
-            <Text style={styles.body}>{item.body}</Text>
-          </Pressable>
+          <View style={[styles.slide, { width: slideWidth }]}>
+            <View style={[styles.iconWrap, { backgroundColor: `${item.tint}18` }]}>
+              <Ionicons name={item.icon} size={22} color={item.tint} />
+            </View>
+            <View style={styles.copy}>
+              <Text style={styles.title}>{item.title}</Text>
+              <Text style={styles.body}>{item.body}</Text>
+            </View>
+          </View>
         )}
       />
       <View style={styles.dots}>
         {slides.map((slide, index) => (
-          <View
+          <Pressable
             key={slide.key}
-            style={[styles.dot, index === page && styles.dotActive]}
-          />
+            accessibilityRole="button"
+            accessibilityLabel={`Pitch ${index + 1} of ${slides.length}`}
+            onPress={() => {
+              setPage(index);
+              listRef.current?.scrollToIndex({ index, animated: true });
+            }}
+          >
+            <View style={[styles.dot, index === page && styles.dotActive]} />
+          </Pressable>
         ))}
       </View>
     </View>
@@ -80,29 +96,40 @@ export function AuthPitchStrip() {
 
 const styles = StyleSheet.create({
   wrap: {
-    marginTop: spacing.xl,
-    marginBottom: spacing.md,
+    marginTop: spacing.md,
   },
   slide: {
-    backgroundColor: colors.primarySoft,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    backgroundColor: colors.card,
     borderRadius: radii.lg,
     borderWidth: 1,
-    borderColor: colors.primaryLight,
+    borderColor: colors.border,
     padding: spacing.md,
-    minHeight: 108,
+    minHeight: 96,
+    ...shadows.card,
+  },
+  iconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: "center",
     justifyContent: "center",
   },
+  copy: { flex: 1 },
   title: {
     ...typography.supporting,
     fontFamily: typography.bold,
-    color: colors.primaryDark,
+    color: colors.text,
+    fontSize: 15,
   },
   body: {
     ...typography.supporting,
     color: colors.textMuted,
     fontFamily: typography.regular,
-    marginTop: spacing.xs,
-    lineHeight: 20,
+    marginTop: 4,
+    lineHeight: 19,
   },
   dots: {
     flexDirection: "row",

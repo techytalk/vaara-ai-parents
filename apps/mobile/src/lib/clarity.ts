@@ -1,5 +1,5 @@
 import Constants from "expo-constants";
-import { Platform } from "react-native";
+import { NativeModules, Platform } from "react-native";
 import type { AuthUser } from "./api";
 
 /** Add `#clarity-mask` in Clarity → Settings → Masking. */
@@ -29,6 +29,13 @@ function projectId(): string {
 async function loadSdk(): Promise<ClaritySdk | null> {
   if (sdk !== undefined) return sdk;
   if (Platform.OS !== "ios" && Platform.OS !== "android") {
+    sdk = null;
+    return null;
+  }
+  // The Clarity package constructs NativeEventEmitter(ClarityEmitter) at
+  // import time. Skip entirely when the native module is missing (simulator
+  // builds that predate the pod, or Expo Go).
+  if (!NativeModules.Clarity || !NativeModules.ClarityEmitter) {
     sdk = null;
     return null;
   }

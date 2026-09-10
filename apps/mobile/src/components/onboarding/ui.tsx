@@ -8,10 +8,13 @@ import {
   View,
   type ViewStyle,
 } from "react-native";
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
+import { Ionicons } from "@expo/vector-icons";
 import { colors, radii, typography } from "@/constants/theme";
 
 export { colors };
+
+type IoniconName = ComponentProps<typeof Ionicons>["name"];
 
 export function OnboardingHeader({
   title,
@@ -33,6 +36,33 @@ export function OnboardingHeader({
       ) : null}
       <Text style={headerStyles.title}>{title}</Text>
       {subtitle ? <Text style={headerStyles.subtitle}>{subtitle}</Text> : null}
+    </View>
+  );
+}
+
+export function OnboardingPayoff({
+  title,
+  body,
+  primaryIcon,
+  secondaryIcon,
+}: {
+  title: string;
+  body: string;
+  primaryIcon: IoniconName;
+  secondaryIcon: IoniconName;
+}) {
+  return (
+    <View style={payoffStyles.hero}>
+      <View style={payoffStyles.heroIcons}>
+        <View style={payoffStyles.heroIconLg}>
+          <Ionicons name={primaryIcon} size={28} color={colors.primary} />
+        </View>
+        <View style={payoffStyles.heroIconSm}>
+          <Ionicons name={secondaryIcon} size={16} color={colors.accent} />
+        </View>
+      </View>
+      <Text style={payoffStyles.heroTitle}>{title}</Text>
+      <Text style={payoffStyles.heroBody}>{body}</Text>
     </View>
   );
 }
@@ -165,6 +195,53 @@ const headerStyles = StyleSheet.create({
     lineHeight: 22,
     color: colors.textMuted,
     fontFamily: typography.regular,
+    marginTop: 8,
+  },
+});
+
+const payoffStyles = StyleSheet.create({
+  hero: {
+    backgroundColor: colors.primarySoft,
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: colors.primaryLight,
+  },
+  heroIcons: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    marginBottom: 14,
+  },
+  heroIconLg: {
+    width: 56,
+    height: 56,
+    borderRadius: 18,
+    backgroundColor: colors.card,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  heroIconSm: {
+    width: 32,
+    height: 32,
+    borderRadius: 12,
+    backgroundColor: colors.accentLight,
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: -8,
+    marginBottom: -2,
+  },
+  heroTitle: {
+    fontSize: 24,
+    lineHeight: 30,
+    fontWeight: "800",
+    color: colors.text,
+    letterSpacing: -0.4,
+  },
+  heroBody: {
+    fontSize: 15,
+    lineHeight: 21,
+    color: colors.textMuted,
     marginTop: 8,
   },
 });

@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { Tabs, useRouter } from "expo-router";
-import * as Notifications from "expo-notifications";
+import * as Device from "expo-device";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, tabBarStyleForInsets, typography } from "@/constants/theme";
 import { useBottomChromeInset } from "@/hooks/useBottomChromeInset";
@@ -20,6 +20,15 @@ export default function AppLayout() {
 
   useEffect(() => {
     const stopPushRegistration = setupPushNotifications();
+
+    if (!Device.isDevice) {
+      return () => {
+        stopPushRegistration();
+      };
+    }
+
+    let cancelled = false;
+    let subscription: { remove?: () => void } | undefined;
 
     function openNotification(data: Record<string, unknown>) {
       const type = String(data.type ?? "");
@@ -50,21 +59,32 @@ export default function AppLayout() {
       }
     }
 
-    const subscription =
-      Notifications.addNotificationResponseReceivedListener((response) => {
-        openNotification(response.notification.request.content.data);
-      });
-    Notifications.getLastNotificationResponseAsync()
-      .then((response) => {
-        if (response) {
-          openNotification(response.notification.request.content.data);
+    void import("expo-notifications")
+      .then((Notifications) => {
+        if (cancelled) return;
+        try {
+          subscription = Notifications.addNotificationResponseReceivedListener(
+            (response) => {
+              openNotification(response.notification.request.content.data);
+            }
+          );
+          return Notifications.getLastNotificationResponseAsync().then(
+            (response) => {
+              if (response) {
+                openNotification(response.notification.request.content.data);
+              }
+            }
+          );
+        } catch {
+          // Incomplete native binaries can throw NativeEventEmitter errors.
         }
       })
       .catch(() => {});
 
     return () => {
+      cancelled = true;
       stopPushRegistration();
-      subscription.remove();
+      subscription?.remove?.();
     };
   }, [router]);
 

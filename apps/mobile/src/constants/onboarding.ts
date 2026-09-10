@@ -15,7 +15,7 @@ export const GENDER_LABEL: Record<string, string> = {
 };
 
 export function sortCurricula(curricula: Curriculum[]): Curriculum[] {
-  const order = ["CBSE", "SSC", "IGCSE", "IBDP", "IB_MYP", "IB_PYP"];
+  const order = ["CBSE", "SSC", "IGCSE", "IB_PYP", "IB_MYP", "IBDP"];
   return [...curricula].sort((a, b) => {
     const ai = order.indexOf(a.code);
     const bi = order.indexOf(b.code);
@@ -66,12 +66,9 @@ export function pickGradeForCurriculum(
   return toCur.grades[0]?.id ?? null;
 }
 
-/** True if curriculum only offers classes up to ~grade 5 (IB PYP, etc.). */
+/** True if this board only covers early years (up to about grade 5). */
 export function isLimitedCurriculum(curriculum: Curriculum): boolean {
-  const hasG12 = curriculum.grades.some(
-    (g) => g.code === "G12" || /grade\s*12/i.test(g.label)
-  );
-  return !hasG12 && curriculum.grades.length <= 8;
+  return curriculum.code === "IB_PYP";
 }
 
 export function curriculumChipLabel(curriculum: Curriculum): string {

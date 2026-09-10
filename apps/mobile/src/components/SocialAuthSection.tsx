@@ -1,10 +1,8 @@
 import { useEffect, useState } from "react";
-import { Platform } from "react-native";
+import { View } from "react-native";
 import { AppleAuthSection } from "@/components/AppleAuthSection";
 import { GoogleAuthSection } from "@/components/GoogleAuthSection";
-import { AuthDivider } from "@/components/GoogleSignInButton";
 import { api } from "@/lib/api";
-import { isGoogleSignInConfigured } from "@/constants/google-auth";
 
 type SocialAuthSectionProps = {
   onSuccess: (
@@ -28,14 +26,13 @@ export function SocialAuthSection({
 }: SocialAuthSectionProps) {
   const [appleError, setAppleError] = useState<string | null>(null);
   const [googleError, setGoogleError] = useState<string | null>(null);
-  const showGoogle = isGoogleSignInConfigured();
 
   useEffect(() => {
     onError?.(appleError ?? googleError);
   }, [appleError, googleError, onError]);
 
   return (
-    <>
+    <View style={{ gap: 10 }}>
       <AppleAuthSection
         onSuccess={(result) => onSuccess(result, "apple")}
         onError={setAppleError}
@@ -51,7 +48,6 @@ export function SocialAuthSection({
         label={googleLabel}
         showDivider={false}
       />
-      {showGoogle || Platform.OS === "ios" ? <AuthDivider /> : null}
-    </>
+    </View>
   );
 }

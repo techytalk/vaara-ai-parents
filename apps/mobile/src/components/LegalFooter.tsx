@@ -40,7 +40,7 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontFamily: typography.medium,
     textAlign: "center",
-    marginTop: spacing.xl,
+    marginTop: spacing.md,
   },
   link: {
     color: colors.primaryDark,

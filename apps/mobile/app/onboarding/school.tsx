@@ -8,8 +8,9 @@ import { setOnboardingSchool } from "@/lib/onboarding-draft";
 import { SchoolPicker } from "@/components/onboarding/SchoolPicker";
 import {
   colors,
-  OnboardingHeader,
+  OnboardingPayoff,
   PrimaryButton,
+  SecondaryButton,
 } from "@/components/onboarding/ui";
 import { SignOutButton } from "@/components/SignOutButton";
 
@@ -22,6 +23,7 @@ export default function OnboardingSchoolScreen() {
   const [defaultState, setDefaultState] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [addingSchool, setAddingSchool] = useState(false);
 
   useEffect(() => {
     getToken().then(async (t) => {
@@ -71,12 +73,14 @@ export default function OnboardingSchoolScreen() {
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
     >
-      <OnboardingHeader
-        step={2}
-        totalSteps={3}
-        title="Where does your child go to school?"
-        subtitle="Connect with every parent at your child's school and branch."
+      <Text style={styles.step}>Step 2 of 3</Text>
+      <OnboardingPayoff
+        primaryIcon="school"
+        secondaryIcon="people"
+        title="Connect with every parent at your child's school and branch"
+        body="Pick the school so we can place you in the right parent circle — not a public directory."
       />
+      <Text style={styles.formTitle}>Where does your child go to school?</Text>
 
       <SchoolPicker
         token={token}
@@ -85,14 +89,21 @@ export default function OnboardingSchoolScreen() {
         defaultCity={defaultCity}
         defaultPin={defaultPin}
         defaultState={defaultState}
+        onCreateModeChange={setAddingSchool}
       />
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      <PrimaryButton
-        label="Continue"
-        onPress={onContinue}
-        disabled={!selectedSchool}
+      {!addingSchool ? (
+        <PrimaryButton
+          label="Continue"
+          onPress={onContinue}
+          disabled={!selectedSchool}
+        />
+      ) : null}
+      <SecondaryButton
+        label="Back"
+        onPress={() => router.replace("/onboarding/location" as never)}
       />
       <SignOutButton />
     </ScrollView>
@@ -102,6 +113,18 @@ export default function OnboardingSchoolScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 20, paddingBottom: 40 },
+  step: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: colors.primary,
+    marginBottom: 12,
+  },
+  formTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: colors.text,
+    marginBottom: 16,
+  },
   centered: { flex: 1, justifyContent: "center", alignItems: "center" },
   error: { color: colors.error, marginBottom: 8 },
 });

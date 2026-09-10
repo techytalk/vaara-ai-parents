@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  FlatList,
+  Modal,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -15,7 +18,8 @@ import {
   Chip,
   colors,
   FieldInput,
-  OnboardingHeader,
+  FieldLabel,
+  OnboardingPayoff,
   PrimaryButton,
 } from "@/components/onboarding/ui";
 import { SignOutButton } from "@/components/SignOutButton";
@@ -31,10 +35,15 @@ function isReadyForLookup(country: PostalCountry | null, postalCode: string): bo
   return value.length >= 3;
 }
 
+function countryLabel(country: PostalCountry) {
+  return country.code === "IN" ? "India" : country.name;
+}
+
 export default function LocationScreen() {
   const router = useRouter();
   const [countries, setCountries] = useState<PostalCountry[]>([]);
   const [countryCode, setCountryCode] = useState("IN");
+  const [countryOpen, setCountryOpen] = useState(false);
   const [pinCode, setPinCode] = useState("");
   const [locality, setLocality] = useState("");
   const [city, setCity] = useState("");
@@ -57,13 +66,20 @@ export default function LocationScreen() {
     [countries, countryCode]
   );
 
-  const featuredCountries = useMemo(() => {
+  const sortedCountries = useMemo(() => {
     const featured = FEATURED_COUNTRY_CODES.map((code) =>
       countries.find((country) => country.code === code)
     ).filter((country): country is PostalCountry => Boolean(country));
-    if (featured.length > 0) return featured;
-    return countries.slice(0, 8);
+    const featuredCodes = new Set(featured.map((country) => country.code));
+    const rest = countries
+      .filter((country) => !featuredCodes.has(country.code))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return featured.length > 0 ? [...featured, ...rest] : countries;
   }, [countries]);
+
+  const pinReady = isReadyForLookup(selectedCountry, pinCode);
+  const showAreaFields = pinReady;
+  const canContinue = pinReady && locality.trim().length > 0;
 
   useEffect(() => {
     Promise.all([
@@ -158,10 +174,32 @@ export default function LocationScreen() {
     return () => clearTimeout(timer);
   }, [pinCode, countryCode, selectedCountry]);
 
+  function resetArea() {
+    setLocality("");
+    setCity("");
+    setState("");
+    setLocalityOptions([]);
+    setCommunitySuggestions([]);
+    setLookupError(null);
+  }
+
+  function selectCountry(code: string) {
+    if (code !== countryCode) {
+      setPinCode("");
+      resetArea();
+    }
+    setCountryCode(code);
+    setCountryOpen(false);
+  }
+
   async function onFinish() {
     const postal = pinCode.trim();
     if (!postal) {
       setError(`${selectedCountry?.postalLabel ?? "Postal code"} is required`);
+      return;
+    }
+    if (!locality.trim()) {
+      setError("Select your locality / area to continue");
       return;
     }
 
@@ -221,7 +259,11 @@ export default function LocationScreen() {
 
   const postalLabel = selectedCountry?.postalLabel ?? "Postal code";
   const postalPlaceholder = selectedCountry?.placeholder ?? "Enter postal code";
-  const usesNumericPostal = countryCode === "IN" || countryCode === "US" || countryCode === "AU" || countryCode === "SG";
+  const usesNumericPostal =
+    countryCode === "IN" ||
+    countryCode === "US" ||
+    countryCode === "AU" ||
+    countryCode === "SG";
 
   return (
     <ScrollView
@@ -229,131 +271,130 @@ export default function LocationScreen() {
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
     >
-      <OnboardingHeader
-        step={alreadyComplete ? undefined : 1}
-        totalSteps={alreadyComplete ? undefined : 3}
-        title="Where do you live?"
-        subtitle="Meet parents in your neighbourhood."
+      {alreadyComplete ? null : (
+        <Text style={styles.step}>Step 1 of 3</Text>
+      )}
+
+      <OnboardingPayoff
+        primaryIcon="people"
+        secondaryIcon="home"
+        title="Connect with parents in your neighbourhood"
+        body="We use your PIN to find nearby parents — never your street address."
       />
 
-      <Text style={styles.privacy}>
-        Only your area is used, never your address.
-      </Text>
+      <Text style={styles.formTitle}>Where do you live?</Text>
 
-      <View style={styles.section}>
-        <View style={styles.sectionHead}>
-          <Ionicons name="earth-outline" size={18} color={colors.primary} />
-          <Text style={styles.sectionTitle}>Country</Text>
-        </View>
-        <View style={styles.chipRow}>
-          {featuredCountries.map((country) => (
-            <Chip
-              key={country.code}
-              label={country.code === "IN" ? "India" : country.name}
-              selected={countryCode === country.code}
-              onPress={() => {
-                if (country.code !== countryCode) {
-                  setPinCode("");
-                  setLocality("");
-                  setCity("");
-                  setState("");
-                  setLocalityOptions([]);
-                  setCommunitySuggestions([]);
-                  setLookupError(null);
-                }
-                setCountryCode(country.code);
-              }}
-            />
-          ))}
-        </View>
-      </View>
+      <FieldLabel>Country</FieldLabel>
+      <Pressable
+        style={styles.dropdown}
+        onPress={() => setCountryOpen(true)}
+        accessibilityRole="button"
+        accessibilityLabel="Choose country"
+      >
+        <Text style={styles.dropdownText}>
+          {selectedCountry ? countryLabel(selectedCountry) : "Select country"}
+        </Text>
+        <Ionicons name="chevron-down" size={20} color={colors.textMuted} />
+      </Pressable>
 
-      <View style={styles.section}>
-        <View style={styles.sectionHead}>
-          <Ionicons name="location-outline" size={18} color={colors.primary} />
-          <Text style={styles.sectionTitle}>Area & postal code</Text>
-        </View>
-
-        <FieldInput
-          label={postalLabel}
-          placeholder={postalPlaceholder}
-          keyboardType={usesNumericPostal ? "number-pad" : "default"}
-          autoCapitalize={usesNumericPostal ? "none" : "characters"}
-          value={pinCode}
-          onChangeText={(value) =>
-            setPinCode(
-              usesNumericPostal ? value.replace(/\D/g, "") : value.toUpperCase()
-            )
+      <FieldInput
+        label={postalLabel}
+        placeholder={postalPlaceholder}
+        keyboardType={usesNumericPostal ? "number-pad" : "default"}
+        autoCapitalize={usesNumericPostal ? "none" : "characters"}
+        value={pinCode}
+        onChangeText={(value) => {
+          const next = usesNumericPostal
+            ? value.replace(/\D/g, "")
+            : value.toUpperCase();
+          setPinCode(next);
+          if (!isReadyForLookup(selectedCountry, next)) {
+            resetArea();
           }
-        />
+        }}
+      />
 
-        {!selectedCountry?.lookupSupported ? (
-          <Text style={styles.manualHint}>
-            Postal lookup isn&apos;t available for this country yet. Enter your
-            city and state manually.
-          </Text>
-        ) : null}
+      {!pinReady && selectedCountry ? (
+        <Text style={styles.pinHint}>
+          Enter your {postalLabel.toLowerCase()} to see your area.
+        </Text>
+      ) : null}
 
-        {lookupLoading ? (
-          <View style={styles.lookupRow}>
-            <ActivityIndicator size="small" color={colors.primary} />
-            <Text style={styles.lookupText}>Looking up {postalLabel.toLowerCase()}…</Text>
-          </View>
-        ) : null}
-
-        {lookupError ? <Text style={styles.lookupError}>{lookupError}</Text> : null}
-
-        <FieldInput
-          label="Locality / area"
-          placeholder="e.g. Indiranagar, Koramangala"
-          value={locality}
-          onChangeText={setLocality}
-          hint={
-            localityOptions.length > 0
-              ? "Type your area or tap a suggestion below"
-              : undefined
-          }
-        />
-
-        {localityOptions.length > 0 ? (
-          <View style={styles.optionBlock}>
-            <Text style={styles.optionHint}>
-              {localityOptions.length > 1
-                ? "This pin code covers multiple areas — pick the one closest to you:"
-                : "Suggested area for this pin code:"}
+      {showAreaFields ? (
+        <View>
+          {!selectedCountry?.lookupSupported ? (
+            <Text style={styles.manualHint}>
+              Postal lookup isn&apos;t available for this country yet. Enter your
+              locality, city and state.
             </Text>
-            <View style={styles.chipRow}>
-              {localityOptions.map((option) => (
-                <Chip
-                  key={option}
-                  label={option}
-                  selected={locality === option}
-                  onPress={() => setLocality(option)}
-                />
-              ))}
+          ) : null}
+
+          {lookupLoading ? (
+            <View style={styles.lookupRow}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={styles.lookupText}>
+                Looking up {postalLabel.toLowerCase()}…
+              </Text>
             </View>
-          </View>
-        ) : null}
+          ) : null}
 
-        {(city || state || !selectedCountry?.lookupSupported) ? (
-          <>
-            <FieldInput
-              label="City"
-              placeholder="e.g. Bengaluru"
-              value={city}
-              onChangeText={setCity}
-            />
-            <FieldInput
-              label={countryCode === "US" ? "State" : "State / region"}
-              placeholder={countryCode === "US" ? "e.g. California" : "e.g. Karnataka"}
-              value={state}
-              onChangeText={setState}
-            />
-          </>
-        ) : null}
-      </View>
+          {lookupError ? <Text style={styles.lookupError}>{lookupError}</Text> : null}
 
-      {alreadyComplete ? (
+          {localityOptions.length > 0 ? (
+            <View style={styles.optionBlock}>
+              <FieldLabel>Locality / area *</FieldLabel>
+              <Text style={styles.optionHint}>
+                {localityOptions.length > 1
+                  ? "This pin covers more than one area — pick yours:"
+                  : "Suggested area for this pin:"}
+              </Text>
+              <View style={styles.chipRow}>
+                {localityOptions.map((option) => (
+                  <Chip
+                    key={option}
+                    label={option}
+                    selected={locality === option}
+                    onPress={() => setLocality(option)}
+                  />
+                ))}
+              </View>
+            </View>
+          ) : (
+            <FieldInput
+              label="Locality / area *"
+              placeholder="e.g. Indiranagar, Koramangala"
+              value={locality}
+              onChangeText={setLocality}
+            />
+          )}
+
+          {localityOptions.length > 0 ? (
+            <FieldInput
+              label="Or type a different area"
+              placeholder="e.g. Indiranagar"
+              value={
+                localityOptions.includes(locality) ? "" : locality
+              }
+              onChangeText={setLocality}
+            />
+          ) : null}
+
+          <FieldInput
+            label="City"
+            placeholder="e.g. Bengaluru"
+            value={city}
+            onChangeText={setCity}
+          />
+          <FieldInput
+            label={countryCode === "US" ? "State" : "State / region"}
+            placeholder={countryCode === "US" ? "e.g. California" : "e.g. Karnataka"}
+            value={state}
+            onChangeText={setState}
+          />
+        </View>
+      ) : null}
+
+      {alreadyComplete && showAreaFields ? (
         <View style={styles.section}>
           <View style={styles.sectionHead}>
             <Ionicons name="home-outline" size={18} color={colors.primary} />
@@ -388,14 +429,57 @@ export default function LocationScreen() {
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      <PrimaryButton
-        label={alreadyComplete ? "Save location" : "Continue"}
-        onPress={onFinish}
-        loading={loading}
-        disabled={!pinCode.trim()}
-      />
+      {canContinue ? (
+        <PrimaryButton
+          label={alreadyComplete ? "Save location" : "Continue"}
+          onPress={onFinish}
+          loading={loading}
+        />
+      ) : null}
 
       {alreadyComplete ? null : <SignOutButton />}
+
+      <Modal
+        visible={countryOpen}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setCountryOpen(false)}
+      >
+        <View style={styles.modal}>
+          <View style={styles.modalHead}>
+            <Text style={styles.modalTitle}>Country</Text>
+            <Pressable onPress={() => setCountryOpen(false)} accessibilityRole="button">
+              <Text style={styles.modalClose}>Done</Text>
+            </Pressable>
+          </View>
+          <FlatList
+            data={sortedCountries}
+            keyExtractor={(item) => item.code}
+            keyboardShouldPersistTaps="handled"
+            renderItem={({ item }) => (
+              <Pressable
+                style={[
+                  styles.countryRow,
+                  item.code === countryCode && styles.countryRowActive,
+                ]}
+                onPress={() => selectCountry(item.code)}
+              >
+                <Text
+                  style={[
+                    styles.countryName,
+                    item.code === countryCode && styles.countryNameActive,
+                  ]}
+                >
+                  {countryLabel(item)}
+                </Text>
+                {item.code === countryCode ? (
+                  <Ionicons name="checkmark" size={20} color={colors.primary} />
+                ) : null}
+              </Pressable>
+            )}
+          />
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -403,12 +487,42 @@ export default function LocationScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 20, paddingBottom: 40 },
-  privacy: {
-    fontSize: 14,
-    lineHeight: 20,
+  step: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: colors.primary,
+    marginBottom: 12,
+  },
+  formTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: colors.text,
+    marginBottom: 16,
+  },
+  dropdown: {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 16,
+  },
+  dropdownText: {
+    fontSize: 16,
+    color: colors.text,
+    flex: 1,
+    marginRight: 8,
+  },
+  pinHint: {
+    fontSize: 13,
+    lineHeight: 18,
     color: colors.textMuted,
     marginTop: -8,
-    marginBottom: 16,
+    marginBottom: 8,
   },
   section: { marginBottom: 8 },
   sectionHead: {
@@ -465,4 +579,48 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg,
   },
   loadingText: { color: colors.textMuted, fontSize: 15 },
+  modal: {
+    flex: 1,
+    backgroundColor: colors.bg,
+    paddingTop: 16,
+  },
+  modalHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  modalClose: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: colors.primary,
+  },
+  countryRow: {
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  countryRowActive: {
+    backgroundColor: colors.primarySoft,
+  },
+  countryName: {
+    fontSize: 16,
+    color: colors.text,
+  },
+  countryNameActive: {
+    fontWeight: "700",
+    color: colors.primaryDark,
+  },
 });

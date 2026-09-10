@@ -42,6 +42,7 @@ const MIGRATIONS = [
   { version: "034_post_media_document_enum", file: "034_post_media_document_enum.sql" },
   { version: "035_post_document_media", file: "035_post_document_media.sql" },
   { version: "036_apple_auth", file: "036_apple_auth.sql" },
+  { version: "037_child_nickname_optional", file: "037_child_nickname_optional.sql" },
 ];
 
 async function isMigrationApplied(

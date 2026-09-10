@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -21,26 +21,11 @@ import {
   colors,
   FieldLabel,
   InfoCard,
-  OnboardingHeader,
+  OnboardingPayoff,
   PrimaryButton,
+  SecondaryButton,
 } from "@/components/onboarding/ui";
 import { SignOutButton } from "@/components/SignOutButton";
-
-/**
- * Boards the school is recorded as offering come first, but every board stays
- * selectable — incomplete or wrong `board_codes` must never hide the board a
- * parent's child actually studies.
- */
-function orderCurriculaForSchool(
-  curricula: Curriculum[],
-  school: School | null
-): Curriculum[] {
-  const codes = school?.boardCodes ?? [];
-  if (codes.length === 0) return curricula;
-  const known = curricula.filter((item) => codes.includes(item.code));
-  if (known.length === 0) return curricula;
-  return [...known, ...curricula.filter((item) => !codes.includes(item.code))];
-}
 
 export default function OnboardingClassScreen() {
   const router = useRouter();
@@ -78,12 +63,7 @@ export default function OnboardingClassScreen() {
     });
   }, [router]);
 
-  const visibleCurricula = useMemo(
-    () => orderCurriculaForSchool(curricula, school),
-    [curricula, school]
-  );
-  const selectedCurriculum = visibleCurricula.find((c) => c.id === curriculumId);
-  const hasKnownBoards = (school?.boardCodes?.length ?? 0) > 0;
+  const selectedCurriculum = curricula.find((c) => c.id === curriculumId);
 
   async function onFinish() {
     if (!token || !school || !curriculumId || !gradeId) return;
@@ -127,21 +107,18 @@ export default function OnboardingClassScreen() {
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
     >
-      <OnboardingHeader
-        step={3}
-        totalSteps={3}
-        title="Board and class"
-        subtitle="Pick the board and class so we can place you with the right parents."
+      <Text style={styles.step}>Step 3 of 3</Text>
+      <OnboardingPayoff
+        primaryIcon="library"
+        secondaryIcon="people"
+        title="Place you with the right parents"
+        body="Pick the board and class so we can put you in the same circle as parents whose children study the same way."
       />
+      <Text style={styles.formTitle}>Board and class</Text>
 
       <FieldLabel>Board</FieldLabel>
-      {hasKnownBoards ? (
-        <Text style={styles.hint}>
-          Boards {school?.name} is known to offer appear first.
-        </Text>
-      ) : null}
       <View style={styles.chipRow}>
-        {visibleCurricula.map((item) => (
+        {curricula.map((item) => (
           <Chip
             key={item.id}
             label={curriculumChipLabel(item)}
@@ -201,6 +178,10 @@ export default function OnboardingClassScreen() {
         loading={submitting}
         disabled={!canContinue}
       />
+      <SecondaryButton
+        label="Back"
+        onPress={() => router.replace("/onboarding/school" as never)}
+      />
       <SignOutButton />
     </ScrollView>
   );
@@ -209,6 +190,18 @@ export default function OnboardingClassScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 20, paddingBottom: 40 },
+  step: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: colors.primary,
+    marginBottom: 12,
+  },
+  formTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: colors.text,
+    marginBottom: 16,
+  },
   centered: { flex: 1, justifyContent: "center", alignItems: "center" },
   chipRow: {
     flexDirection: "row",

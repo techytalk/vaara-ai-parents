@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Link, useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { SocialAuthSection } from "@/components/SocialAuthSection";
 import { AuthPitchStrip } from "@/components/AuthPitchStrip";
 import { LegalFooter } from "@/components/LegalFooter";
@@ -62,7 +63,7 @@ export default function LoginScreen() {
   const displayError = error ?? googleError;
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={["bottom", "left", "right"]}>
       <KeyboardAvoidingView
         style={styles.safe}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -70,22 +71,27 @@ export default function LoginScreen() {
         <ScrollView
           contentContainerStyle={styles.container}
           keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          <VaaraLogo />
+          <VaaraLogo compact />
+
           <View style={styles.heading}>
-            <Text style={styles.title}>Welcome back</Text>
-            <Text style={styles.subtitle}>
-              Sign in to reconnect with your trusted parent community.
+            <Text style={styles.kicker}>Welcome back</Text>
+            <Text style={styles.title}>Sign in</Text>
+            <Text style={styles.lead}>
+              Use the same method you used to create your account.
             </Text>
           </View>
 
           <SocialAuthSection
             onSuccess={(result, method) => completeAuth(result, method)}
             onError={setGoogleError}
+            googleLabel="Sign in with Google"
+            appleButtonType="signIn"
           />
 
           {showEmail ? (
-            <>
+            <View style={styles.emailForm}>
               <Text style={styles.label}>Email address</Text>
               <TextInput
                 style={styles.input}
@@ -119,25 +125,42 @@ export default function LoginScreen() {
                 disabled={!email.trim() || !password}
                 style={styles.button}
               />
-            </>
+
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setShowEmail(false)}
+                style={styles.quietLink}
+              >
+                <Text style={styles.quietLinkText}>
+                  Use Apple or Google instead
+                </Text>
+              </Pressable>
+            </View>
           ) : (
             <>
               {displayError ? <InlineError message={displayError} /> : null}
               <Pressable
                 accessibilityRole="button"
                 onPress={() => setShowEmail(true)}
-                style={styles.emailToggle}
+                style={styles.emailButton}
               >
-                <Text style={styles.emailToggleText}>Use email instead</Text>
+                <Ionicons name="mail-outline" size={18} color={colors.text} />
+                <Text style={styles.emailButtonText}>Sign in with email</Text>
               </Pressable>
             </>
           )}
 
-          <Link href="/(auth)/register" style={styles.link}>
-            New to Vaara? Create an account
-          </Link>
+          <View style={styles.meta}>
+            <Link href="/(auth)/register" asChild>
+              <Pressable accessibilityRole="link" style={styles.loginRow}>
+                <Text style={styles.loginMuted}>New to Vaara?</Text>
+                <Text style={styles.loginAction}> Create an account</Text>
+              </Pressable>
+            </Link>
+          </View>
+
           <AuthPitchStrip />
-          <LegalFooter />
+          <LegalFooter extra="Your real name stays private in circles." />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -148,20 +171,36 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   container: {
     flexGrow: 1,
-    padding: spacing.xl,
-    paddingTop: spacing.lg,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.lg,
   },
-  heading: { marginTop: spacing.xxl, marginBottom: spacing.xl },
+  heading: {
+    marginTop: spacing.lg,
+    marginBottom: spacing.lg,
+  },
+  kicker: {
+    ...typography.caption,
+    fontFamily: typography.bold,
+    color: colors.primaryDark,
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    marginBottom: 6,
+  },
   title: {
     ...typography.display,
     fontFamily: typography.bold,
     color: colors.text,
-    letterSpacing: -1,
+    letterSpacing: -0.8,
   },
-  subtitle: {
+  lead: {
     ...typography.body,
-    fontFamily: typography.regular,
     color: colors.textMuted,
+    fontFamily: typography.regular,
+    marginTop: spacing.xs,
+    lineHeight: 22,
+  },
+  emailForm: {
     marginTop: spacing.xs,
   },
   label: {
@@ -182,23 +221,52 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontFamily: typography.regular,
   },
-  button: { marginTop: spacing.md },
-  link: {
-    marginTop: spacing.lg,
-    textAlign: "center",
-    color: colors.primaryDark,
+  meta: {
+    marginTop: spacing.xl,
+    alignItems: "center",
+  },
+  emailButton: {
+    minHeight: 50,
+    marginTop: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+  },
+  emailButtonText: {
+    color: colors.text,
     fontSize: 15,
     fontFamily: typography.semibold,
   },
-  emailToggle: {
-    minHeight: 48,
+  button: { marginTop: spacing.sm },
+  quietLink: {
+    minHeight: 40,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: spacing.sm,
+    marginTop: spacing.xs,
   },
-  emailToggleText: {
+  quietLinkText: {
+    ...typography.supporting,
+    color: colors.textMuted,
+    fontFamily: typography.medium,
+  },
+  loginRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    minHeight: 40,
+  },
+  loginMuted: {
+    ...typography.body,
+    color: colors.textMuted,
+    fontFamily: typography.regular,
+  },
+  loginAction: {
     ...typography.body,
     color: colors.primaryDark,
-    fontFamily: typography.semibold,
+    fontFamily: typography.bold,
   },
 });

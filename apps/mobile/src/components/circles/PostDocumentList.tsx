@@ -9,10 +9,19 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as FileSystem from "expo-file-system";
-import * as Sharing from "expo-sharing";
 import { theme } from "@/components/circles/ui";
 import { api, type CirclePostDocument } from "@/lib/api";
 import { getToken } from "@/lib/session";
+
+type SharingModule = typeof import("expo-sharing");
+
+async function loadSharing(): Promise<SharingModule | null> {
+  try {
+    return await import("expo-sharing");
+  } catch {
+    return null;
+  }
+}
 
 const PDF_MIME = "application/pdf";
 const DOCX_MIME =
@@ -65,8 +74,9 @@ export function PostDocumentList({
       const safeName = doc.fileName.replace(/[^\w.\- ()[\]]+/g, "_");
       const localUri = `${cacheRoot}doc-${doc.id}-${safeName}`;
       const result = await FileSystem.downloadAsync(downloadUrl, localUri);
-      const canShare = await Sharing.isAvailableAsync();
-      if (!canShare) {
+      const Sharing = await loadSharing();
+      const canShare = Sharing ? await Sharing.isAvailableAsync() : false;
+      if (!Sharing || !canShare) {
         Alert.alert("Saved", `File downloaded to ${result.uri}`);
         return;
       }

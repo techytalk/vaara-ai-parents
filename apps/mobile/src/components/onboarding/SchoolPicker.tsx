@@ -18,6 +18,7 @@ type Props = {
   defaultCity?: string;
   defaultPin?: string;
   defaultState?: string;
+  onCreateModeChange?: (open: boolean) => void;
 };
 
 export function SchoolPicker({
@@ -27,6 +28,7 @@ export function SchoolPicker({
   defaultCity = "",
   defaultPin = "",
   defaultState = "",
+  onCreateModeChange,
 }: Props) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<School[]>([]);
@@ -48,6 +50,10 @@ export function SchoolPicker({
     setAddState(defaultState);
     setAddPin(defaultPin);
   }, [defaultCity, defaultState, defaultPin]);
+
+  useEffect(() => {
+    onCreateModeChange?.(showAddNew);
+  }, [showAddNew, onCreateModeChange]);
 
   useEffect(() => {
     if (selected) {
@@ -149,10 +155,16 @@ export function SchoolPicker({
   function openCreateForm() {
     trackEvent("school_create_opened");
     setShowAddNew(true);
+    setError(null);
     setAddName(query.trim());
     setAddCity(defaultCity);
     setAddState(defaultState);
     setAddPin(defaultPin);
+  }
+
+  function closeCreateForm() {
+    setShowAddNew(false);
+    setError(null);
   }
 
   async function onCreateSchool() {
@@ -270,7 +282,20 @@ export function SchoolPicker({
 
       {showAddNew ? (
         <View style={styles.addForm}>
-          <Text style={styles.addFormTitle}>New school details</Text>
+          <View style={styles.addFormHeader}>
+            <Text style={styles.addFormTitle}>New school details</Text>
+            <Pressable
+              onPress={closeCreateForm}
+              accessibilityRole="button"
+              accessibilityLabel="Back to school list"
+            >
+              <Text style={styles.backToList}>Back to list</Text>
+            </Pressable>
+          </View>
+          <Text style={styles.addFormHint}>
+            School name is required. City is filled from your PIN — you can
+            change it. Branch, state, and pin are optional.
+          </Text>
           <FieldInput
             label="School name *"
             value={addName}
@@ -308,6 +333,14 @@ export function SchoolPicker({
             ) : (
               <Text style={styles.createBtnText}>Save school & select</Text>
             )}
+          </Pressable>
+          <Pressable
+            style={styles.backFormBtn}
+            onPress={closeCreateForm}
+            disabled={creating}
+            accessibilityRole="button"
+          >
+            <Text style={styles.backFormBtnText}>Back to school list</Text>
           </Pressable>
         </View>
       ) : null}
@@ -412,11 +445,42 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     marginBottom: 8,
   },
+  addFormHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    marginBottom: 8,
+  },
   addFormTitle: {
+    flex: 1,
     fontSize: 15,
     fontWeight: "600",
     color: colors.text,
+  },
+  backToList: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: colors.primary,
+  },
+  addFormHint: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.textMuted,
     marginBottom: 12,
+  },
+  backFormBtn: {
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: "center",
+    marginTop: 8,
+  },
+  backFormBtnText: {
+    color: colors.primary,
+    fontWeight: "600",
+    fontSize: 15,
   },
   createBtn: {
     backgroundColor: colors.primary,
