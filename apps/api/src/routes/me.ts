@@ -83,6 +83,73 @@ async function fetchChildById(
   return rows[0] ? mapChild(rows[0]) : null;
 }
 
+async function fetchAuthUserById(
+  client: import("pg").PoolClient,
+  userId: string
+) {
+  const { rows } = await client.query(
+    `SELECT id, email, role, display_name, anonymous_handle, onboarding_complete, avatar_key
+     FROM users WHERE id = $1`,
+    [userId]
+  );
+  if (rows.length === 0) return null;
+  const user = rows[0];
+  return {
+    id: user.id,
+    email: user.email,
+    role: user.role,
+    displayName: user.display_name,
+    anonymousHandle: user.anonymous_handle,
+    onboardingComplete: user.onboarding_complete,
+    avatarKey: resolveAvatarKey(user.avatar_key, user.anonymous_handle),
+  };
+}
+
+async function fetchUserCircles(
+  client: import("pg").PoolClient,
+  userId: string
+) {
+  const { rows } = await client.query(
+    `SELECT c.id, c.circle_type, c.key, c.display_name, c.metadata,
+            COUNT(cm_all.user_id)::int AS member_count,
+            COALESCE((
+              SELECT COUNT(*)::int
+              FROM circle_posts p
+              JOIN circle_post_targets pct
+                ON pct.post_id = p.id AND pct.circle_id = c.id
+              WHERE p.created_at > COALESCE(cm.last_read_at, cm.joined_at)
+                AND p.author_id != $1
+            ), 0) AS new_post_count
+     FROM circle_members cm
+     JOIN circles c ON c.id = cm.circle_id
+     JOIN circle_members cm_all ON cm_all.circle_id = c.id
+     WHERE cm.user_id = $1
+     GROUP BY c.id, c.circle_type, c.key, c.display_name, c.metadata,
+              cm.last_read_at, cm.joined_at
+     ORDER BY
+       CASE c.circle_type
+         WHEN 'school_class' THEN 1
+         WHEN 'class' THEN 2
+         WHEN 'school' THEN 3
+         WHEN 'community' THEN 4
+         WHEN 'locality' THEN 5
+         WHEN 'curriculum' THEN 6
+       END,
+       c.display_name`,
+    [userId]
+  );
+
+  return rows.map((row) => ({
+    id: row.id,
+    circleType: row.circle_type,
+    key: row.key,
+    displayName: row.display_name,
+    metadata: row.metadata,
+    memberCount: row.member_count,
+    newPostCount: row.new_post_count,
+  }));
+}
+
 export function createMeRoutes() {
   const app = new Hono<{ Variables: AuthVariables }>();
   app.use("*", authMiddleware);
@@ -261,7 +328,9 @@ export function createMeRoutes() {
       await client.query("COMMIT");
 
       const child = await fetchChildById(client, rows[0].id);
-      return c.json(child, 201);
+      const user = await fetchAuthUserById(client, userId);
+      const circles = await fetchUserCircles(client, userId);
+      return c.json({ child, user, circles }, 201);
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;

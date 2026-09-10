@@ -11,7 +11,10 @@ type UserAuthRow = {
   avatar_key?: string | null;
 };
 
-export async function buildAuthResponse(user: UserAuthRow) {
+export async function buildAuthResponse(
+  user: UserAuthRow,
+  options?: { isNewUser?: boolean }
+) {
   const token = await signToken({
     sub: user.id,
     email: user.email,
@@ -20,6 +23,7 @@ export async function buildAuthResponse(user: UserAuthRow) {
 
   return {
     token,
+    isNewUser: Boolean(options?.isNewUser),
     user: {
       id: user.id,
       email: user.email,

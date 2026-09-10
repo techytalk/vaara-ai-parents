@@ -13,6 +13,7 @@ export async function saveSession(token: string, user: AuthUser) {
 export async function clearSession() {
   await SecureStore.deleteItemAsync(TOKEN_KEY);
   await SecureStore.deleteItemAsync(USER_KEY);
+  void import("./onboarding-draft").then((draft) => draft.clearOnboardingDraft());
   void import("./clarity").then((clarity) => clarity.syncClarityUser(null));
 }
 

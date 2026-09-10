@@ -9,6 +9,10 @@ import {
   normalizeCountryCode,
 } from "../lib/postal-code/index.js";
 
+const STATIC_REFERENCE_CACHE =
+  "public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800";
+const POSTAL_LOOKUP_CACHE = "public, max-age=3600, s-maxage=86400";
+
 export function createReferenceRoutes() {
   const app = new Hono();
 
@@ -31,6 +35,7 @@ export function createReferenceRoutes() {
         gradesByCurriculum.set(g.curriculum_id, list);
       }
 
+      c.header("Cache-Control", STATIC_REFERENCE_CACHE);
       return c.json(
         curricula.map((cur) => ({
           id: cur.id,
@@ -49,6 +54,7 @@ export function createReferenceRoutes() {
   });
 
   app.get("/postal-countries", (c) => {
+    c.header("Cache-Control", STATIC_REFERENCE_CACHE);
     return c.json(
       listPostalCountries().map((country) => ({
         code: country.code,
@@ -81,6 +87,7 @@ export function createReferenceRoutes() {
         countryCode,
         lookup.postalCode
       );
+      c.header("Cache-Control", POSTAL_LOOKUP_CACHE);
       return c.json({ ...lookup, communities, pinCode: lookup.postalCode });
     } finally {
       client.release();
@@ -101,6 +108,7 @@ export function createReferenceRoutes() {
       }
 
       const communities = await listCommunitySuggestions(client, "IN", pin);
+      c.header("Cache-Control", POSTAL_LOOKUP_CACHE);
       return c.json({ ...lookup, communities, pinCode: lookup.postalCode });
     } finally {
       client.release();

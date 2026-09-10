@@ -9,6 +9,7 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { api, type Child, type Curriculum, type School } from "@/lib/api";
 import { getToken } from "@/lib/session";
+import { getCurriculaCached } from "@/lib/reference-cache";
 import { ChildFormFields } from "@/components/onboarding/ChildFormFields";
 import {
   pickGradeForCurriculum,
@@ -48,7 +49,7 @@ export default function EditChildScreen() {
       try {
         const [kids, list, loc] = await Promise.all([
           api.getChildren(t),
-          api.getCurricula(),
+          getCurriculaCached(),
           api.getLocation(t),
         ]);
         const child = kids.find((c) => c.id === id);

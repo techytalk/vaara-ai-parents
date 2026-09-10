@@ -5,7 +5,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { api, type Circle } from "@/lib/api";
 import { trackEvent, trackOnboardingComplete } from "@/lib/analytics";
 import { getToken, getStoredUser, saveSession } from "@/lib/session";
-import { clearOnboardingDraft } from "@/lib/onboarding-draft";
+import {
+  getOnboardingCircles,
+  getOnboardingUser,
+} from "@/lib/onboarding-draft";
 import { colors, PrimaryButton } from "@/components/onboarding/ui";
 import { circleTypeIcon } from "@/components/tour/TourFrame";
 
@@ -23,14 +26,26 @@ export default function OnboardingReadyScreen() {
         return;
       }
       try {
-        const [list, me] = await Promise.all([
-          api.getCircles(token),
-          api.me(token),
-        ]);
-        setCircles(list);
-        const stored = await getStoredUser();
-        if (stored) {
-          await saveSession(token, { ...stored, ...me });
+        const draftedCircles = getOnboardingCircles();
+        const draftedUser = getOnboardingUser();
+        if (draftedCircles) {
+          setCircles(draftedCircles);
+          if (draftedUser) {
+            const stored = await getStoredUser();
+            if (stored) {
+              await saveSession(token, { ...stored, ...draftedUser });
+            }
+          }
+        } else {
+          const [list, me] = await Promise.all([
+            api.getCircles(token),
+            api.me(token),
+          ]);
+          setCircles(list);
+          const stored = await getStoredUser();
+          if (stored) {
+            await saveSession(token, { ...stored, ...me });
+          }
         }
       } catch (e) {
         setError(e instanceof Error ? e.message : "Could not load your circles");
@@ -41,7 +56,7 @@ export default function OnboardingReadyScreen() {
   }, [router]);
 
   function onStart() {
-    clearOnboardingDraft();
+    // Keep draft seed for home meta; home clears it after first load.
     trackOnboardingComplete();
     router.replace("/(app)" as never);
   }

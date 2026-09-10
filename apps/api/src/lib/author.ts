@@ -60,41 +60,7 @@ export async function getAuthorContextForCircle(
     [userId]
   );
 
-  if (rows.length === 0) return "";
-
-  const children = rows as ChildRow[];
-
-  if (circle.circle_type === "curriculum") {
-    const curriculumId = circle.metadata?.curriculum_id as string | undefined;
-    const code = circle.metadata?.code as string | undefined;
-    const match =
-      children.find((c) => c.curriculum_id === curriculumId) ??
-      children.find((c) => c.curriculum_code === code) ??
-      children[0];
-    return `${match.curriculum_name} · ${match.grade_label}`;
-  }
-
-  if (circle.circle_type === "class" || circle.circle_type === "school_class") {
-    const curriculumId = circle.metadata?.curriculum_id as string | undefined;
-    const gradeId = circle.metadata?.grade_id as string | undefined;
-    const gradeCode = circle.metadata?.grade_code as string | undefined;
-    const code = circle.metadata?.code as string | undefined;
-    const match =
-      children.find(
-        (c) =>
-          c.curriculum_id === curriculumId && c.grade_id === gradeId
-      ) ??
-      children.find(
-        (c) => c.curriculum_code === code && c.grade_code === gradeCode
-      ) ??
-      children.find((c) => c.grade_id === gradeId) ??
-      children.find((c) => c.grade_code === gradeCode) ??
-      children[0];
-    return `${match.curriculum_name} · ${match.grade_label}`;
-  }
-
-  const primary = children[0];
-  return `${primary.curriculum_name} · ${primary.grade_label}`;
+  return contextLabelFromChildren(rows as ChildRow[], circle);
 }
 
 /** Badge-only; normal profile context (curriculum · grade) still shows for guests. */
@@ -127,6 +93,126 @@ export async function buildAuthorViewForCircleAccess(
     storedAvatarKey,
     !member
   );
+}
+
+function authorPairKey(userId: string, circleId: string): string {
+  return `${userId}:${circleId}`;
+}
+
+function contextLabelFromChildren(
+  children: ChildRow[],
+  circle: CircleRow
+): string {
+  if (children.length === 0) return "";
+
+  if (circle.circle_type === "curriculum") {
+    const curriculumId = circle.metadata?.curriculum_id as string | undefined;
+    const code = circle.metadata?.code as string | undefined;
+    const match =
+      children.find((c) => c.curriculum_id === curriculumId) ??
+      children.find((c) => c.curriculum_code === code) ??
+      children[0];
+    return `${match.curriculum_name} · ${match.grade_label}`;
+  }
+
+  if (circle.circle_type === "class" || circle.circle_type === "school_class") {
+    const curriculumId = circle.metadata?.curriculum_id as string | undefined;
+    const gradeId = circle.metadata?.grade_id as string | undefined;
+    const gradeCode = circle.metadata?.grade_code as string | undefined;
+    const code = circle.metadata?.code as string | undefined;
+    const match =
+      children.find(
+        (c) => c.curriculum_id === curriculumId && c.grade_id === gradeId
+      ) ??
+      children.find(
+        (c) => c.curriculum_code === code && c.grade_code === gradeCode
+      ) ??
+      children.find((c) => c.grade_id === gradeId) ??
+      children.find((c) => c.grade_code === gradeCode) ??
+      children[0];
+    return `${match.curriculum_name} · ${match.grade_label}`;
+  }
+
+  const primary = children[0];
+  return `${primary.curriculum_name} · ${primary.grade_label}`;
+}
+
+/**
+ * Batch version of buildAuthorViewForCircleAccess — one membership query and
+ * one children query for the whole feed page instead of 2N round trips.
+ */
+export async function buildAuthorViewsForCircleAccess(
+  client: PoolClient,
+  authors: Array<{
+    userId: string;
+    anonymousHandle: string;
+    circle: CircleRow;
+    storedAvatarKey?: string | null;
+  }>
+): Promise<Map<string, AuthorView>> {
+  const result = new Map<string, AuthorView>();
+  if (authors.length === 0) return result;
+
+  const userIds = [...new Set(authors.map((a) => a.userId))];
+  const circleIds = [...new Set(authors.map((a) => a.circle.id))];
+
+  const { rows: memberRows } = await client.query(
+    `SELECT cm.user_id, cm.circle_id
+     FROM circle_members cm
+     WHERE cm.user_id = ANY($1::uuid[])
+       AND cm.circle_id = ANY($2::uuid[])`,
+    [userIds, circleIds]
+  );
+  const memberKeys = new Set(
+    memberRows.map((row) => authorPairKey(row.user_id, row.circle_id))
+  );
+
+  const { rows: childRows } = await client.query(
+    `SELECT ch.user_id,
+            cur.id AS curriculum_id, cur.code AS curriculum_code,
+            cur.name AS curriculum_name, g.id AS grade_id,
+            g.code AS grade_code, g.label AS grade_label
+     FROM children ch
+     JOIN curricula cur ON cur.id = ch.curriculum_id
+     JOIN curriculum_grades g ON g.id = ch.grade_id
+     WHERE ch.user_id = ANY($1::uuid[])
+     ORDER BY ch.created_at`,
+    [userIds]
+  );
+
+  const childrenByUser = new Map<string, ChildRow[]>();
+  for (const row of childRows) {
+    const list = childrenByUser.get(row.user_id) ?? [];
+    list.push({
+      curriculum_id: row.curriculum_id,
+      curriculum_code: row.curriculum_code,
+      curriculum_name: row.curriculum_name,
+      grade_id: row.grade_id,
+      grade_code: row.grade_code,
+      grade_label: row.grade_label,
+    });
+    childrenByUser.set(row.user_id, list);
+  }
+
+  for (const author of authors) {
+    const key = authorPairKey(author.userId, author.circle.id);
+    const contextLabel = contextLabelFromChildren(
+      childrenByUser.get(author.userId) ?? [],
+      author.circle
+    );
+    result.set(
+      key,
+      mapAuthorView(
+        author.userId,
+        author.anonymousHandle,
+        contextLabel,
+        author.storedAvatarKey,
+        !memberKeys.has(key)
+      )
+    );
+  }
+
+  return result;
 }
 
 export async function buildReviewAuthorView(

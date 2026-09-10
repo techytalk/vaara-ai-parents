@@ -15,6 +15,11 @@ import { api, type PostalCountry } from "@/lib/api";
 import { trackEvent, trackOnboardingBegin } from "@/lib/analytics";
 import { getToken, getStoredUser, saveSession } from "@/lib/session";
 import {
+  getOnboardingLocation,
+  setOnboardingLocation,
+} from "@/lib/onboarding-draft";
+import { getPostalCountriesCached } from "@/lib/reference-cache";
+import {
   Chip,
   colors,
   FieldInput,
@@ -83,7 +88,7 @@ export default function LocationScreen() {
 
   useEffect(() => {
     Promise.all([
-      api.getPostalCountries().catch(() => [] as PostalCountry[]),
+      getPostalCountriesCached().catch(() => [] as PostalCountry[]),
       getToken(),
       getStoredUser(),
     ]).then(async ([countryList, token, stored]) => {
@@ -94,7 +99,13 @@ export default function LocationScreen() {
         return;
       }
       try {
-        const loc = await api.getLocation(token);
+        const drafted = getOnboardingLocation();
+        const loc = drafted.locationLoaded
+          ? drafted.location
+          : await api.getLocation(token);
+        if (!drafted.locationLoaded) {
+          setOnboardingLocation(loc, { loaded: true });
+        }
         if (loc) {
           skipNextLookupRef.current = true;
           setCountryCode(loc.countryCode ?? "IN");
@@ -222,6 +233,20 @@ export default function LocationScreen() {
           ? communityName.trim() || undefined
           : undefined,
       });
+
+      setOnboardingLocation(
+        {
+          countryCode: result.countryCode,
+          pinCode: result.pinCode,
+          postalCode: result.postalCode,
+          locality: result.locality,
+          city: result.city,
+          state: result.state,
+          communityName: result.communityName,
+          communityKey: result.communityKey,
+        },
+        { loaded: true }
+      );
 
       const storedUser = await getStoredUser();
       if (storedUser) {

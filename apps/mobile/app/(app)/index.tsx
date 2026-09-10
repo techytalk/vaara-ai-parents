@@ -36,6 +36,12 @@ import {
 import { trackEvent } from "@/lib/analytics";
 import { getToken } from "@/lib/session";
 import { resolveParentOnboardingHref } from "@/lib/auth-navigation";
+import {
+  clearOnboardingDraft,
+  getOnboardingChildren,
+  getOnboardingCircles,
+  getOnboardingUser,
+} from "@/lib/onboarding-draft";
 import { sharePostLink } from "@/lib/share-post";
 import { useSubmitReport } from "@/providers/ReportProvider";
 import { CompletionPrompt } from "@/components/CompletionPrompt";
@@ -65,13 +71,26 @@ export default function HomeScreen() {
       router.replace("/(auth)/login");
       return null;
     }
+
+    const seededUser = getOnboardingUser();
+    const seededCircles = getOnboardingCircles();
+    const seededChildren = getOnboardingChildren();
+    const hadSeed =
+      seededUser != null || seededCircles != null || seededChildren != null;
+
     const [me, circleList, kids, notifications, saved] = await Promise.all([
-      api.me(token),
-      api.getCircles(token),
-      api.getChildren(token).catch(() => [] as Child[]),
+      seededUser ?? api.me(token),
+      seededCircles ?? api.getCircles(token),
+      seededChildren ??
+        api.getChildren(token).catch(() => [] as Child[]),
       api.getNotifications(token).catch(() => []),
       api.getSaved(token).catch(() => ({ posts: [] })),
     ]);
+
+    if (hadSeed) {
+      clearOnboardingDraft();
+    }
+
     if (!me.onboardingComplete) {
       const href = await resolveParentOnboardingHref(token);
       router.replace(href as never);

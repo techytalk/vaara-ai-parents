@@ -46,26 +46,51 @@ export function createAuthRoutes() {
 
     const client = await pool.connect();
     try {
+      const emailLookupStarted = performance.now();
       const existing = await client.query("SELECT id FROM users WHERE email = $1", [
         email,
       ]);
+      const emailLookupMs = performance.now() - emailLookupStarted;
       if (existing.rows.length > 0) {
         return c.json({ error: "Email already registered" }, 409);
       }
 
+      const handleStarted = performance.now();
       const handle = await generateUniqueHandle(client);
+      const handleMs = performance.now() - handleStarted;
+
+      const hashStarted = performance.now();
       const passwordHash = await bcrypt.hash(password, 10);
+      const hashMs = performance.now() - hashStarted;
+
       const displayName = body.displayName?.trim() || null;
       const avatarKey = defaultAvatarKeyForHandle(handle);
 
+      const insertStarted = performance.now();
       const { rows } = await client.query(
         `INSERT INTO users (email, password_hash, role, display_name, anonymous_handle, avatar_key)
          VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING id, email, role, display_name, anonymous_handle, onboarding_complete, avatar_key`,
         [email, passwordHash, role, displayName, handle, avatarKey]
       );
+      const insertMs = performance.now() - insertStarted;
 
-      return c.json(await buildAuthResponse(rows[0]));
+      const jwtStarted = performance.now();
+      const response = await buildAuthResponse(rows[0], { isNewUser: true });
+      const jwtMs = performance.now() - jwtStarted;
+
+      console.info(
+        JSON.stringify({
+          event: "auth.register.timing",
+          emailLookupMs: Math.round(emailLookupMs),
+          handleMs: Math.round(handleMs),
+          hashMs: Math.round(hashMs),
+          insertMs: Math.round(insertMs),
+          jwtMs: Math.round(jwtMs),
+        })
+      );
+
+      return c.json(response);
     } finally {
       client.release();
     }
@@ -151,7 +176,7 @@ export function createAuthRoutes() {
       );
 
       if (byGoogle.rows.length > 0) {
-        return c.json(await buildAuthResponse(byGoogle.rows[0]));
+        return c.json(await buildAuthResponse(byGoogle.rows[0], { isNewUser: false }));
       }
 
       const byEmail = await client.query(
@@ -176,7 +201,7 @@ export function createAuthRoutes() {
           [existing.id, identity.sub, displayName]
         );
 
-        return c.json(await buildAuthResponse(rows[0]));
+        return c.json(await buildAuthResponse(rows[0], { isNewUser: false }));
       }
 
       const handle = await generateUniqueHandle(client);
@@ -188,7 +213,7 @@ export function createAuthRoutes() {
         [identity.email, role, displayName, handle, identity.sub, avatarKey]
       );
 
-      return c.json(await buildAuthResponse(rows[0]), 201);
+      return c.json(await buildAuthResponse(rows[0], { isNewUser: true }), 201);
     } finally {
       client.release();
     }
@@ -224,7 +249,7 @@ export function createAuthRoutes() {
       );
 
       if (byApple.rows.length > 0) {
-        return c.json(await buildAuthResponse(byApple.rows[0]));
+        return c.json(await buildAuthResponse(byApple.rows[0], { isNewUser: false }));
       }
 
       if (!identity.email) {
@@ -262,7 +287,7 @@ export function createAuthRoutes() {
           [existing.id, identity.sub, displayName]
         );
 
-        return c.json(await buildAuthResponse(rows[0]));
+        return c.json(await buildAuthResponse(rows[0], { isNewUser: false }));
       }
 
       const handle = await generateUniqueHandle(client);
@@ -274,7 +299,7 @@ export function createAuthRoutes() {
         [identity.email, role, displayName, handle, identity.sub, avatarKey]
       );
 
-      return c.json(await buildAuthResponse(rows[0]), 201);
+      return c.json(await buildAuthResponse(rows[0], { isNewUser: true }), 201);
     } finally {
       client.release();
     }

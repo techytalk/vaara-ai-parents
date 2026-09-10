@@ -9,7 +9,8 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { api, type Child, type Curriculum, type School } from "@/lib/api";
 import { trackEvent } from "@/lib/analytics";
-import { getToken } from "@/lib/session";
+import { getToken, saveSession } from "@/lib/session";
+import { getCurriculaCached } from "@/lib/reference-cache";
 import { ChildFormFields } from "@/components/onboarding/ChildFormFields";
 import { sortCurricula } from "@/constants/onboarding";
 import { toIsoDateOnly } from "@/lib/dates";
@@ -45,7 +46,7 @@ export default function AddChildScreen() {
       setToken(t);
       try {
         const [list, loc, kids] = await Promise.all([
-          api.getCurricula(),
+          getCurriculaCached(),
           api.getLocation(t),
           api.getChildren(t).catch(() => [] as Child[]),
         ]);
@@ -88,7 +89,8 @@ export default function AddChildScreen() {
       if (nick) body.nickname = nick;
       if (dateOfBirth) body.dateOfBirth = toIsoDateOnly(dateOfBirth);
 
-      await api.addChild(token, body);
+      const result = await api.addChild(token, body);
+      await saveSession(token, result.user);
       if (existingCount > 0) {
         trackEvent("second_child_added", {
           source: fromPrompt ? "completion_prompt" : "children_list",

@@ -20,6 +20,8 @@ export type AuthUser = {
 export type AuthResponse = {
   token: string;
   user: AuthUser;
+  /** True when this auth call created the account (register / first OAuth). */
+  isNewUser?: boolean;
 };
 
 export type Curriculum = {
@@ -111,6 +113,12 @@ export type Circle = {
   metadata: Record<string, unknown>;
   memberCount: number;
   newPostCount?: number;
+};
+
+export type AddChildResult = {
+  child: Child;
+  user: AuthUser;
+  circles: Circle[];
 };
 
 export type CircleAuthor = {
@@ -578,9 +586,41 @@ export type NotificationMute = {
   createdAt: string;
 };
 
-async function request<T>(
+const REQUEST_TIMEOUT_MS = 10_000;
+
+const TIMEOUT_MESSAGE = "Request timed out. Check your connection and try again.";
+
+/** Set on the errors we raise for our own timeout, never for a caller's abort. */
+const TIMEOUT_FLAG = Symbol("requestTimeout");
+
+function isTimeoutError(error: unknown): boolean {
+  return Boolean(
+    error && typeof error === "object" && TIMEOUT_FLAG in error
+  );
+}
+
+function isIdempotentGet(options: RequestInit): boolean {
+  return (options.method ?? "GET").toUpperCase() === "GET";
+}
+
+function isTransientStatus(status: number): boolean {
+  return status === 502 || status === 503 || status === 504;
+}
+
+function isRetryableNetworkError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  if (isTimeoutError(error)) return true;
+  const message = error.message.toLowerCase();
+  return (
+    message.includes("network request failed") ||
+    message.includes("failed to fetch") ||
+    message.includes("networkerror")
+  );
+}
+
+async function requestOnce<T>(
   path: string,
-  options: RequestInit = {},
+  options: RequestInit,
   token?: string | null
 ): Promise<T> {
   const headers: Record<string, string> = {
@@ -591,17 +631,74 @@ async function request<T>(
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${API_URL}${path}`, { ...options, headers });
-  const data = await res.json().catch(() => ({}));
-
-  if (!res.ok) {
-    const message =
-      (typeof data.error === "string" && data.error) ||
-      (typeof data.message === "string" && data.message) ||
-      `Request failed (${res.status})`;
-    throw new Error(message);
+  const controller = new AbortController();
+  let timedOut = false;
+  const timeoutId = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, REQUEST_TIMEOUT_MS);
+  if (options.signal) {
+    if (options.signal.aborted) {
+      controller.abort();
+    } else {
+      options.signal.addEventListener("abort", () => controller.abort(), {
+        once: true,
+      });
+    }
   }
-  return data as T;
+
+  try {
+    const res = await fetch(`${API_URL}${path}`, {
+      ...options,
+      headers,
+      signal: controller.signal,
+    });
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      const message =
+        (typeof data.error === "string" && data.error) ||
+        (typeof data.message === "string" && data.message) ||
+        `Request failed (${res.status})`;
+      const error = new Error(message) as Error & { status?: number };
+      error.status = res.status;
+      throw error;
+    }
+    return data as T;
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError" && timedOut) {
+      throw Object.assign(new Error(TIMEOUT_MESSAGE), { [TIMEOUT_FLAG]: true });
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+async function request<T>(
+  path: string,
+  options: RequestInit = {},
+  token?: string | null
+): Promise<T> {
+  const canRetry = isIdempotentGet(options);
+  let attempt = 0;
+
+  while (true) {
+    attempt += 1;
+    try {
+      return await requestOnce<T>(path, options, token);
+    } catch (error) {
+      const status =
+        error instanceof Error && "status" in error
+          ? Number((error as Error & { status?: number }).status)
+          : undefined;
+      const retry =
+        canRetry &&
+        attempt < 2 &&
+        (isTransientStatus(status ?? 0) || isRetryableNetworkError(error));
+      if (!retry) throw error;
+    }
+  }
 }
 
 export const api = {
@@ -750,7 +847,7 @@ export const api = {
       schoolId: string;
     }
   ) =>
-    request<Child>("/v1/me/children", {
+    request<AddChildResult>("/v1/me/children", {
       method: "POST",
       body: JSON.stringify(body),
     }, token),

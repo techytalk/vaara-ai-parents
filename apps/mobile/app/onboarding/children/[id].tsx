@@ -12,6 +12,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { api, type Child, type Curriculum } from "@/lib/api";
 import { getToken } from "@/lib/session";
+import { getCurriculaCached } from "@/lib/reference-cache";
 import { GENDER_LABEL } from "@/constants/onboarding";
 import { formatChildDob } from "@/lib/dates";
 import { colors, DetailRow, PrimaryButton, SecondaryButton } from "@/components/onboarding/ui";
@@ -33,7 +34,7 @@ export default function ChildDetailScreen() {
     }
     const [kids, currs] = await Promise.all([
       api.getChildren(token),
-      api.getCurricula(),
+      getCurriculaCached(),
     ]);
     const found = kids.find((c) => c.id === id);
     if (!found) {

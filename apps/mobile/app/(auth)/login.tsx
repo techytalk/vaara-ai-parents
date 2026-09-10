@@ -20,7 +20,10 @@ import { Button, InlineError } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import { api } from "@/lib/api";
 import { trackAuthConversion } from "@/lib/analytics";
-import { routeAfterAuth } from "@/lib/auth-navigation";
+import {
+  routeAfterAuth,
+  shouldRouteAsNewParent,
+} from "@/lib/auth-navigation";
 import { saveSession } from "@/lib/session";
 import { isGoogleSignInConfigured } from "@/constants/google-auth";
 
@@ -42,7 +45,9 @@ export default function LoginScreen() {
     ) => {
       trackAuthConversion("login", method);
       await saveSession(result.token, result.user);
-      await routeAfterAuth(router, result.user);
+      await routeAfterAuth(router, result.user, {
+        isNewUser: shouldRouteAsNewParent(result),
+      });
     },
     [router]
   );

@@ -3,8 +3,10 @@ import { readPool } from "@vaara/db";
 import {
   assertCircleMember,
   buildAuthorViewForCircleAccess,
+  buildAuthorViewsForCircleAccess,
+  mapAuthorView,
 } from "../lib/author.js";
-import { loadPostPolls } from "../lib/polls.js";
+import { loadPostPolls, type PollView } from "../lib/polls.js";
 import {
   loadPostAttachments,
   type PostDocumentView,
@@ -15,7 +17,6 @@ import {
   type PostCircleSummary,
 } from "../lib/post-circles.js";
 import { loadTopicsForPosts, type TopicSummary } from "../lib/topics.js";
-import type { PollView } from "../lib/polls.js";
 
 export type FeedPost = {
   id: string;
@@ -373,81 +374,72 @@ async function hydrateHomeFeedPosts(
   discovery: boolean
 ): Promise<HomeFeedPost[]> {
   const postIds = rows.map((row) => row.id as string);
-  const attachmentsByPost = await loadPostAttachments(client, postIds);
-  const topicsByPost = await loadTopicsForPosts(client, postIds);
-  const circlesByPost = await loadCirclesForPosts(client, postIds);
-  const helpfulByPost = await loadPostHelpfulCounts(client, postIds, userId);
 
-  const circleIds = [...new Set(rows.map((row) => row.circle_id as string))];
-  const memberCountByCircle = new Map<string, number>();
-  if (circleIds.length > 0) {
-    const { rows: memberRows } = await client.query(
-      `SELECT circle_id, COUNT(*)::int AS count
-       FROM circle_members
-       WHERE circle_id = ANY($1::uuid[])
-       GROUP BY circle_id`,
-      [circleIds]
-    );
-    for (const row of memberRows) {
-      memberCountByCircle.set(row.circle_id, row.count);
-    }
-  }
-
-  const pollsByPost = new Map<string, PollView>();
-  for (const circleId of circleIds) {
-    const circlePostIds = rows
-      .filter((row) => row.circle_id === circleId)
-      .map((row) => row.id as string);
-    const circlePolls = await loadPostPolls(
+  const [
+    attachmentsByPost,
+    topicsByPost,
+    circlesByPost,
+    helpfulByPost,
+    pollsByPost,
+    authorViews,
+  ] = await Promise.all([
+    loadPostAttachments(client, postIds),
+    loadTopicsForPosts(client, postIds),
+    loadCirclesForPosts(client, postIds),
+    loadPostHelpfulCounts(client, postIds, userId),
+    loadPostPolls(client, postIds, userId, 1),
+    buildAuthorViewsForCircleAccess(
       client,
-      circlePostIds,
-      userId,
-      memberCountByCircle.get(circleId) ?? 1
-    );
-    for (const [postId, poll] of circlePolls) {
-      pollsByPost.set(postId, poll);
-    }
-  }
+      rows.map((row) => ({
+        userId: row.author_id as string,
+        anonymousHandle: row.anonymous_handle as string,
+        circle: {
+          id: row.circle_id as string,
+          circle_type: row.circle_type as string,
+          key: row.circle_key as string,
+          display_name: row.circle_name as string,
+          metadata: (row.circle_metadata ?? {}) as Record<string, unknown>,
+        },
+        storedAvatarKey: row.avatar_key as string | null | undefined,
+      }))
+    ),
+  ]);
 
-  return Promise.all(
-    rows.map(async (row) => {
-      const circle = {
-        id: row.circle_id as string,
-        circle_type: row.circle_type as string,
-        key: row.circle_key as string,
-        display_name: row.circle_name as string,
-        metadata: (row.circle_metadata ?? {}) as Record<string, unknown>,
-      };
-      const author = await buildAuthorViewForCircleAccess(
-        client,
+  return rows.map((row) => {
+    const authorKey = `${row.author_id as string}:${row.circle_id as string}`;
+    const author =
+      authorViews.get(authorKey) ??
+      // Every row is fed to the batch builder above, so this only guards
+      // against a missing key, where membership is unknown.
+      mapAuthorView(
         row.author_id as string,
         row.anonymous_handle as string,
-        circle,
-        row.avatar_key as string | null | undefined
+        "",
+        row.avatar_key as string | null | undefined,
+        true
       );
-      const helpful = helpfulByPost.get(row.id as string) ?? {
-        count: 0,
-        mine: false,
-      };
-      const attachments = attachmentsByPost.get(row.id as string);
-      return {
-        ...mapPost(
-          row,
-          author,
-          attachments?.media ?? [],
-          pollsByPost.get(row.id as string),
-          topicsByPost.get(row.id as string) ?? [],
-          circlesByPost.get(row.id as string) ?? [],
-          attachments?.documents ?? []
-        ),
-        circleId: row.circle_id as string,
-        circleName: row.circle_name as string,
-        helpfulCount: helpful.count,
-        myHelpful: helpful.mine,
-        discovery,
-      };
-    })
-  );
+    const helpful = helpfulByPost.get(row.id as string) ?? {
+      count: 0,
+      mine: false,
+    };
+    const attachments = attachmentsByPost.get(row.id as string);
+    return {
+      ...mapPost(
+        row,
+        author,
+        attachments?.media ?? [],
+        pollsByPost.get(row.id as string),
+        topicsByPost.get(row.id as string) ?? [],
+        circlesByPost.get(row.id as string) ?? [],
+        attachments?.documents ?? []
+      ),
+      circleId: row.circle_id as string,
+      circleName: row.circle_name as string,
+      helpfulCount: helpful.count,
+      myHelpful: helpful.mine,
+      discovery,
+    };
+  });
 }
 
 export async function isDiscoveryPostReadable(

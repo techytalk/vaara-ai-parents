@@ -4,7 +4,11 @@ import { useRouter } from "expo-router";
 import { api, type School } from "@/lib/api";
 import { trackEvent } from "@/lib/analytics";
 import { getToken } from "@/lib/session";
-import { setOnboardingSchool } from "@/lib/onboarding-draft";
+import {
+  getOnboardingLocation,
+  setOnboardingLocation,
+  setOnboardingSchool,
+} from "@/lib/onboarding-draft";
 import { SchoolPicker } from "@/components/onboarding/SchoolPicker";
 import {
   colors,
@@ -33,7 +37,13 @@ export default function OnboardingSchoolScreen() {
       }
       setToken(t);
       try {
-        const loc = await api.getLocation(t);
+        const drafted = getOnboardingLocation();
+        const loc = drafted.locationLoaded
+          ? drafted.location
+          : await api.getLocation(t);
+        if (!drafted.locationLoaded) {
+          setOnboardingLocation(loc, { loaded: true });
+        }
         if (!loc) {
           router.replace("/onboarding/location");
           return;

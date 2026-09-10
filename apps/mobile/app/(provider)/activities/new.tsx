@@ -19,6 +19,7 @@ import {
   type ActivityCategory,
   type Curriculum,
 } from "@/lib/api";
+import { getCurriculaCached } from "@/lib/reference-cache";
 import { getToken } from "@/lib/session";
 
 export default function NewActivityScreen() {
@@ -37,7 +38,7 @@ export default function NewActivityScreen() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.getCurricula().then(setCurricula).catch(() => {});
+    getCurriculaCached().then(setCurricula).catch(() => {});
     getToken().then(async (token) => {
       if (!token) return;
       const profile = await api.getProviderProfile(token);

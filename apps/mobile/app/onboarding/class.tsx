@@ -9,8 +9,14 @@ import {
 import { useRouter } from "expo-router";
 import { api, type Curriculum, type School } from "@/lib/api";
 import { trackEvent } from "@/lib/analytics";
-import { getToken, getStoredUser, saveSession } from "@/lib/session";
-import { getOnboardingSchool } from "@/lib/onboarding-draft";
+import { getToken, saveSession } from "@/lib/session";
+import {
+  getOnboardingSchool,
+  setOnboardingChildren,
+  setOnboardingCircles,
+  setOnboardingUser,
+} from "@/lib/onboarding-draft";
+import { getCurriculaCached } from "@/lib/reference-cache";
 import {
   curriculumChipLabel,
   isLimitedCurriculum,
@@ -53,7 +59,7 @@ export default function OnboardingClassScreen() {
       }
       setToken(t);
       try {
-        const list = sortCurricula(await api.getCurricula());
+        const list = sortCurricula(await getCurriculaCached());
         setCurricula(list);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load boards");
@@ -70,17 +76,16 @@ export default function OnboardingClassScreen() {
     setError(null);
     setSubmitting(true);
     try {
-      await api.addChild(token, {
+      const result = await api.addChild(token, {
         schoolId: school.id,
         curriculumId,
         gradeId,
         gender: "unspecified",
       });
-      const me = await api.me(token);
-      const stored = await getStoredUser();
-      if (stored) {
-        await saveSession(token, { ...stored, ...me });
-      }
+      await saveSession(token, result.user);
+      setOnboardingUser(result.user);
+      setOnboardingCircles(result.circles);
+      setOnboardingChildren([result.child]);
       trackEvent("onboarding_class_complete");
       router.replace("/onboarding/ready" as never);
     } catch (e) {

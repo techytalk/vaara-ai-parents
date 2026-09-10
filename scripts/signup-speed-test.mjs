@@ -15,6 +15,7 @@ import { config } from "dotenv";
 import { resolve } from "path";
 import http from "node:http";
 import https from "node:https";
+import { gunzipSync, brotliDecompressSync } from "node:zlib";
 import { performance } from "node:perf_hooks";
 
 config({ path: resolve(process.cwd(), ".env.local") });
@@ -81,7 +82,18 @@ function timedRequest(method, path, { token, body } = {}) {
         });
         res.on("end", () => {
           marks.end = performance.now();
-          const text = Buffer.concat(chunks).toString("utf8");
+          const encoding = res.headers["content-encoding"] ?? "identity";
+          let buffer = Buffer.concat(chunks);
+          try {
+            if (encoding === "gzip" || encoding === "x-gzip") {
+              buffer = gunzipSync(buffer);
+            } else if (encoding === "br") {
+              buffer = brotliDecompressSync(buffer);
+            }
+          } catch {
+            // Fall through and surface the raw bytes via _nonJson.
+          }
+          const text = buffer.toString("utf8");
           let parsed = {};
           try {
             parsed = text ? JSON.parse(text) : {};
@@ -93,7 +105,7 @@ function timedRequest(method, path, { token, body } = {}) {
             path,
             status: res.statusCode,
             body: parsed,
-            encoding: res.headers["content-encoding"] ?? "identity",
+            encoding,
             cacheControl: res.headers["cache-control"] ?? "(none)",
             // "bom1::iad1::…" means the request entered at bom1 and executed
             // in iad1 — i.e. the function is not in the edge's region.
@@ -184,19 +196,11 @@ async function measureSignupRun(index) {
     )
   );
   const token = auth.body.token;
+  // New parents skip the post-auth location/children probe (isNewUser route).
 
-  // register.tsx -> routeAfterAuth -> resolveParentOnboardingHref
-  await leg(trace, "Post-auth routing (location + children)", true, () =>
-    Promise.all([call("GET", "/v1/me/location", { token }), call("GET", "/v1/me/children", { token })])
-  );
-
-  // onboarding/location.tsx mount. These are two sequential awaits in the
-  // screen, not a single Promise.all — see location.tsx:85-97.
-  await leg(trace, "Location mount a: postal countries", true, () =>
+  // onboarding/location.tsx: countries from cache/network; location known empty.
+  await leg(trace, "Location mount (postal countries)", true, () =>
     call("GET", "/v1/reference/postal-countries")
-  );
-  await leg(trace, "Location mount b: existing location", true, () =>
-    call("GET", "/v1/me/location", { token })
   );
 
   // Debounced postal lookup while the user types a PIN.
@@ -213,18 +217,15 @@ async function measureSignupRun(index) {
     )
   );
 
-  // onboarding/school.tsx mount re-reads location, then the picker loads nearby.
-  await leg(trace, "School screen mount (GET /v1/me/location)", true, () =>
-    call("GET", "/v1/me/location", { token })
-  );
-
+  // School screen uses the onboarding draft for location — no refetch.
   const nearby = await leg(trace, "School picker (nearby schools)", true, async () =>
     assertOk(await call("GET", "/v1/schools/nearby?city=Bengaluru&pin=560102&limit=5", { token }))
   );
 
-  // onboarding/class.tsx mount
+  // onboarding/class.tsx mount. Sent without a token, like the app does, so
+  // the edge can serve it from cache.
   const curricula = await leg(trace, "Class screen mount (curricula)", true, async () =>
-    assertOk(await call("GET", "/v1/reference/curricula", { token }))
+    assertOk(await call("GET", "/v1/reference/curricula"))
   );
 
   const schoolId = (Array.isArray(nearby.body) ? nearby.body : nearby.body?.schools ?? [])[0]?.id;
@@ -234,8 +235,8 @@ async function measureSignupRun(index) {
     throw new Error("Missing school/curriculum/grade fixtures — run `npm run db:seed` against this env.");
   }
 
-  // "Enter Vaara": create the child, then refetch the user. Sequential in the app.
-  await leg(trace, "Class submit (create child, then GET /v1/me)", true, async () => {
+  // POST /children now returns { child, user, circles } — no follow-up GET /me.
+  await leg(trace, "Class submit (create child + hydrate)", true, async () =>
     assertOk(
       await call("POST", "/v1/me/children", {
         token,
@@ -247,20 +248,14 @@ async function measureSignupRun(index) {
           nickname: "Speed",
         },
       })
-    );
-    return assertOk(await call("GET", "/v1/me", { token }));
-  });
-
-  await leg(trace, "Ready screen (circles + me)", true, () =>
-    Promise.all([call("GET", "/v1/circles", { token }), call("GET", "/v1/me", { token })])
+    )
   );
 
-  // First feed load: five parallel calls, then the feed page itself.
-  await leg(trace, "Feed prefetch burst (5 parallel)", true, () =>
+  // Ready screen renders from the draft returned by child create.
+
+  // Home seeds user/circles/children from draft; only alerts + saved refetch.
+  await leg(trace, "Feed prefetch (notifications + saved)", true, () =>
     Promise.all([
-      call("GET", "/v1/me", { token }),
-      call("GET", "/v1/circles", { token }),
-      call("GET", "/v1/me/children", { token }),
       call("GET", "/v1/me/notifications", { token }),
       call("GET", "/v1/me/saved", { token }),
     ])
