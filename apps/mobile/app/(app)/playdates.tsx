@@ -108,7 +108,7 @@ export default function PlaydatesScreen() {
         {children.map((child) => (
           <Chip
             key={child.id}
-            label={child.nickname}
+            label={child.nickname || "Child"}
             selected={selectedChild === child.id}
             onPress={() => setSelectedChild(child.id)}
           />

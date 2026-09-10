@@ -20,7 +20,7 @@ import {
   ScreenLoader,
   SectionHeader,
 } from "@/components/ui";
-import { CIRCLE_TYPE_LABELS, isPlaceholderSchool } from "@/constants/circles";
+import { CIRCLE_TYPE_LABELS } from "@/constants/circles";
 import { getDiscoveryShortcuts } from "@/constants/discovery-shortcuts";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import { trackEvent } from "@/lib/analytics";
@@ -34,8 +34,16 @@ import {
   type TopicCatalogItem,
 } from "@/lib/api";
 import { circleCardSubtitle, circleCardTitle } from "@/lib/circle-display";
+import { groupCirclesForDisplay } from "@/lib/circle-groups";
+import {
+  circlePlaceholderCandidates,
+  evaluateCompletionGaps,
+  hrefForCompletionPrompt,
+} from "@/lib/completion-prompts";
 import { pickPrimaryCircle } from "@/lib/home-feed";
+import { hasCompletedAppTour } from "@/lib/app-tour";
 import { getToken } from "@/lib/session";
+import { resolveParentOnboardingHref } from "@/lib/auth-navigation";
 
 type ScreenTab = "circles" | "topics";
 
@@ -44,15 +52,6 @@ type CirclePlaceholder = {
   cta: string;
   onPress: () => void;
 };
-
-const circlePriority: Circle["circleType"][] = [
-  "school_class",
-  "class",
-  "school",
-  "community",
-  "locality",
-  "curriculum",
-];
 
 const circleIconColors: Record<Circle["circleType"], string> = {
   school_class: colors.lavender,
@@ -187,7 +186,12 @@ export default function CirclesScreen() {
         api.getUpcomingSchoolEvents(token).catch(() => []),
       ]);
       if (!me.onboardingComplete) {
-        router.replace("/onboarding/children");
+        const href = await resolveParentOnboardingHref(token);
+        router.replace(href as never);
+        return;
+      }
+      if (!(await hasCompletedAppTour())) {
+        router.replace("/tour/circles" as never);
         return;
       }
       setUser(me);
@@ -248,54 +252,23 @@ export default function CirclesScreen() {
     []
   );
 
-  const groupedCircles = useMemo(() => {
-    const sorted = [...circles].sort(
-      (a, b) =>
-        circlePriority.indexOf(a.circleType) -
-        circlePriority.indexOf(b.circleType)
-    );
-    const groups: Array<{ type: Circle["circleType"]; items: Circle[] }> = [];
-    for (const type of circlePriority) {
-      const items = sorted.filter((circle) => circle.circleType === type);
-      if (items.length > 0) {
-        groups.push({ type, items });
-      }
-    }
-    return groups;
-  }, [circles]);
+  const groupedCircles = useMemo(
+    () => groupCirclesForDisplay(circles, children),
+    [circles, children]
+  );
 
   const primaryCircle = useMemo(() => pickPrimaryCircle(circles), [circles]);
 
-  const childrenMissingSchool = children.filter((child) =>
-    isPlaceholderSchool(child.school)
-  );
-
-  const placeholders: CirclePlaceholder[] = [];
-  if (circles.filter((c) => c.circleType === "locality").length === 0) {
-    placeholders.push({
-      key: "missing-area",
-      cta: "Add your pin code and area",
-      onPress: () => router.push("/onboarding/location"),
-    });
-  }
-  for (const child of childrenMissingSchool) {
-    placeholders.push({
-      key: `missing-school-${child.id}`,
-      cta: `Add school for ${child.nickname}`,
-      onPress: () =>
-        router.push({
-          pathname: "/onboarding/children/edit/[id]",
-          params: { id: child.id },
-        }),
-    });
-  }
-  if (circles.filter((c) => c.circleType === "community").length === 0) {
-    placeholders.push({
-      key: "missing-community",
-      cta: "Add your apartment or community",
-      onPress: () => router.push("/onboarding/location"),
-    });
-  }
+  const placeholders: CirclePlaceholder[] = useMemo(() => {
+    const gaps = circlePlaceholderCandidates(
+      evaluateCompletionGaps({ children, circles })
+    );
+    return gaps.map((gap) => ({
+      key: gap.key,
+      cta: gap.cta,
+      onPress: () => router.push(hrefForCompletionPrompt(gap) as never),
+    }));
+  }, [children, circles, router]);
 
   const openCircle = (circle: Circle) => {
     setCircles((current) =>
@@ -502,8 +475,8 @@ export default function CirclesScreen() {
             {groupedCircles.length > 0 ? (
               <>
                 {groupedCircles.map((group) => (
-                  <View key={group.type} style={styles.groupBlock}>
-                    <SectionHeader title={CIRCLE_TYPE_LABELS[group.type]} />
+                  <View key={group.key} style={styles.groupBlock}>
+                    <SectionHeader title={group.title} />
                     <View style={styles.list}>
                       {group.items.map((circle, index) => (
                         <View key={circle.id}>

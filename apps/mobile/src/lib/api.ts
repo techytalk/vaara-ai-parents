@@ -39,16 +39,18 @@ export type School = {
   verified: boolean;
   normalizedKey?: string;
   displayLabel: string;
+  boardCodes?: string[];
 };
 
 export type SchoolListItem = School & {
   ratingAvg: number | null;
   ratingCount: number;
+  boardCodes?: string[];
 };
 
 export type Child = {
   id: string;
-  nickname: string;
+  nickname: string | null;
   gender: string;
   dateOfBirth: string | null;
   curriculumId: string;
@@ -726,7 +728,7 @@ export const api = {
     token: string,
     body: {
       name: string;
-      branch: string;
+      branch?: string;
       city: string;
       state?: string;
       pinCode?: string;
@@ -740,9 +742,9 @@ export const api = {
   addChild: (
     token: string,
     body: {
-      nickname: string;
-      gender: string;
-      dateOfBirth: string;
+      nickname?: string;
+      gender?: string;
+      dateOfBirth?: string;
       curriculumId: string;
       gradeId: string;
       schoolId: string;

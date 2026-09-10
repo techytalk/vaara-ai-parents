@@ -15,6 +15,7 @@ import {
   resolveChildFormState,
   sortCurricula,
 } from "@/constants/onboarding";
+import { isPlaceholderSchool } from "@/constants/circles";
 import { parseIsoDateOnly, toIsoDateOnly } from "@/lib/dates";
 import {
   colors,
@@ -23,7 +24,7 @@ import {
 } from "@/components/onboarding/ui";
 
 export default function EditChildScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, focus } = useLocalSearchParams<{ id: string; focus?: string }>();
   const router = useRouter();
   const [token, setToken] = useState<string | null>(null);
   const [curricula, setCurricula] = useState<Curriculum[]>([]);
@@ -76,11 +77,14 @@ export default function EditChildScreen() {
   }, [id, router]);
 
   function populateFromChild(child: Child, sortedCurricula: Curriculum[]) {
-    setNickname(child.nickname);
+    setNickname(child.nickname ?? "");
     setDateOfBirth(
       child.dateOfBirth ? parseIsoDateOnly(child.dateOfBirth) : null
     );
-    setSelectedSchool(child.school);
+    // The placeholder school is not a valid choice — the API rejects it. Leave
+    // the picker empty so it offers nearby schools and Save stays disabled
+    // until a real one is chosen.
+    setSelectedSchool(isPlaceholderSchool(child.school) ? null : child.school);
     setGender(child.gender);
     const resolved = resolveChildFormState(child, sortedCurricula);
     if (resolved) {
@@ -91,27 +95,28 @@ export default function EditChildScreen() {
 
   async function onSave() {
     if (!token || !curriculumId || !gradeId || !selectedSchool) return;
-    const nick = nickname.trim();
-    if (!nick) {
-      setError("Nickname is required");
-      return;
-    }
-    if (!dateOfBirth) {
-      setError("Date of birth is required");
-      return;
-    }
 
     setError(null);
     setSubmitting(true);
     try {
-      await api.updateChild(token, id, {
-        nickname: nick,
-        dateOfBirth: toIsoDateOnly(dateOfBirth),
+      const body: {
+        nickname?: string;
+        dateOfBirth?: string;
+        schoolId: string;
+        gender: string;
+        curriculumId: string;
+        gradeId: string;
+      } = {
         schoolId: selectedSchool.id,
         gender,
         curriculumId,
         gradeId,
-      });
+      };
+      const nick = nickname.trim();
+      if (nick) body.nickname = nick;
+      if (dateOfBirth) body.dateOfBirth = toIsoDateOnly(dateOfBirth);
+
+      await api.updateChild(token, id, body);
       router.replace({
         pathname: "/onboarding/children/[id]",
         params: { id },
@@ -131,7 +136,7 @@ export default function EditChildScreen() {
     );
   }
 
-  if (error && !nickname) {
+  if (error && !selectedSchool && !loading) {
     return (
       <View style={styles.centered}>
         <Text style={styles.error}>{error}</Text>
@@ -139,8 +144,7 @@ export default function EditChildScreen() {
     );
   }
 
-  const canSave =
-    nickname.trim().length > 0 && dateOfBirth && selectedSchool && gradeId;
+  const canSave = Boolean(selectedSchool && gradeId && curriculumId);
 
   return (
     <ScrollView
@@ -150,7 +154,7 @@ export default function EditChildScreen() {
     >
       <OnboardingHeader
         title="Edit child"
-        subtitle="Update nickname, date of birth, school, curriculum, or class. Changes update your circles."
+        subtitle="Update school, board or class anytime. Nickname and date of birth are optional and stay private."
       />
 
       <ChildFormFields
@@ -176,6 +180,8 @@ export default function EditChildScreen() {
         defaultCity={defaultCity}
         defaultPin={defaultPin}
         defaultState={defaultState}
+        identityOptional
+        schoolFirst={focus !== "identity"}
       />
 
       {error ? <Text style={styles.error}>{error}</Text> : null}

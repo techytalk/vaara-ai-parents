@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -13,34 +13,12 @@ import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { api, type Child } from "@/lib/api";
-import {
-  trackOnboardingBegin,
-  trackOnboardingChildrenComplete,
-} from "@/lib/analytics";
 import { getToken } from "@/lib/session";
 import { GENDER_LABEL } from "@/constants/onboarding";
 import { formatChildDob } from "@/lib/dates";
 import { colors, PrimaryButton, SecondaryButton } from "@/components/onboarding/ui";
-import { SignOutButton } from "@/components/SignOutButton";
 import { radii, shadows, spacing, typography } from "@/constants/theme";
-
-const unlockItems = [
-  {
-    icon: "school-outline" as const,
-    label: "School & class circles",
-    color: colors.teal,
-  },
-  {
-    icon: "library-outline" as const,
-    label: "Curriculum circles (IB, CBSE, IGCSE…)",
-    color: colors.lavender,
-  },
-  {
-    icon: "location-outline" as const,
-    label: "Locality circles after step 2",
-    color: colors.coral,
-  },
-];
+import { trackEvent } from "@/lib/analytics";
 
 function ChildCard({
   child,
@@ -79,7 +57,6 @@ function ChildCard({
 
 export default function ChildrenListScreen() {
   const router = useRouter();
-  const onboardingBegan = useRef(false);
   const [children, setChildren] = useState<Child[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -106,26 +83,21 @@ export default function ChildrenListScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (!onboardingBegan.current) {
-        onboardingBegan.current = true;
-        trackOnboardingBegin();
-      }
       load(true);
     }, [load])
   );
 
+  const promptedRef = useRef(false);
+  useEffect(() => {
+    if (children.length === 1 && !promptedRef.current) {
+      promptedRef.current = true;
+      trackEvent("second_child_prompted", { source: "children_list" });
+    }
+  }, [children.length]);
+
   async function onRefresh() {
     setRefreshing(true);
     await load(true);
-  }
-
-  function onContinue() {
-    if (children.length === 0) {
-      setError("Add at least one child to continue");
-      return;
-    }
-    trackOnboardingChildrenComplete();
-    router.push("/onboarding/location");
   }
 
   function openAddChild() {
@@ -156,32 +128,22 @@ export default function ChildrenListScreen() {
         }
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.progressTrack}>
-          <View style={[styles.progressFill, { width: "50%" }]} />
-        </View>
-        <Text style={styles.step}>Step 1 of 2</Text>
-        <Text style={styles.title}>Tell us about your children</Text>
+        <Text style={styles.title}>My children</Text>
         <Text style={styles.lead}>
-          Add each child's curriculum, grade and school. Vaara uses this to place
-          you in the right parent circles — from nursery through 12th.
+          Add or update each child&apos;s school, board and class. Nickname and
+          date of birth stay private.
         </Text>
 
-        <View style={styles.unlockCard}>
-          <Text style={styles.unlockTitle}>What this unlocks</Text>
-          {unlockItems.map((item) => (
-            <View key={item.label} style={styles.unlockRow}>
-              <View
-                style={[
-                  styles.unlockIcon,
-                  { backgroundColor: `${item.color}18` },
-                ]}
-              >
-                <Ionicons name={item.icon} size={18} color={item.color} />
-              </View>
-              <Text style={styles.unlockLabel}>{item.label}</Text>
-            </View>
-          ))}
-        </View>
+        {children.length === 1 ? (
+          <View style={styles.multiPrompt}>
+            <Text style={styles.multiPromptTitle}>
+              Have another child in a different class or board?
+            </Text>
+            <Text style={styles.multiPromptBody}>
+              Add them to join their school and class circles too.
+            </Text>
+          </View>
+        ) : null}
 
         <View style={styles.privacyCard}>
           <Ionicons
@@ -228,8 +190,8 @@ export default function ChildrenListScreen() {
             </View>
             <Text style={styles.emptyTitle}>Add your first child</Text>
             <Text style={styles.emptyBody}>
-              Include curriculum and grade so we can match you with the right
-              parent circles.
+              Include school, board and class so we can match you with the
+              right parent circles.
             </Text>
             <View style={styles.emptyCta}>
               <Text style={styles.emptyCtaText}>Tap to get started</Text>
@@ -248,17 +210,18 @@ export default function ChildrenListScreen() {
         ) : null}
 
         {hasChildren ? (
-          <>
+          children.length === 1 ? (
+            <PrimaryButton
+              label="+ Add another child"
+              onPress={openAddChild}
+              style={styles.primaryAction}
+            />
+          ) : (
             <SecondaryButton
               label="+ Add another child"
               onPress={openAddChild}
             />
-            <PrimaryButton
-              label="Continue"
-              onPress={onContinue}
-              style={styles.primaryAction}
-            />
-          </>
+          )
         ) : (
           <PrimaryButton
             label="Add your first child"
@@ -266,8 +229,6 @@ export default function ChildrenListScreen() {
             style={styles.primaryAction}
           />
         )}
-
-        <SignOutButton />
       </View>
     </SafeAreaView>
   );
@@ -369,6 +330,27 @@ const styles = StyleSheet.create({
     borderColor: colors.primaryLight,
     padding: spacing.md,
     marginBottom: spacing.lg,
+  },
+  multiPrompt: {
+    backgroundColor: colors.card,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    ...shadows.card,
+  },
+  multiPromptTitle: {
+    ...typography.supporting,
+    color: colors.text,
+    fontFamily: typography.bold,
+    marginBottom: 4,
+  },
+  multiPromptBody: {
+    ...typography.supporting,
+    color: colors.textMuted,
+    fontFamily: typography.regular,
+    lineHeight: 20,
   },
   privacyText: {
     ...typography.supporting,

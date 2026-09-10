@@ -77,7 +77,6 @@ test(
       })
     );
 
-    let circleId: string | undefined;
     const fixture = await fetchOnboardingFixture();
 
     results.push(

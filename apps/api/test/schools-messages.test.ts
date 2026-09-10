@@ -34,6 +34,24 @@ test("school list ratings are returned at three reviews", () => {
 
   assert.equal(school.ratingAvg, 4.25);
   assert.equal(school.ratingCount, 3);
+  assert.deepEqual(school.boardCodes, []);
+});
+
+test("school list rows include board codes when present", () => {
+  const school = mapSchoolListRow({
+    id: "school-1",
+    name: "Example School",
+    branch: null,
+    city: "Bengaluru",
+    state: "Karnataka",
+    pin_code: "560102",
+    verified: true,
+    rating_avg: "4.25",
+    rating_count: 3,
+    board_codes: ["CBSE", "IB_PYP"],
+  });
+
+  assert.deepEqual(school.boardCodes, ["CBSE", "IB_PYP"]);
 });
 
 const integrationEnabled =

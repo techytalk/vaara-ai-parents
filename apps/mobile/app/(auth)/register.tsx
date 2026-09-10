@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -12,14 +12,16 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Link, useRouter } from "expo-router";
 import { SocialAuthSection } from "@/components/SocialAuthSection";
+import { AuthPitchStrip } from "@/components/AuthPitchStrip";
 import { LegalFooter } from "@/components/LegalFooter";
 import { VaaraLogo } from "@/components/VaaraLogo";
 import { Button, InlineError } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import { api } from "@/lib/api";
-import { trackAuthConversion } from "@/lib/analytics";
+import { trackAuthConversion, trackEvent } from "@/lib/analytics";
 import { routeAfterAuth } from "@/lib/auth-navigation";
 import { saveSession } from "@/lib/session";
+import { isGoogleSignInConfigured } from "@/constants/google-auth";
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -27,15 +29,23 @@ export default function RegisterScreen() {
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<"parent" | "provider">("parent");
   const [displayName, setDisplayName] = useState("");
+  const [showEmail, setShowEmail] = useState(
+    Platform.OS !== "ios" && !isGoogleSignInConfigured()
+  );
   const [error, setError] = useState<string | null>(null);
   const [googleError, setGoogleError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    trackEvent("signup_view");
+  }, []);
 
   const completeAuth = useCallback(
     async (
       result: Awaited<ReturnType<typeof api.register>>,
       method: "password" | "google" | "apple" = "password"
     ) => {
+      trackEvent("signup_method_selected", { method });
       trackAuthConversion("sign_up", method);
       await saveSession(result.token, result.user);
       await routeAfterAuth(router, result.user);
@@ -77,38 +87,8 @@ export default function RegisterScreen() {
           <View style={styles.heading}>
             <Text style={styles.title}>Join Vaara</Text>
             <Text style={styles.subtitle}>
-              {role === "parent"
-                ? "Your real name stays private. Parents see only your anonymous handle."
-                : "Share classes and workshops with parents in the areas you serve."}
+              Parents from the same school, class and locality.
             </Text>
-          </View>
-
-          <Text style={styles.label}>I am joining as</Text>
-          <View style={styles.roleRow}>
-            {(["parent", "provider"] as const).map((value) => {
-              const selected = role === value;
-              return (
-                <Pressable
-                  key={value}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected }}
-                  style={[
-                    styles.roleChip,
-                    selected && styles.roleChipActive,
-                  ]}
-                  onPress={() => setRole(value)}
-                >
-                  <Text
-                    style={[
-                      styles.roleChipText,
-                      selected && styles.roleChipTextActive,
-                    ]}
-                  >
-                    {value === "parent" ? "Parent" : "Teacher / Institution"}
-                  </Text>
-                </Pressable>
-              );
-            })}
           </View>
 
           <SocialAuthSection
@@ -116,56 +96,98 @@ export default function RegisterScreen() {
             onError={setGoogleError}
             role={role}
             displayName={displayName}
-            googleLabel="Sign up with Google"
+            googleLabel="Continue with Google"
             appleButtonType="signUp"
           />
 
-          <Text style={styles.label}>Your name (kept private)</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Your name"
-            placeholderTextColor={colors.textSubtle}
-            value={displayName}
-            onChangeText={setDisplayName}
-            testID="clarity-mask"
-          />
-          <Text style={styles.label}>Email address</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="you@example.com"
-            placeholderTextColor={colors.textSubtle}
-            autoCapitalize="none"
-            autoComplete="email"
-            keyboardType="email-address"
-            value={email}
-            onChangeText={setEmail}
-            testID="clarity-mask"
-          />
-          <Text style={styles.label}>Password</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="At least 8 characters"
-            placeholderTextColor={colors.textSubtle}
-            autoComplete="new-password"
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-            testID="clarity-mask"
-          />
+          {showEmail ? (
+            <>
+              <Text style={styles.label}>Your name (kept private)</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Your name"
+                placeholderTextColor={colors.textSubtle}
+                value={displayName}
+                onChangeText={setDisplayName}
+                testID="clarity-mask"
+              />
+              <Text style={styles.label}>Email address</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="you@example.com"
+                placeholderTextColor={colors.textSubtle}
+                autoCapitalize="none"
+                autoComplete="email"
+                keyboardType="email-address"
+                value={email}
+                onChangeText={setEmail}
+                testID="clarity-mask"
+              />
+              <Text style={styles.label}>Password</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="At least 8 characters"
+                placeholderTextColor={colors.textSubtle}
+                autoComplete="new-password"
+                secureTextEntry
+                value={password}
+                onChangeText={setPassword}
+                testID="clarity-mask"
+              />
 
-          {displayError ? <InlineError message={displayError} /> : null}
+              {displayError ? <InlineError message={displayError} /> : null}
 
-          <Button
-            label="Create account"
-            onPress={onRegister}
-            loading={loading}
-            disabled={!email.trim() || password.length < 8}
-            style={styles.button}
-          />
+              <Button
+                label="Create account"
+                onPress={onRegister}
+                loading={loading}
+                disabled={!email.trim() || password.length < 8}
+                style={styles.button}
+              />
+            </>
+          ) : (
+            <>
+              {displayError ? <InlineError message={displayError} /> : null}
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  trackEvent("signup_method_selected", { method: "email" });
+                  setShowEmail(true);
+                }}
+                style={styles.emailToggle}
+              >
+                <Text style={styles.emailToggleText}>Use email instead</Text>
+              </Pressable>
+            </>
+          )}
 
           <Link href="/(auth)/login" style={styles.link}>
-            Already have an account? Sign in
+            Already have an account? Log in
           </Link>
+
+          {role === "parent" ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setRole("provider")}
+              style={styles.providerLink}
+            >
+              <Text style={styles.providerLinkText}>
+                I&apos;m a teacher or school
+              </Text>
+            </Pressable>
+          ) : (
+            <View style={styles.providerNote}>
+              <Text style={styles.providerNoteText}>
+                Signing up as a teacher or institution. You&apos;ll add your
+                organisation next.
+              </Text>
+              <Pressable onPress={() => setRole("parent")}>
+                <Text style={styles.providerLinkText}>Join as a parent instead</Text>
+              </Pressable>
+            </View>
+          )}
+
+          <AuthPitchStrip />
           <LegalFooter extra="Your real name stays private in circles." />
         </ScrollView>
       </KeyboardAvoidingView>
@@ -212,7 +234,6 @@ const styles = StyleSheet.create({
     color: colors.primaryDark,
     fontSize: 15,
     fontFamily: typography.semibold,
-    marginBottom: spacing.lg,
   },
   label: {
     ...typography.supporting,
@@ -220,27 +241,36 @@ const styles = StyleSheet.create({
     fontFamily: typography.semibold,
     marginBottom: 6,
   },
-  roleRow: { flexDirection: "row", gap: 8, marginBottom: 16 },
-  roleChip: {
-    flex: 1,
+  emailToggle: {
     minHeight: 48,
+    alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.xs,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
+    marginTop: spacing.sm,
+  },
+  emailToggleText: {
+    ...typography.body,
+    color: colors.primaryDark,
+    fontFamily: typography.semibold,
+  },
+  providerLink: {
+    marginTop: spacing.sm,
     alignItems: "center",
   },
-  roleChipActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  roleChipText: {
+  providerLinkText: {
     ...typography.supporting,
-    color: colors.text,
-    fontFamily: typography.semibold,
+    color: colors.textMuted,
+    fontFamily: typography.medium,
     textAlign: "center",
   },
-  roleChipTextActive: { color: colors.textInverse },
+  providerNote: {
+    marginTop: spacing.sm,
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  providerNoteText: {
+    ...typography.supporting,
+    color: colors.textMuted,
+    fontFamily: typography.regular,
+    textAlign: "center",
+  },
 });

@@ -9,13 +9,12 @@ import {
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, type PostalCountry } from "@/lib/api";
-import { trackOnboardingComplete } from "@/lib/analytics";
+import { trackEvent, trackOnboardingBegin } from "@/lib/analytics";
 import { getToken, getStoredUser, saveSession } from "@/lib/session";
 import {
   Chip,
   colors,
   FieldInput,
-  InfoCard,
   OnboardingHeader,
   PrimaryButton,
 } from "@/components/onboarding/ui";
@@ -48,6 +47,8 @@ export default function LocationScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [prefillLoading, setPrefillLoading] = useState(true);
+  const [alreadyComplete, setAlreadyComplete] = useState(false);
+  const beganRef = useRef(false);
   const lookupRequestRef = useRef(0);
   const skipNextLookupRef = useRef(false);
 
@@ -68,8 +69,10 @@ export default function LocationScreen() {
     Promise.all([
       api.getPostalCountries().catch(() => [] as PostalCountry[]),
       getToken(),
-    ]).then(async ([countryList, token]) => {
+      getStoredUser(),
+    ]).then(async ([countryList, token, stored]) => {
       setCountries(countryList);
+      setAlreadyComplete(Boolean(stored?.onboardingComplete));
       if (!token) {
         setPrefillLoading(false);
         return;
@@ -90,6 +93,13 @@ export default function LocationScreen() {
       }
     });
   }, []);
+
+  useEffect(() => {
+    if (!alreadyComplete && !beganRef.current && !prefillLoading) {
+      beganRef.current = true;
+      trackOnboardingBegin();
+    }
+  }, [alreadyComplete, prefillLoading]);
 
   useEffect(() => {
     const postal = pinCode.trim();
@@ -170,19 +180,30 @@ export default function LocationScreen() {
         locality: locality.trim() || undefined,
         city: city.trim() || undefined,
         state: state.trim() || undefined,
-        communityName: communityName.trim() || undefined,
+        communityName: alreadyComplete
+          ? communityName.trim() || undefined
+          : undefined,
       });
 
       const storedUser = await getStoredUser();
       if (storedUser) {
         await saveSession(token, {
           ...storedUser,
-          onboardingComplete: result.onboardingComplete ?? true,
+          onboardingComplete: result.onboardingComplete ?? storedUser.onboardingComplete,
         });
       }
 
-      trackOnboardingComplete();
-      router.replace("/(app)");
+      if (alreadyComplete) {
+        if (router.canGoBack()) {
+          router.back();
+        } else {
+          router.replace("/(app)");
+        }
+        return;
+      }
+
+      trackEvent("onboarding_location_complete");
+      router.replace("/onboarding/school" as never);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save location");
     } finally {
@@ -209,17 +230,15 @@ export default function LocationScreen() {
       keyboardShouldPersistTaps="handled"
     >
       <OnboardingHeader
-        step={2}
-        totalSteps={2}
-        title="Your location"
-        subtitle="Help us connect you with parents in your neighbourhood and housing community."
+        step={alreadyComplete ? undefined : 1}
+        totalSteps={alreadyComplete ? undefined : 3}
+        title="Where do you live?"
+        subtitle="Meet parents in your neighbourhood."
       />
 
-      <InfoCard>
-        Choose your country, enter your postal code, and we&apos;ll fill in city
-        and state where possible. Add your apartment or community name to join
-        your housing circle too.
-      </InfoCard>
+      <Text style={styles.privacy}>
+        Only your area is used, never your address.
+      </Text>
 
       <View style={styles.section}>
         <View style={styles.sectionHead}>
@@ -266,7 +285,6 @@ export default function LocationScreen() {
               usesNumericPostal ? value.replace(/\D/g, "") : value.toUpperCase()
             )
           }
-          hint="Required — used to match you with nearby parents"
         />
 
         {!selectedCountry?.lookupSupported ? (
@@ -287,7 +305,7 @@ export default function LocationScreen() {
 
         <FieldInput
           label="Locality / area"
-          placeholder="e.g. Indiranagar, IDA Jeedimetla"
+          placeholder="e.g. Indiranagar, Koramangala"
           value={locality}
           onChangeText={setLocality}
           hint={
@@ -317,60 +335,67 @@ export default function LocationScreen() {
           </View>
         ) : null}
 
-        <FieldInput
-          label="City"
-          placeholder="e.g. Bengaluru"
-          value={city}
-          onChangeText={setCity}
-        />
-        <FieldInput
-          label={countryCode === "US" ? "State" : "State / region"}
-          placeholder={countryCode === "US" ? "e.g. California" : "e.g. Karnataka"}
-          value={state}
-          onChangeText={setState}
-        />
-      </View>
-
-      <View style={styles.section}>
-        <View style={styles.sectionHead}>
-          <Ionicons name="home-outline" size={18} color={colors.primary} />
-          <Text style={styles.sectionTitle}>Apartment / community</Text>
-        </View>
-        <FieldInput
-          label="Community name (optional)"
-          placeholder="e.g. Green Valley Apartments"
-          value={communityName}
-          onChangeText={setCommunityName}
-          hint="Optional — connects you with parents in the same gated community"
-        />
-        {communitySuggestions.length > 0 ? (
-          <View style={styles.optionBlock}>
-            <Text style={styles.optionHint}>
-              Communities other parents in this area have added:
-            </Text>
-            <View style={styles.chipRow}>
-              {communitySuggestions.map((name) => (
-                <Chip
-                  key={name}
-                  label={name}
-                  selected={communityName === name}
-                  onPress={() => setCommunityName(name)}
-                />
-              ))}
-            </View>
-          </View>
+        {(city || state || !selectedCountry?.lookupSupported) ? (
+          <>
+            <FieldInput
+              label="City"
+              placeholder="e.g. Bengaluru"
+              value={city}
+              onChangeText={setCity}
+            />
+            <FieldInput
+              label={countryCode === "US" ? "State" : "State / region"}
+              placeholder={countryCode === "US" ? "e.g. California" : "e.g. Karnataka"}
+              value={state}
+              onChangeText={setState}
+            />
+          </>
         ) : null}
       </View>
+
+      {alreadyComplete ? (
+        <View style={styles.section}>
+          <View style={styles.sectionHead}>
+            <Ionicons name="home-outline" size={18} color={colors.primary} />
+            <Text style={styles.sectionTitle}>Apartment / community</Text>
+          </View>
+          <FieldInput
+            label="Community name (optional)"
+            placeholder="e.g. Green Valley Apartments"
+            value={communityName}
+            onChangeText={setCommunityName}
+            hint="Optional — connects you with parents in the same gated community"
+          />
+          {communitySuggestions.length > 0 ? (
+            <View style={styles.optionBlock}>
+              <Text style={styles.optionHint}>
+                Communities other parents in this area have added:
+              </Text>
+              <View style={styles.chipRow}>
+                {communitySuggestions.map((name) => (
+                  <Chip
+                    key={name}
+                    label={name}
+                    selected={communityName === name}
+                    onPress={() => setCommunityName(name)}
+                  />
+                ))}
+              </View>
+            </View>
+          ) : null}
+        </View>
+      ) : null}
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       <PrimaryButton
-        label={pinCode ? "Save location" : "Finish setup"}
+        label={alreadyComplete ? "Save location" : "Continue"}
         onPress={onFinish}
         loading={loading}
+        disabled={!pinCode.trim()}
       />
 
-      <SignOutButton />
+      {alreadyComplete ? null : <SignOutButton />}
     </ScrollView>
   );
 }
@@ -378,6 +403,13 @@ export default function LocationScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 20, paddingBottom: 40 },
+  privacy: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.textMuted,
+    marginTop: -8,
+    marginBottom: 16,
+  },
   section: { marginBottom: 8 },
   sectionHead: {
     flexDirection: "row",

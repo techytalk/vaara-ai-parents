@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,6 +12,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Link, useRouter } from "expo-router";
 import { SocialAuthSection } from "@/components/SocialAuthSection";
+import { AuthPitchStrip } from "@/components/AuthPitchStrip";
 import { LegalFooter } from "@/components/LegalFooter";
 import { VaaraLogo } from "@/components/VaaraLogo";
 import { Button, InlineError } from "@/components/ui";
@@ -19,11 +21,15 @@ import { api } from "@/lib/api";
 import { trackAuthConversion } from "@/lib/analytics";
 import { routeAfterAuth } from "@/lib/auth-navigation";
 import { saveSession } from "@/lib/session";
+import { isGoogleSignInConfigured } from "@/constants/google-auth";
 
 export default function LoginScreen() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showEmail, setShowEmail] = useState(
+    Platform.OS !== "ios" && !isGoogleSignInConfigured()
+  );
   const [error, setError] = useState<string | null>(null);
   const [googleError, setGoogleError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -78,43 +84,59 @@ export default function LoginScreen() {
             onError={setGoogleError}
           />
 
-          <Text style={styles.label}>Email address</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="you@example.com"
-            placeholderTextColor={colors.textSubtle}
-            autoCapitalize="none"
-            autoComplete="email"
-            keyboardType="email-address"
-            value={email}
-            onChangeText={setEmail}
-            testID="clarity-mask"
-          />
-          <Text style={styles.label}>Password</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Your password"
-            placeholderTextColor={colors.textSubtle}
-            autoComplete="current-password"
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-            testID="clarity-mask"
-          />
+          {showEmail ? (
+            <>
+              <Text style={styles.label}>Email address</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="you@example.com"
+                placeholderTextColor={colors.textSubtle}
+                autoCapitalize="none"
+                autoComplete="email"
+                keyboardType="email-address"
+                value={email}
+                onChangeText={setEmail}
+                testID="clarity-mask"
+              />
+              <Text style={styles.label}>Password</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Your password"
+                placeholderTextColor={colors.textSubtle}
+                autoComplete="current-password"
+                secureTextEntry
+                value={password}
+                onChangeText={setPassword}
+                testID="clarity-mask"
+              />
 
-          {displayError ? <InlineError message={displayError} /> : null}
+              {displayError ? <InlineError message={displayError} /> : null}
 
-          <Button
-            label="Sign in with email"
-            onPress={onLogin}
-            loading={loading}
-            disabled={!email.trim() || !password}
-            style={styles.button}
-          />
+              <Button
+                label="Sign in with email"
+                onPress={onLogin}
+                loading={loading}
+                disabled={!email.trim() || !password}
+                style={styles.button}
+              />
+            </>
+          ) : (
+            <>
+              {displayError ? <InlineError message={displayError} /> : null}
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setShowEmail(true)}
+                style={styles.emailToggle}
+              >
+                <Text style={styles.emailToggleText}>Use email instead</Text>
+              </Pressable>
+            </>
+          )}
 
           <Link href="/(auth)/register" style={styles.link}>
             New to Vaara? Create an account
           </Link>
+          <AuthPitchStrip />
           <LegalFooter />
         </ScrollView>
       </KeyboardAvoidingView>
@@ -166,6 +188,17 @@ const styles = StyleSheet.create({
     textAlign: "center",
     color: colors.primaryDark,
     fontSize: 15,
+    fontFamily: typography.semibold,
+  },
+  emailToggle: {
+    minHeight: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: spacing.sm,
+  },
+  emailToggleText: {
+    ...typography.body,
+    color: colors.primaryDark,
     fontFamily: typography.semibold,
   },
 });

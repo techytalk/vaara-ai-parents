@@ -6,9 +6,6 @@
  */
 
 export type AnalyticsEvent =
-  | "intro_started"
-  | "intro_skipped"
-  | "intro_completed"
   | "home_circle_opened"
   | "circles_view_all"
   | "circle_post_started"
@@ -23,9 +20,30 @@ export type AnalyticsEvent =
   | "market_listing_opened"
   | "sign_up"
   | "login"
+  | "signup_view"
+  | "signup_method_selected"
   | "tutorial_begin"
   | "tutorial_complete"
+  | "onboarding_location_complete"
+  | "onboarding_school_complete"
+  | "onboarding_class_complete"
+  | "onboarding_ready_view"
   | "onboarding_children_complete"
+  | "school_search_no_results"
+  | "school_create_opened"
+  | "school_created"
+  | "tour_started"
+  | "tour_step_view"
+  | "tour_skipped"
+  | "tour_completed"
+  | "tour_first_post_started"
+  | "child_identity_saved"
+  | "second_child_prompted"
+  | "second_child_added"
+  | "completion_prompt_shown"
+  | "completion_prompt_tapped"
+  | "completion_prompt_dismissed"
+  | "school_suggestion_tapped"
   | "share";
 
 type AnalyticsProperties = Record<string, string | number | boolean>;

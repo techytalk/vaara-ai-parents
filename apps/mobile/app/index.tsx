@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { Redirect } from "expo-router";
 import { api } from "@/lib/api";
+import { resolveParentOnboardingHref } from "@/lib/auth-navigation";
 import { getToken, saveSession } from "@/lib/session";
-import { hasCompletedIntro } from "@/lib/intro";
 import { colors } from "@/constants/theme";
 
 export default function Index() {
@@ -14,8 +14,7 @@ export default function Index() {
     (async () => {
       const token = await getToken();
       if (!token) {
-        const introComplete = await hasCompletedIntro();
-        setTarget(introComplete ? "/(auth)/login" : "/(intro)");
+        setTarget("/(auth)/register");
         setLoading(false);
         return;
       }
@@ -28,7 +27,7 @@ export default function Index() {
           if (user.role === "provider") {
             setTarget("/onboarding/provider");
           } else {
-            setTarget("/onboarding/children");
+            setTarget(await resolveParentOnboardingHref(token));
           }
         } else if (user.role === "provider") {
           setTarget("/(provider)");

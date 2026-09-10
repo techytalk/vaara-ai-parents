@@ -74,12 +74,12 @@ export default function RootLayout() {
           }}
         >
           <Stack.Screen name="index" />
-          <Stack.Screen name="(intro)" />
           <Stack.Screen name="(auth)" />
           <Stack.Screen name="onboarding" />
+          <Stack.Screen name="tour" options={{ headerShown: false }} />
           <Stack.Screen name="(app)" />
           <Stack.Screen name="(provider)" />
-        <Stack.Screen name="circles" options={{ headerShown: false }} />
+          <Stack.Screen name="circles" options={{ headerShown: false }} />
           <Stack.Screen name="p" options={{ headerShown: false }} />
         </Stack>
         <UpdatePrompt

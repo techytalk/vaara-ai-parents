@@ -19,15 +19,26 @@ import { FeedPostCard } from "@/components/feed/FeedPostCard";
 import { EmptyState, Avatar, ScreenLoader } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import { useRealtimeChannels } from "@/hooks/useRealtimeChannels";
-import { api, type AuthUser, type Circle, type HomeFeedPost } from "@/lib/api";
+import { api, type AuthUser, type Child, type Circle, type HomeFeedPost } from "@/lib/api";
 import {
   composeParamsForMode,
   pickPrimaryCircle,
   type ComposeMode,
 } from "@/lib/home-feed";
+import { hasCompletedAppTour } from "@/lib/app-tour";
+import {
+  dismissCompletionPrompt,
+  evaluateCompletionGaps,
+  hrefForCompletionPrompt,
+  pickActiveCompletionPrompt,
+  type CompletionPromptCandidate,
+} from "@/lib/completion-prompts";
+import { trackEvent } from "@/lib/analytics";
 import { getToken } from "@/lib/session";
+import { resolveParentOnboardingHref } from "@/lib/auth-navigation";
 import { sharePostLink } from "@/lib/share-post";
 import { useSubmitReport } from "@/providers/ReportProvider";
+import { CompletionPrompt } from "@/components/CompletionPrompt";
 
 function greetingForHour(hour: number) {
   if (hour < 12) return "Good morning";
@@ -42,6 +53,8 @@ export default function HomeScreen() {
   const submitReport = useSubmitReport();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [circles, setCircles] = useState<Circle[]>([]);
+  const [activePrompt, setActivePrompt] =
+    useState<CompletionPromptCandidate | null>(null);
   const [unreadAlerts, setUnreadAlerts] = useState(0);
   const [savedPostIds, setSavedPostIds] = useState<Set<string>>(new Set());
 
@@ -51,20 +64,28 @@ export default function HomeScreen() {
       router.replace("/(auth)/login");
       return null;
     }
-    const [me, circleList, notifications, saved] = await Promise.all([
+    const [me, circleList, kids, notifications, saved] = await Promise.all([
       api.me(token),
       api.getCircles(token),
+      api.getChildren(token).catch(() => [] as Child[]),
       api.getNotifications(token).catch(() => []),
       api.getSaved(token).catch(() => ({ posts: [] })),
     ]);
     if (!me.onboardingComplete) {
-      router.replace("/onboarding/children");
+      const href = await resolveParentOnboardingHref(token);
+      router.replace(href as never);
+      return null;
+    }
+    if (!(await hasCompletedAppTour())) {
+      router.replace("/tour/circles" as never);
       return null;
     }
     setUser(me);
     setCircles(circleList);
     setUnreadAlerts(notifications.filter((item) => !item.readAt).length);
     setSavedPostIds(new Set(saved.posts.map((post) => post.id)));
+    const gaps = evaluateCompletionGaps({ children: kids, circles: circleList });
+    setActivePrompt(await pickActiveCompletionPrompt(gaps));
     return token;
   }, [router]);
 
@@ -141,6 +162,22 @@ export default function HomeScreen() {
 
   const primaryCircle = useMemo(() => pickPrimaryCircle(circles), [circles]);
   const loading = feedQuery.isLoading && posts.length === 0;
+
+  async function onDismissPrompt() {
+    if (!activePrompt) return;
+    const { count } = await dismissCompletionPrompt(activePrompt.key);
+    trackEvent("completion_prompt_dismissed", {
+      prompt: activePrompt.kind,
+      dismissal_count: count,
+    });
+    setActivePrompt(null);
+  }
+
+  function onPressPrompt() {
+    if (!activePrompt) return;
+    const href = hrefForCompletionPrompt(activePrompt);
+    router.push(href as never);
+  }
 
   function openNewPost(mode?: ComposeMode) {
     if (!primaryCircle) {
@@ -291,6 +328,14 @@ export default function HomeScreen() {
           </Text>
         </View>
       </View>
+
+      {activePrompt ? (
+        <CompletionPrompt
+          prompt={activePrompt}
+          onPress={onPressPrompt}
+          onDismiss={onDismissPrompt}
+        />
+      ) : null}
 
       <Pressable
         accessibilityRole="button"

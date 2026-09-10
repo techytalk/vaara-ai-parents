@@ -7,7 +7,8 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { api, type School } from "@/lib/api";
+import { api, type School, type SchoolListItem } from "@/lib/api";
+import { trackEvent } from "@/lib/analytics";
 import { colors, FieldInput, FieldLabel } from "@/components/onboarding/ui";
 
 type Props = {
@@ -29,7 +30,9 @@ export function SchoolPicker({
 }: Props) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<School[]>([]);
+  const [suggestions, setSuggestions] = useState<SchoolListItem[]>([]);
   const [searching, setSearching] = useState(false);
+  const [loadingNearby, setLoadingNearby] = useState(false);
   const [showAddNew, setShowAddNew] = useState(false);
   const [addName, setAddName] = useState("");
   const [addBranch, setAddBranch] = useState("");
@@ -53,6 +56,41 @@ export function SchoolPicker({
     }
   }, [selected?.id]);
 
+  // Nearby suggestions when the field is empty (browse, not search).
+  useEffect(() => {
+    if (selected) {
+      setSuggestions([]);
+      return;
+    }
+    const q = query.trim();
+    if (q.length > 0) {
+      setSuggestions([]);
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingNearby(true);
+    api
+      .getNearbySchools(token, {
+        city: defaultCity || undefined,
+        pin: defaultPin || undefined,
+        limit: 5,
+      })
+      .then((list) => {
+        if (!cancelled) setSuggestions(list);
+      })
+      .catch(() => {
+        if (!cancelled) setSuggestions([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingNearby(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selected, query, token, defaultCity, defaultPin]);
+
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
@@ -75,6 +113,9 @@ export function SchoolPicker({
           pin: defaultPin || undefined,
         });
         setResults(list);
+        if (q.length >= 3 && list.length === 0) {
+          trackEvent("school_search_no_results", { query_length: q.length });
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : "Search failed");
       } finally {
@@ -95,12 +136,30 @@ export function SchoolPicker({
     setShowAddNew(false);
   }
 
+  function selectSchool(school: School, fromSuggestion: boolean) {
+    if (fromSuggestion) {
+      trackEvent("school_suggestion_tapped");
+    }
+    onSelect(school);
+    setQuery(school.displayLabel);
+    setResults([]);
+    setSuggestions([]);
+  }
+
+  function openCreateForm() {
+    trackEvent("school_create_opened");
+    setShowAddNew(true);
+    setAddName(query.trim());
+    setAddCity(defaultCity);
+    setAddState(defaultState);
+    setAddPin(defaultPin);
+  }
+
   async function onCreateSchool() {
     const name = addName.trim() || query.trim();
-    const branch = addBranch.trim();
     const city = addCity.trim();
-    if (!name || !branch || !city) {
-      setError("School name, branch, and city are required");
+    if (!name || !city) {
+      setError("School name and city are required");
       return;
     }
     setCreating(true);
@@ -108,11 +167,12 @@ export function SchoolPicker({
     try {
       const school = await api.createSchool(token, {
         name,
-        branch,
+        branch: addBranch.trim() || undefined,
         city,
         state: addState.trim() || undefined,
         pinCode: addPin.trim() || undefined,
       });
+      trackEvent("school_created");
       onSelect(school);
       setQuery(school.displayLabel);
       setShowAddNew(false);
@@ -123,28 +183,66 @@ export function SchoolPicker({
     }
   }
 
-  const canShowResults =
-    query.trim().length >= 2 &&
-    !selected;
+  const canShowResults = query.trim().length >= 2 && !selected;
+  const canOfferCreate = canShowResults && !searching;
+  const showNearbyPanel =
+    !selected && query.trim().length === 0 && !loadingNearby;
+  const showSuggestions = showNearbyPanel && suggestions.length > 0;
 
   return (
     <View style={styles.wrap}>
       <FieldLabel>School *</FieldLabel>
       <TextInput
         style={styles.input}
-        placeholder="Type school name…"
+        placeholder="Search by school name…"
         placeholderTextColor="#94a3b8"
         value={query}
         onChangeText={onChangeQuery}
         autoCorrect={false}
       />
       <Text style={styles.hint}>
-        Start typing — pick from the list or add a new school with branch and
-        city.
+        Search by name anywhere, or pick a school near you below.
       </Text>
 
-      {searching ? (
+      {searching || loadingNearby ? (
         <ActivityIndicator style={styles.loader} color={colors.primary} />
+      ) : null}
+
+      {showNearbyPanel && !showAddNew ? (
+        <View style={styles.dropdown}>
+          {showSuggestions ? (
+            <>
+              <Text style={styles.suggestHeader}>Schools near you</Text>
+              {suggestions.map((school) => (
+                <Pressable
+                  key={school.id}
+                  style={styles.resultRow}
+                  onPress={() => selectSchool(school, true)}
+                >
+                  <Text style={styles.resultTitle}>{school.name}</Text>
+                  <Text style={styles.resultMeta}>
+                    {[school.branch, school.city].filter(Boolean).join(" · ")}
+                  </Text>
+                </Pressable>
+              ))}
+            </>
+          ) : (
+            <Text style={styles.suggestEmpty}>
+              No schools listed near you yet — add yours below.
+            </Text>
+          )}
+          <Pressable
+            style={styles.otherRow}
+            onPress={openCreateForm}
+            accessibilityRole="button"
+            accessibilityLabel="School not listed — enter details"
+          >
+            <Text style={styles.otherTitle}>Not here / Other</Text>
+            <Text style={styles.otherMeta}>
+              Enter your school name and details
+            </Text>
+          </Pressable>
+        </View>
       ) : null}
 
       {canShowResults && results.length > 0 ? (
@@ -153,11 +251,7 @@ export function SchoolPicker({
             <Pressable
               key={school.id}
               style={styles.resultRow}
-              onPress={() => {
-                onSelect(school);
-                setQuery(school.displayLabel);
-                setResults([]);
-              }}
+              onPress={() => selectSchool(school, false)}
             >
               <Text style={styles.resultTitle}>{school.name}</Text>
               <Text style={styles.resultMeta}>
@@ -168,17 +262,9 @@ export function SchoolPicker({
         </View>
       ) : null}
 
-      {canShowResults && !searching && results.length === 0 ? (
-        <Pressable
-          style={styles.addNewRow}
-          onPress={() => {
-            setShowAddNew(true);
-            setAddName(query.trim());
-          }}
-        >
-          <Text style={styles.addNewText}>
-            + Add &quot;{query.trim()}&quot; as new school
-          </Text>
+      {canOfferCreate ? (
+        <Pressable style={styles.addNewRow} onPress={openCreateForm}>
+          <Text style={styles.addNewText}>Can&apos;t find your school?</Text>
         </Pressable>
       ) : null}
 
@@ -191,7 +277,7 @@ export function SchoolPicker({
             onChangeText={setAddName}
           />
           <FieldInput
-            label="Branch / area *"
+            label="Branch / area (optional)"
             placeholder="e.g. Koramangala, Whitefield"
             value={addBranch}
             onChangeText={setAddBranch}
@@ -258,11 +344,44 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     overflow: "hidden",
   },
+  suggestHeader: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: colors.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 4,
+  },
+  suggestEmpty: {
+    fontSize: 13,
+    color: colors.textMuted,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 8,
+    lineHeight: 18,
+  },
   resultRow: {
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+  },
+  otherRow: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    backgroundColor: colors.primarySoft,
+  },
+  otherTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: colors.primaryDark,
+  },
+  otherMeta: {
+    fontSize: 13,
+    color: colors.textMuted,
+    marginTop: 2,
   },
   resultTitle: {
     fontSize: 15,

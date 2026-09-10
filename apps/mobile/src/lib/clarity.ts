@@ -43,21 +43,19 @@ async function loadSdk(): Promise<ClaritySdk | null> {
 
 export function funnelFromSegments(segments: readonly string[]): string {
   const root = segments[0];
-  if (root === "(intro)") return "intro";
   if (root === "(auth)") {
     return segments.includes("register") ? "register" : "login";
   }
   if (root === "onboarding") {
     if (segments.includes("location")) return "onboarding_location";
+    if (segments.includes("school")) return "onboarding_school";
+    if (segments.includes("class")) return "onboarding_class";
+    if (segments.includes("ready")) return "onboarding_ready";
     if (segments.includes("provider")) return "onboarding_provider";
-    if (
-      segments.includes("children") ||
-      segments.includes("add-children")
-    ) {
-      return "onboarding_children";
-    }
+    if (segments.includes("children")) return "onboarding_children";
     return "onboarding";
   }
+  if (root === "tour") return "tour";
   if (root === "(app)" || root === "circles") return "in_app";
   if (root === "(provider)") return "provider_app";
   if (root === "p") return "shared_post";

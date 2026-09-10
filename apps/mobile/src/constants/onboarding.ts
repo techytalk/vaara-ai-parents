@@ -14,17 +14,6 @@ export const GENDER_LABEL: Record<string, string> = {
   unspecified: "Prefer not to say",
 };
 
-/** Prefer CBSE (full K–12) as default; avoids IB PYP (only up to grade 5). */
-export function pickDefaultCurriculum(curricula: Curriculum[]): Curriculum | null {
-  if (curricula.length === 0) return null;
-  const cbse = curricula.find((c) => c.code === "CBSE");
-  if (cbse) return cbse;
-  const with12 = curricula.find((c) =>
-    c.grades.some((g) => g.code === "G12" || g.label.includes("12"))
-  );
-  return with12 ?? curricula[0];
-}
-
 export function sortCurricula(curricula: Curriculum[]): Curriculum[] {
   const order = ["CBSE", "SSC", "IGCSE", "IBDP", "IB_MYP", "IB_PYP"];
   return [...curricula].sort((a, b) => {

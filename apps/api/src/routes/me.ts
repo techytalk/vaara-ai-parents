@@ -186,13 +186,16 @@ export function createMeRoutes() {
       schoolId?: string;
     }>();
 
-    const nickname = body.nickname?.trim();
-    if (!nickname) {
-      return c.json({ error: "nickname is required" }, 400);
-    }
-    const dateOfBirth = parseChildDateOfBirth(body.dateOfBirth);
-    if (!dateOfBirth) {
-      return c.json({ error: "Valid dateOfBirth is required (YYYY-MM-DD)" }, 400);
+    const nickname = body.nickname?.trim() || null;
+    let dateOfBirth: string | null = null;
+    if (body.dateOfBirth?.trim()) {
+      dateOfBirth = parseChildDateOfBirth(body.dateOfBirth);
+      if (!dateOfBirth) {
+        return c.json(
+          { error: "Valid dateOfBirth is required (YYYY-MM-DD)" },
+          400
+        );
+      }
     }
     if (!body.curriculumId || !body.gradeId) {
       return c.json({ error: "curriculumId and gradeId are required" }, 400);

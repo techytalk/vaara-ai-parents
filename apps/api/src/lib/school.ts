@@ -44,6 +44,11 @@ export function mapSchoolRow(row: Record<string, unknown>) {
 
 export function mapSchoolListRow(row: Record<string, unknown>) {
   const ratingCount = Number(row.rating_count ?? 0);
+  const boardCodes = Array.isArray(row.board_codes)
+    ? (row.board_codes as unknown[]).filter(
+        (code): code is string => typeof code === "string" && code.length > 0
+      )
+    : [];
   return {
     ...mapSchoolRow(row),
     ratingAvg:
@@ -51,5 +56,6 @@ export function mapSchoolListRow(row: Record<string, unknown>) {
         ? Number(row.rating_avg)
         : null,
     ratingCount,
+    boardCodes,
   };
 }

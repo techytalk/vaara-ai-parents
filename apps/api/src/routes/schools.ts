@@ -99,16 +99,22 @@ export function createSchoolsRoutes() {
       const pattern = `%${q}%`;
       const prefix = `${q}%`;
 
+      const locationRank = `CASE
+             WHEN $5::text IS NOT NULL AND pin_code = $5 THEN 0
+             WHEN $4::text IS NOT NULL AND city ILIKE $4 THEN 1
+             ELSE 2
+           END`;
       const orderBy =
         sort === "rating"
-          ? `CASE WHEN pin_code = $5 THEN 0 ELSE 1 END,
+          ? `${locationRank},
+             verified DESC,
              CASE WHEN rating_count >= 3 THEN rating_avg END DESC NULLS LAST,
              rating_count DESC, rank_bucket, sm DESC, name`
           : `rank_bucket, sm DESC,
-             CASE WHEN pin_code = $5 THEN 0 ELSE 1 END, name`;
+             ${locationRank}, verified DESC, name`;
       const { rows } = await client.query(
         `SELECT id, name, branch, city, state, pin_code, verified,
-                rating_avg, rating_count,
+                rating_avg, rating_count, board_codes,
                 CASE
                   WHEN name ILIKE $2 THEN 0
                   WHEN branch ILIKE $2 THEN 1
@@ -121,11 +127,6 @@ export function createSchoolsRoutes() {
            AND (
              name ILIKE $1 OR branch ILIKE $1 OR city ILIKE $1
              OR name % $3 OR branch % $3
-           )
-           AND (
-             ($4::text IS NULL AND $5::text IS NULL)
-             OR city ILIKE $4
-             OR pin_code = $5
            )
          ORDER BY ${orderBy}
          LIMIT $6`,
@@ -194,7 +195,7 @@ export function createSchoolsRoutes() {
              name`;
       const { rows } = await client.query(
         `SELECT id, name, branch, city, state, pin_code, verified,
-                rating_avg, rating_count
+                rating_avg, rating_count, board_codes
          FROM schools
          WHERE normalized_key <> $1
            AND (
@@ -328,9 +329,6 @@ export function createSchoolsRoutes() {
 
     if (!name || !city) {
       return c.json({ error: "name and city are required" }, 400);
-    }
-    if (!branch) {
-      return c.json({ error: "branch is required (area / locality of the school)" }, 400);
     }
 
     const normalizedKey = buildSchoolNormalizedKey(name, branch, city);

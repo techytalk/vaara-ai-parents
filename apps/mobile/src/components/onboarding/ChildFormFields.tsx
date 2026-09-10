@@ -34,6 +34,10 @@ type Props = {
   defaultCity?: string;
   defaultPin?: string;
   defaultState?: string;
+  /** When true, nickname and date of birth are labeled optional. */
+  identityOptional?: boolean;
+  /** School → board → class first; identity fields last. */
+  schoolFirst?: boolean;
 };
 
 export function ChildFormFields({
@@ -54,31 +58,47 @@ export function ChildFormFields({
   defaultCity = "",
   defaultPin = "",
   defaultState = "",
+  identityOptional = false,
+  schoolFirst = false,
 }: Props) {
   const selectedCurriculum = curricula.find((c) => c.id === curriculumId);
   const dobBounds = childDobBounds();
+  const nickLabel = identityOptional ? "Nickname" : "Nickname *";
+  const dobLabel = identityOptional ? "Date of birth" : "Date of birth *";
 
-  return (
+  const identityFields = (
     <>
       <FieldInput
-        label="Nickname *"
+        label={nickLabel}
         placeholder="e.g. Aarav — kept private"
         value={nickname}
         onChangeText={onNicknameChange}
-        hint="Never shown to other parents"
+        hint={
+          identityOptional
+            ? "Optional — never shown to other parents"
+            : "Never shown to other parents"
+        }
       />
 
       <View style={styles.dobField}>
         <DateField
-          label="Date of birth *"
+          label={dobLabel}
           value={dateOfBirth}
           onChange={onDateOfBirthChange}
           minimumDate={dobBounds.minimumDate}
           maximumDate={dobBounds.maximumDate}
-          hint="Private — never shown to other parents"
+          hint={
+            identityOptional
+              ? "Optional — private, never shown to other parents"
+              : "Private — never shown to other parents"
+          }
         />
       </View>
+    </>
+  );
 
+  const schoolBoardClass = (
+    <>
       <SchoolPicker
         token={token}
         selected={selectedSchool}
@@ -104,6 +124,9 @@ export function ChildFormFields({
       <Text style={styles.curriculumHint}>
         For nursery through 12th, choose CBSE, SSC, or IGCSE.
       </Text>
+      {!curriculumId ? (
+        <Text style={styles.curriculumHint}>Pick a board first.</Text>
+      ) : null}
       <FlatList
         horizontal
         data={curricula}
@@ -155,6 +178,22 @@ export function ChildFormFields({
           </ScrollView>
         </>
       ) : null}
+    </>
+  );
+
+  return (
+    <>
+      {schoolFirst ? (
+        <>
+          {schoolBoardClass}
+          {identityFields}
+        </>
+      ) : (
+        <>
+          {identityFields}
+          {schoolBoardClass}
+        </>
+      )}
     </>
   );
 }
