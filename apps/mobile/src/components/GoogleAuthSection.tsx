@@ -11,6 +11,7 @@ type GoogleAuthSectionProps = {
   role?: "parent" | "provider";
   displayName?: string;
   label?: string;
+  showDivider?: boolean;
 };
 
 export function GoogleAuthSection({
@@ -19,6 +20,7 @@ export function GoogleAuthSection({
   role,
   displayName,
   label,
+  showDivider = true,
 }: GoogleAuthSectionProps) {
   const google = useGoogleAuth({ onSuccess, role, displayName });
 
@@ -38,7 +40,7 @@ export function GoogleAuthSection({
         label={label}
       />
       {google.error ? <Text style={styles.error}>{google.error}</Text> : null}
-      <AuthDivider />
+      {showDivider ? <AuthDivider /> : null}
     </>
   );
 }

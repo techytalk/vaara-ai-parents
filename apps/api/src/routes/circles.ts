@@ -56,6 +56,7 @@ import { syncCircleMembership } from "../services/circle-sync.js";
 import { loadCircleFeed } from "../services/feed.js";
 import { dispatchPostCreated, dispatchMessageCreated } from "../lib/async-events.js";
 import { parseReportReason } from "../lib/report-reasons.js";
+import { rejectObjectionableText } from "../lib/content-guard.js";
 import { rateLimitMiddleware } from "../middleware/rate-limit.js";
 import { authMiddleware, type AuthVariables } from "../middleware/auth.js";
 import { resolveThreadAccess } from "../lib/thread-access.js";
@@ -328,6 +329,15 @@ export function createCirclesRoutes() {
       !body.poll
     ) {
       return c.json({ error: "A message, poll, or attachment is required" }, 400);
+    }
+
+    const objectionable = rejectObjectionableText(
+      text,
+      body.poll?.question,
+      ...(body.poll?.options ?? [])
+    );
+    if (objectionable) {
+      return c.json({ error: objectionable.error }, 400);
     }
 
     if (body.poll) {
@@ -866,6 +876,15 @@ export function createCirclesRoutes() {
       !hasPoll
     ) {
       return c.json({ error: "No changes provided" }, 400);
+    }
+
+    const objectionableEdit = rejectObjectionableText(
+      hasBody ? body.body : undefined,
+      hasPoll ? body.poll?.question : undefined,
+      ...(hasPoll ? body.poll?.options ?? [] : [])
+    );
+    if (objectionableEdit) {
+      return c.json({ error: objectionableEdit.error }, 400);
     }
 
     if (hasTag) {
@@ -1430,6 +1449,11 @@ export function createCirclesRoutes() {
 
     if (!text) {
       return c.json({ error: "body is required" }, 400);
+    }
+
+    const objectionableReply = rejectObjectionableText(text);
+    if (objectionableReply) {
+      return c.json({ error: objectionableReply.error }, 400);
     }
 
     const client = await pool.connect();

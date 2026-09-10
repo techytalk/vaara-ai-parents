@@ -11,7 +11,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Link, useRouter } from "expo-router";
-import { GoogleAuthSection } from "@/components/GoogleAuthSection";
+import { SocialAuthSection } from "@/components/SocialAuthSection";
+import { LegalFooter } from "@/components/LegalFooter";
 import { VaaraLogo } from "@/components/VaaraLogo";
 import { Button, InlineError } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
@@ -33,7 +34,7 @@ export default function RegisterScreen() {
   const completeAuth = useCallback(
     async (
       result: Awaited<ReturnType<typeof api.register>>,
-      method: "password" | "google" = "password"
+      method: "password" | "google" | "apple" = "password"
     ) => {
       trackAuthConversion("sign_up", method);
       await saveSession(result.token, result.user);
@@ -110,12 +111,13 @@ export default function RegisterScreen() {
             })}
           </View>
 
-          <GoogleAuthSection
-            onSuccess={(result) => completeAuth(result, "google")}
+          <SocialAuthSection
+            onSuccess={(result, method) => completeAuth(result, method)}
             onError={setGoogleError}
             role={role}
             displayName={displayName}
-            label="Sign up with Google"
+            googleLabel="Sign up with Google"
+            appleButtonType="signUp"
           />
 
           <Text style={styles.label}>Your name (kept private)</Text>
@@ -125,6 +127,7 @@ export default function RegisterScreen() {
             placeholderTextColor={colors.textSubtle}
             value={displayName}
             onChangeText={setDisplayName}
+            testID="clarity-mask"
           />
           <Text style={styles.label}>Email address</Text>
           <TextInput
@@ -136,6 +139,7 @@ export default function RegisterScreen() {
             keyboardType="email-address"
             value={email}
             onChangeText={setEmail}
+            testID="clarity-mask"
           />
           <Text style={styles.label}>Password</Text>
           <TextInput
@@ -146,6 +150,7 @@ export default function RegisterScreen() {
             secureTextEntry
             value={password}
             onChangeText={setPassword}
+            testID="clarity-mask"
           />
 
           {displayError ? <InlineError message={displayError} /> : null}
@@ -161,6 +166,7 @@ export default function RegisterScreen() {
           <Link href="/(auth)/login" style={styles.link}>
             Already have an account? Sign in
           </Link>
+          <LegalFooter extra="Your real name stays private in circles." />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

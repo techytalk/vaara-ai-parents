@@ -8,6 +8,7 @@ import {
   verifyUploadedMedia,
 } from "../lib/media-storage.js";
 import { validatePollInput } from "../lib/polls.js";
+import { rejectObjectionableText } from "../lib/content-guard.js";
 import { syncCircleMembership } from "../services/circle-sync.js";
 import {
   createCrossPosts,
@@ -72,6 +73,15 @@ export function createCrossPostRoutes() {
         { error: "A message, poll, or attachment is required" },
         400
       );
+    }
+
+    const objectionable = rejectObjectionableText(
+      text,
+      body.poll?.question,
+      ...(body.poll?.options ?? [])
+    );
+    if (objectionable) {
+      return c.json({ error: objectionable.error }, 400);
     }
 
     if (body.poll) {

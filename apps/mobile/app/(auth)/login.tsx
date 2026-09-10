@@ -10,7 +10,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Link, useRouter } from "expo-router";
-import { GoogleAuthSection } from "@/components/GoogleAuthSection";
+import { SocialAuthSection } from "@/components/SocialAuthSection";
+import { LegalFooter } from "@/components/LegalFooter";
 import { VaaraLogo } from "@/components/VaaraLogo";
 import { Button, InlineError } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
@@ -30,7 +31,7 @@ export default function LoginScreen() {
   const completeAuth = useCallback(
     async (
       result: Awaited<ReturnType<typeof api.login>>,
-      method: "password" | "google" = "password"
+      method: "password" | "google" | "apple" = "password"
     ) => {
       trackAuthConversion("login", method);
       await saveSession(result.token, result.user);
@@ -72,8 +73,8 @@ export default function LoginScreen() {
             </Text>
           </View>
 
-          <GoogleAuthSection
-            onSuccess={(result) => completeAuth(result, "google")}
+          <SocialAuthSection
+            onSuccess={(result, method) => completeAuth(result, method)}
             onError={setGoogleError}
           />
 
@@ -87,6 +88,7 @@ export default function LoginScreen() {
             keyboardType="email-address"
             value={email}
             onChangeText={setEmail}
+            testID="clarity-mask"
           />
           <Text style={styles.label}>Password</Text>
           <TextInput
@@ -97,6 +99,7 @@ export default function LoginScreen() {
             secureTextEntry
             value={password}
             onChangeText={setPassword}
+            testID="clarity-mask"
           />
 
           {displayError ? <InlineError message={displayError} /> : null}
@@ -112,9 +115,7 @@ export default function LoginScreen() {
           <Link href="/(auth)/register" style={styles.link}>
             New to Vaara? Create an account
           </Link>
-          <Text style={styles.privacy}>
-            Your real name and child details stay private in circles.
-          </Text>
+          <LegalFooter />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -166,12 +167,5 @@ const styles = StyleSheet.create({
     color: colors.primaryDark,
     fontSize: 15,
     fontFamily: typography.semibold,
-  },
-  privacy: {
-    ...typography.caption,
-    color: colors.textMuted,
-    fontFamily: typography.medium,
-    textAlign: "center",
-    marginTop: spacing.xl,
   },
 });

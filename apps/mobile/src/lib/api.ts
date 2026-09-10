@@ -630,7 +630,20 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  loginWithApple: (body: {
+    identityToken: string;
+    role?: "parent" | "provider";
+    displayName?: string;
+  }) =>
+    request<AuthResponse>("/v1/auth/apple", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
   me: (token: string) => request<AuthUser>("/v1/me", {}, token),
+
+  deleteAccount: (token: string) =>
+    request<{ ok: boolean }>("/v1/me", { method: "DELETE" }, token),
 
   getMyPosts: (token: string) =>
     request<{ posts: AuthoredPost[]; nextCursor: string | null }>(

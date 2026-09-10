@@ -14,7 +14,8 @@
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "375946640576-8eiut23u8r6kgpd460m19c5lh42ai9am.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "375946640576-bcoc1nonnurepmvq6ebnm0smfhnao0ol.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "375946640576-p0lcqk5hb9gjj42s1tsl3u5j4ob9fds8.apps.googleusercontent.com",
-        "EXPO_PUBLIC_GOOGLE_REDIRECT_URI": "https://auth.expo.io/@raj-techy1s-team/vaara-parents"
+        "EXPO_PUBLIC_GOOGLE_REDIRECT_URI": "https://auth.expo.io/@raj-techy1s-team/vaara-parents",
+        "EXPO_PUBLIC_CLARITY_PROJECT_ID": "yfwlrijbvm"
       },
       "android": {
         "buildType": "apk"
@@ -30,7 +31,8 @@
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "375946640576-8eiut23u8r6kgpd460m19c5lh42ai9am.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "375946640576-bcoc1nonnurepmvq6ebnm0smfhnao0ol.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "375946640576-p0lcqk5hb9gjj42s1tsl3u5j4ob9fds8.apps.googleusercontent.com",
-        "EXPO_PUBLIC_GOOGLE_REDIRECT_URI": "https://auth.expo.io/@raj-techy1s-team/vaara-parents"
+        "EXPO_PUBLIC_GOOGLE_REDIRECT_URI": "https://auth.expo.io/@raj-techy1s-team/vaara-parents",
+        "EXPO_PUBLIC_CLARITY_PROJECT_ID": "yfwlrijbvm"
       },
       "android": {
         "buildType": "apk"
@@ -47,7 +49,8 @@
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "375946640576-8eiut23u8r6kgpd460m19c5lh42ai9am.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "375946640576-bcoc1nonnurepmvq6ebnm0smfhnao0ol.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "375946640576-p0lcqk5hb9gjj42s1tsl3u5j4ob9fds8.apps.googleusercontent.com",
-        "EXPO_PUBLIC_GOOGLE_REDIRECT_URI": "https://auth.expo.io/@raj-techy1s-team/vaara-parents"
+        "EXPO_PUBLIC_GOOGLE_REDIRECT_URI": "https://auth.expo.io/@raj-techy1s-team/vaara-parents",
+        "EXPO_PUBLIC_CLARITY_PROJECT_ID": "yfwlrijbvm"
       },
       "android": {
         "buildType": "apk"
@@ -63,7 +66,8 @@
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "375946640576-8eiut23u8r6kgpd460m19c5lh42ai9am.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "375946640576-bcoc1nonnurepmvq6ebnm0smfhnao0ol.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "375946640576-p0lcqk5hb9gjj42s1tsl3u5j4ob9fds8.apps.googleusercontent.com",
-        "EXPO_PUBLIC_GOOGLE_REDIRECT_URI": "https://auth.expo.io/@raj-techy1s-team/vaara-parents"
+        "EXPO_PUBLIC_GOOGLE_REDIRECT_URI": "https://auth.expo.io/@raj-techy1s-team/vaara-parents",
+        "EXPO_PUBLIC_CLARITY_PROJECT_ID": "yfwlrijbvm"
       },
       "android": {
         "buildType": "app-bundle"
@@ -79,7 +83,8 @@
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "375946640576-8eiut23u8r6kgpd460m19c5lh42ai9am.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "375946640576-bcoc1nonnurepmvq6ebnm0smfhnao0ol.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "375946640576-p0lcqk5hb9gjj42s1tsl3u5j4ob9fds8.apps.googleusercontent.com",
-        "EXPO_PUBLIC_GOOGLE_REDIRECT_URI": "https://auth.expo.io/@raj-techy1s-team/vaara-parents"
+        "EXPO_PUBLIC_GOOGLE_REDIRECT_URI": "https://auth.expo.io/@raj-techy1s-team/vaara-parents",
+        "EXPO_PUBLIC_CLARITY_PROJECT_ID": "yfwlrijbvm"
       },
       "ios": {
         "simulator": false
@@ -94,7 +99,8 @@
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "375946640576-8eiut23u8r6kgpd460m19c5lh42ai9am.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "375946640576-bcoc1nonnurepmvq6ebnm0smfhnao0ol.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "375946640576-p0lcqk5hb9gjj42s1tsl3u5j4ob9fds8.apps.googleusercontent.com",
-        "EXPO_PUBLIC_GOOGLE_REDIRECT_URI": "https://auth.expo.io/@raj-techy1s-team/vaara-parents"
+        "EXPO_PUBLIC_GOOGLE_REDIRECT_URI": "https://auth.expo.io/@raj-techy1s-team/vaara-parents",
+        "EXPO_PUBLIC_CLARITY_PROJECT_ID": "yfwlrijbvm"
       }
     }
   },

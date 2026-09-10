@@ -64,7 +64,11 @@ function PostCard({
       />
       <View style={styles.postBody}>
         <PostTagBadge tag={post.tag} />
-        {post.body ? <Text style={styles.postText}>{post.body}</Text> : null}
+        {post.body ? (
+          <Text style={styles.postText} testID="clarity-mask">
+            {post.body}
+          </Text>
+        ) : null}
       </View>
       {post.poll ? (
         <PollCard

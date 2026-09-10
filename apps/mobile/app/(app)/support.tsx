@@ -3,6 +3,7 @@ import Constants from "expo-constants";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { colors, radii, spacing, typography } from "@/constants/theme";
+import { LEGAL_URLS } from "@/constants/legal";
 
 type MenuIcon = keyof typeof Ionicons.glyphMap;
 
@@ -101,6 +102,20 @@ export default function SupportScreen() {
           onPress={() => router.push("/(app)/settings" as never)}
         />
         <MenuRow
+          icon="document-text-outline"
+          label="Privacy Policy"
+          onPress={() => {
+            Linking.openURL(LEGAL_URLS.privacyPolicy).catch(() => {});
+          }}
+        />
+        <MenuRow
+          icon="shield-checkmark-outline"
+          label="Community Guidelines"
+          onPress={() => {
+            Linking.openURL(LEGAL_URLS.communityGuidelines).catch(() => {});
+          }}
+        />
+        <MenuRow
           icon="notifications-outline"
           label="Notification Preferences"
           onPress={() => router.push("/(app)/settings/notifications" as never)}
@@ -112,6 +127,10 @@ export default function SupportScreen() {
         <FaqItem
           question="How do I report a parent or post?"
           answer="Open the ⋯ menu on a post, conversation, or connection request, choose Report, then pick a reason before submitting. You can also report parents from carpool and playdate screens."
+        />
+        <FaqItem
+          question="Where are the community guidelines?"
+          answer="Open Help & Support or Settings & Privacy and choose Community Guidelines. Posts that break those rules can be filtered before they go live."
         />
         <FaqItem
           question="Why can't I see another parent's name?"

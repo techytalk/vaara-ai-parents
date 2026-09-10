@@ -22,6 +22,14 @@
           }
         },
         {
+          "client_id": "375946640576-htj6hun1fj4h19kjpumnieid12kca1if.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.vaara.parents",
+            "certificate_hash": "98094c09cfa7ee7457b82dbdf8a7dee3f92846a4"
+          }
+        },
+        {
           "client_id": "375946640576-p0lcqk5hb9gjj42s1tsl3u5j4ob9fds8.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {

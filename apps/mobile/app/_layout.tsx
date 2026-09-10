@@ -16,6 +16,7 @@ import { useAppUpdateCheck } from "@/hooks/useAppUpdateCheck";
 import { useOTAUpdates } from "@/hooks/useOTAUpdates";
 import { AppQueryProvider } from "@/providers/QueryProvider";
 import { ReportProvider } from "@/providers/ReportProvider";
+import { ClaritySession } from "@/components/ClaritySession";
 import { colors } from "@/constants/theme";
 import { initAnalytics } from "@/lib/analytics";
 import { pathFromShareUrl, savePendingLink } from "@/lib/pending-link";
@@ -64,6 +65,7 @@ export default function RootLayout() {
     <AppErrorBoundary>
       <AppQueryProvider>
         <ReportProvider>
+        <ClaritySession />
         <StatusBar style="dark" backgroundColor={colors.bg} />
         <Stack
           screenOptions={{

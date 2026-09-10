@@ -61,6 +61,7 @@ export function FieldInput({
         style={fieldStyles.input}
         placeholderTextColor={colors.textSubtle}
         {...props}
+        testID={props.testID ?? "clarity-mask"}
       />
       {hint ? <Text style={fieldStyles.hint}>{hint}</Text> : null}
     </View>

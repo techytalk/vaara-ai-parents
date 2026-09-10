@@ -2,8 +2,8 @@
   "expo": {
     "name": "Vaara Parents",
     "slug": "vaara-parents",
-    "version": "1.0.0",
-    "runtimeVersion": "1.0.0",
+    "version": "1.0.3",
+    "runtimeVersion": "1.0.3",
     "updates": {
       "enabled": true,
       "checkAutomatically": "ON_LOAD",
@@ -28,6 +28,7 @@
       "supportsTablet": true,
       "icon": "./assets/icon.png",
       "bundleIdentifier": "com.vaara.parents",
+      "usesAppleSignIn": true,
       "googleServicesFile": "./GoogleService-Info.plist",
       "associatedDomains": ["applinks:vaara.ai", "applinks:www.vaara.ai"],
       "infoPlist": {
@@ -42,9 +43,11 @@
         "backgroundColor": "#FFFCF7"
       },
       "package": "com.vaara.parents",
-      "versionCode": 13,
+      "versionCode": 17,
       "permissions": [
-        "com.google.android.gms.permission.AD_ID",
+        "com.google.android.gms.permission.AD_ID"
+      ],
+      "blockedPermissions": [
         "android.permission.READ_MEDIA_IMAGES",
         "android.permission.READ_MEDIA_VIDEO"
       ],
@@ -67,6 +70,7 @@
       "expo-router",
       "expo-updates",
       "expo-secure-store",
+      "expo-apple-authentication",
       [
         "expo-notifications",
         {

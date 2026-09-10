@@ -7,11 +7,13 @@ const USER_KEY = "vaara_user";
 export async function saveSession(token: string, user: AuthUser) {
   await SecureStore.setItemAsync(TOKEN_KEY, token);
   await SecureStore.setItemAsync(USER_KEY, JSON.stringify(user));
+  void import("./clarity").then((clarity) => clarity.syncClarityUser(user));
 }
 
 export async function clearSession() {
   await SecureStore.deleteItemAsync(TOKEN_KEY);
   await SecureStore.deleteItemAsync(USER_KEY);
+  void import("./clarity").then((clarity) => clarity.syncClarityUser(null));
 }
 
 export async function getToken(): Promise<string | null> {

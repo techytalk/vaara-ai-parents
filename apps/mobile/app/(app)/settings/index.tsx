@@ -1,7 +1,8 @@
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { FEATURE_FLAGS } from "@/constants/features";
+import { LEGAL_URLS } from "@/constants/legal";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 
 type MenuIcon = keyof typeof Ionicons.glyphMap;
@@ -101,6 +102,31 @@ export default function SettingsScreen() {
           icon="notifications-outline"
           label="Notification Preferences"
           onPress={() => router.push("/(app)/settings/notifications" as never)}
+        />
+      </View>
+
+      <View style={styles.menuGroup}>
+        <MenuRow
+          icon="document-text-outline"
+          label="Privacy Policy"
+          onPress={() => {
+            Linking.openURL(LEGAL_URLS.privacyPolicy).catch(() => {});
+          }}
+        />
+        <MenuRow
+          icon="shield-checkmark-outline"
+          label="Community Guidelines"
+          onPress={() => {
+            Linking.openURL(LEGAL_URLS.communityGuidelines).catch(() => {});
+          }}
+        />
+        <MenuRow
+          icon="trash-outline"
+          label="Delete account"
+          color={colors.error}
+          onPress={() =>
+            router.push("/(app)/settings/delete-account" as never)
+          }
         />
       </View>
     </ScrollView>

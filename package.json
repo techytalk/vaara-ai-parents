@@ -21,5 +21,11 @@
     "build:api": "npm run build -w @vaara/shared && npm run build -w @vaara/db && npm run build -w @vaara/redis && npm run build -w @vaara/api",
     "build:worker": "npm run build -w @vaara/shared && npm run build -w @vaara/db && npm run build -w @vaara/redis && npm run build -w @vaara/api && npm run build -w @vaara/worker",
     "build:realtime": "npm run build -w @vaara/shared && npm run build -w @vaara/db && npm run build -w @vaara/redis && npm run build -w @vaara/api && npm run build -w @vaara/realtime"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.14",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "react-native": "0.79.6"
   }
 }

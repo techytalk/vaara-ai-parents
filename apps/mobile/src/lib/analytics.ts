@@ -23,7 +23,9 @@ export type AnalyticsEvent =
   | "market_listing_opened"
   | "sign_up"
   | "login"
+  | "tutorial_begin"
   | "tutorial_complete"
+  | "onboarding_children_complete"
   | "share";
 
 type AnalyticsProperties = Record<string, string | number | boolean>;
@@ -41,7 +43,26 @@ async function nativeLog(
 ): Promise<void> {
   try {
     const analytics = (await import("@react-native-firebase/analytics")).default;
-    await analytics().logEvent(name, properties);
+    const instance = analytics();
+    const method = String(properties?.method ?? "password");
+    // Recommended GA4 event helpers so Ads can import them as conversions.
+    if (name === "sign_up") {
+      await instance.logSignUp({ method });
+      return;
+    }
+    if (name === "login") {
+      await instance.logLogin({ method });
+      return;
+    }
+    if (name === "tutorial_begin") {
+      await instance.logTutorialBegin();
+      return;
+    }
+    if (name === "tutorial_complete") {
+      await instance.logTutorialComplete();
+      return;
+    }
+    await instance.logEvent(name, properties);
   } catch {
     // Native module is unavailable in Expo Go and on web.
   }
@@ -59,9 +80,17 @@ export function trackEvent(
 
 export function trackAuthConversion(
   type: "login" | "sign_up",
-  method: "password" | "google"
+  method: "password" | "google" | "apple"
 ): void {
   trackEvent(type, { method });
+}
+
+export function trackOnboardingBegin(): void {
+  trackEvent("tutorial_begin");
+}
+
+export function trackOnboardingChildrenComplete(): void {
+  trackEvent("onboarding_children_complete");
 }
 
 export function trackOnboardingComplete(): void {

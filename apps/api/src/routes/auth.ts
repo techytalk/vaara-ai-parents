@@ -4,6 +4,7 @@ import type { PoolClient } from "pg";
 import { pool } from "@vaara/db";
 import { generateAnonymousHandle } from "../lib/anonymity.js";
 import { defaultAvatarKeyForHandle } from "../lib/avatar.js";
+import { verifyAppleIdentityToken } from "../lib/apple-auth.js";
 import { buildAuthResponse } from "../lib/auth-response.js";
 import { verifyGoogleIdToken } from "../lib/google-auth.js";
 
@@ -82,7 +83,7 @@ export function createAuthRoutes() {
     const client = await pool.connect();
     try {
       const { rows } = await client.query(
-        `SELECT id, email, role, display_name, anonymous_handle, onboarding_complete, avatar_key, password_hash
+        `SELECT id, email, role, display_name, anonymous_handle, onboarding_complete, avatar_key, password_hash, google_sub, apple_sub
          FROM users WHERE email = $1`,
         [email]
       );
@@ -93,13 +94,15 @@ export function createAuthRoutes() {
 
       const user = rows[0];
       if (!user.password_hash) {
-        return c.json(
-          {
-            error:
-              "This account uses Google sign-in. Continue with Google instead.",
-          },
-          401
-        );
+        const usesApple = Boolean(user.apple_sub);
+        const usesGoogle = Boolean(user.google_sub);
+        const error =
+          usesApple && usesGoogle
+            ? "This account uses Apple or Google sign-in. Continue with Apple or Google instead."
+            : usesApple
+              ? "This account uses Apple sign-in. Continue with Apple instead."
+              : "This account uses Google sign-in. Continue with Google instead.";
+        return c.json({ error }, 401);
       }
 
       const valid = await bcrypt.compare(password, user.password_hash);
@@ -180,6 +183,92 @@ export function createAuthRoutes() {
       const avatarKey = defaultAvatarKeyForHandle(handle);
       const { rows } = await client.query(
         `INSERT INTO users (email, role, display_name, anonymous_handle, google_sub, avatar_key)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING id, email, role, display_name, anonymous_handle, onboarding_complete, avatar_key`,
+        [identity.email, role, displayName, handle, identity.sub, avatarKey]
+      );
+
+      return c.json(await buildAuthResponse(rows[0]), 201);
+    } finally {
+      client.release();
+    }
+  });
+
+  app.post("/apple", async (c) => {
+    const body = await c.req.json<{
+      identityToken?: string;
+      role?: "parent" | "provider";
+      displayName?: string;
+    }>();
+
+    if (!body.identityToken) {
+      return c.json({ error: "identityToken is required" }, 400);
+    }
+
+    let identity;
+    try {
+      identity = await verifyAppleIdentityToken(body.identityToken);
+    } catch {
+      return c.json({ error: "Invalid Apple sign-in" }, 401);
+    }
+
+    const role = body.role === "provider" ? "provider" : "parent";
+    const displayName = body.displayName?.trim() || null;
+
+    const client = await pool.connect();
+    try {
+      const byApple = await client.query(
+        `SELECT id, email, role, display_name, anonymous_handle, onboarding_complete, avatar_key
+         FROM users WHERE apple_sub = $1`,
+        [identity.sub]
+      );
+
+      if (byApple.rows.length > 0) {
+        return c.json(await buildAuthResponse(byApple.rows[0]));
+      }
+
+      if (!identity.email) {
+        return c.json(
+          {
+            error:
+              "Apple did not share an email. Share your email with Vaara or sign in another way.",
+          },
+          400
+        );
+      }
+
+      const byEmail = await client.query(
+        `SELECT id, email, role, display_name, anonymous_handle, onboarding_complete, avatar_key, apple_sub
+         FROM users WHERE email = $1`,
+        [identity.email]
+      );
+
+      if (byEmail.rows.length > 0) {
+        const existing = byEmail.rows[0];
+        if (existing.apple_sub && existing.apple_sub !== identity.sub) {
+          return c.json(
+            { error: "Email already linked to another Apple account" },
+            409
+          );
+        }
+
+        const { rows } = await client.query(
+          `UPDATE users
+           SET apple_sub = $2,
+               display_name = COALESCE(display_name, $3),
+               updated_at = now()
+           WHERE id = $1
+           RETURNING id, email, role, display_name, anonymous_handle, onboarding_complete, avatar_key`,
+          [existing.id, identity.sub, displayName]
+        );
+
+        return c.json(await buildAuthResponse(rows[0]));
+      }
+
+      const handle = await generateUniqueHandle(client);
+      const avatarKey = defaultAvatarKeyForHandle(handle);
+      const { rows } = await client.query(
+        `INSERT INTO users (email, role, display_name, anonymous_handle, apple_sub, avatar_key)
          VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING id, email, role, display_name, anonymous_handle, onboarding_complete, avatar_key`,
         [identity.email, role, displayName, handle, identity.sub, avatarKey]

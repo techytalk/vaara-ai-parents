@@ -21,11 +21,8 @@ module.exports = {
             compileSdkVersion: 36,
             targetSdkVersion: 36,
             buildToolsVersion: "36.0.0",
-            // NDK r28+ aligns native libs for 16 KB pages by default.
-            ndkVersion: "28.0.12674087",
-            // Compress JNI libs so Play accepts the bundle while Expo 52
-            // native deps catch up to true 16 KB ELF alignment.
-            useLegacyPackaging: true,
+            // SDK 53.0.14+ ships 16 KB-compatible native libraries.
+            useLegacyPackaging: false,
           },
           ios: {
             useFrameworks: "static",
@@ -60,6 +57,8 @@ module.exports = {
         process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID?.trim() || "",
       googleRedirectUri:
         process.env.EXPO_PUBLIC_GOOGLE_REDIRECT_URI?.trim() || "",
+      clarityProjectId:
+        process.env.EXPO_PUBLIC_CLARITY_PROJECT_ID?.trim() || "yfwlrijbvm",
     },
   },
 };

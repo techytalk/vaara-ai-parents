@@ -345,6 +345,7 @@ export default function NewMessageScreen() {
             autoCorrect={false}
             placeholder="Parent-7F2A"
             placeholderTextColor={colors.textSubtle}
+            testID="clarity-mask"
           />
           <TextInput
             style={[styles.input, styles.introInput]}
@@ -354,6 +355,7 @@ export default function NewMessageScreen() {
             multiline
             placeholder="Short introduction (optional)"
             placeholderTextColor={colors.textSubtle}
+            testID="clarity-mask"
           />
           <Pressable
             style={styles.sendRequestBtn}

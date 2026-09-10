@@ -296,6 +296,7 @@ export default function ChatScreen() {
             ) : null}
             <Text
               style={[styles.bubbleText, item.isMine && styles.bubbleTextMine]}
+              testID="clarity-mask"
             >
               {item.body}
             </Text>
@@ -319,6 +320,7 @@ export default function ChatScreen() {
           placeholderTextColor={colors.textSubtle}
           value={text}
           onChangeText={setText}
+          testID="clarity-mask"
         />
         <Pressable
           style={[styles.sendBtn, sending && styles.sendBtnDisabled]}

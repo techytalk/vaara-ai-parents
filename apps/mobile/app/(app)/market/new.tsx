@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   Alert,
   Image,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -74,10 +75,13 @@ export default function NewListingScreen() {
       setError("Photo uploads require storage configuration");
       return;
     }
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      setError("Allow photo access to add listing images");
-      return;
+    // Android 13+: system photo picker — do not request READ_MEDIA_* (Play policy).
+    if (Platform.OS === "ios") {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        setError("Allow photo access to add listing images");
+        return;
+      }
     }
     if (photos.length >= 5) {
       setError("Up to 5 photos allowed");
@@ -88,7 +92,6 @@ export default function NewListingScreen() {
       allowsMultipleSelection: true,
       selectionLimit: 5 - photos.length,
       quality: 0.85,
-      copyToCacheDirectory: true,
     });
     if (result.canceled) return;
     const selected = result.assets.map((asset, index) => ({

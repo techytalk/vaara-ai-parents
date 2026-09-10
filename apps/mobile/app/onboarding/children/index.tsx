@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -13,6 +13,10 @@ import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { api, type Child } from "@/lib/api";
+import {
+  trackOnboardingBegin,
+  trackOnboardingChildrenComplete,
+} from "@/lib/analytics";
 import { getToken } from "@/lib/session";
 import { GENDER_LABEL } from "@/constants/onboarding";
 import { formatChildDob } from "@/lib/dates";
@@ -75,6 +79,7 @@ function ChildCard({
 
 export default function ChildrenListScreen() {
   const router = useRouter();
+  const onboardingBegan = useRef(false);
   const [children, setChildren] = useState<Child[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -101,6 +106,10 @@ export default function ChildrenListScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      if (!onboardingBegan.current) {
+        onboardingBegan.current = true;
+        trackOnboardingBegin();
+      }
       load(true);
     }, [load])
   );
@@ -115,6 +124,7 @@ export default function ChildrenListScreen() {
       setError("Add at least one child to continue");
       return;
     }
+    trackOnboardingChildrenComplete();
     router.push("/onboarding/location");
   }
 

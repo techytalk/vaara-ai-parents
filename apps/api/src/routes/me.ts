@@ -21,6 +21,7 @@ import {
   formatChildDateOfBirth,
   parseChildDateOfBirth,
 } from "../lib/child-dob.js";
+import { deleteUserAccount } from "../lib/account-deletion.js";
 
 const CHILD_SELECT = `
   ch.id, ch.nickname, ch.gender, ch.date_of_birth, ch.curriculum_id, ch.grade_id, ch.school_id,
@@ -111,6 +112,15 @@ export function createMeRoutes() {
     } finally {
       client.release();
     }
+  });
+
+  app.delete("/", async (c) => {
+    const userId = c.get("user").sub;
+    const deleted = await deleteUserAccount(userId);
+    if (!deleted) {
+      return c.json({ error: "User not found" }, 404);
+    }
+    return c.json({ ok: true });
   });
 
   app.patch("/avatar", async (c) => {

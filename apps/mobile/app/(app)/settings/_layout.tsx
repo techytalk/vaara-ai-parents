@@ -9,6 +9,10 @@ export default function SettingsLayout() {
         options={{ title: "Notification Preferences" }}
       />
       <Stack.Screen name="avatar" options={{ title: "Choose avatar" }} />
+      <Stack.Screen
+        name="delete-account"
+        options={{ title: "Delete account" }}
+      />
     </Stack>
   );
 }

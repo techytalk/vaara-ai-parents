@@ -110,7 +110,11 @@ export function FeedPostCard({
       />
       <View style={styles.body}>
         <PostTagBadge tag={post.tag} />
-        {post.body ? <Text style={styles.text}>{post.body}</Text> : null}
+        {post.body ? (
+          <Text style={styles.text} testID="clarity-mask">
+            {post.body}
+          </Text>
+        ) : null}
       </View>
       {post.poll && onPollVote ? (
         <PollCard poll={post.poll} compact onVote={onPollVote} />

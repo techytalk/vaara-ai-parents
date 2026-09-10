@@ -6,6 +6,7 @@ import {
   Image,
   InteractionManager,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -52,6 +53,7 @@ import {
   uploadAndScanDocument,
 } from "@/lib/document-upload";
 import { getStoredUser, getToken } from "@/lib/session";
+import { LEGAL_URLS } from "@/constants/legal";
 
 type PendingMedia = {
   id?: string;
@@ -227,12 +229,13 @@ export default function NewPostScreen() {
       setError("Image and video uploads require S3 configuration");
       return;
     }
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      setError(
-        "Photos permission is required. Open Android Settings → Apps → Vaara Parents → Permissions → Photos and videos → Allow, then try again."
-      );
-      return;
+    // Android 13+: system photo picker — do not request READ_MEDIA_* (Play policy).
+    if (Platform.OS === "ios") {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        setError("Photos permission is required to attach media.");
+        return;
+      }
     }
 
     const remaining = 4 - media.length;
@@ -635,6 +638,7 @@ export default function NewPostScreen() {
           autoFocus={false}
           value={body}
           onChangeText={setBody}
+          testID="clarity-mask"
         />
 
         {media.length > 0 ? (
@@ -773,6 +777,7 @@ export default function NewPostScreen() {
               value={pollQuestion}
               onChangeText={setPollQuestion}
               editable={!pollLocked}
+              testID="clarity-mask"
             />
             {pollOptions.map((option, index) => (
               <TextInput
@@ -789,6 +794,7 @@ export default function NewPostScreen() {
                   )
                 }
                 editable={!pollLocked}
+                testID="clarity-mask"
               />
             ))}
             {!pollLocked && pollOptions.length < 6 ? (
@@ -896,6 +902,15 @@ export default function NewPostScreen() {
           <View style={styles.toolbarSpacer} />
           <Text style={styles.charCount}>{body.length}</Text>
         </View>
+        <Text
+          accessibilityRole="link"
+          style={styles.guidelinesHint}
+          onPress={() => {
+            Linking.openURL(LEGAL_URLS.communityGuidelines).catch(() => {});
+          }}
+        >
+          Posts must follow our Community Guidelines. You can report or block from the ⋯ menu on any post or chat.
+        </Text>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={isEditing ? "Save post" : "Publish post"}
@@ -1282,5 +1297,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: theme.textMuted,
     paddingRight: 6,
+  },
+  guidelinesHint: {
+    fontSize: 11,
+    lineHeight: 15,
+    color: theme.textMuted,
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: 8,
   },
 });

@@ -506,7 +506,9 @@ export default function PostThreadScreen() {
                 <View style={styles.postContent}>
                   <PostTagBadge tag={post.tag} />
                   {post.body ? (
-                    <Text style={styles.postBody}>{post.body}</Text>
+                    <Text style={styles.postBody} testID="clarity-mask">
+                      {post.body}
+                    </Text>
                   ) : null}
                 </View>
                 {post.poll && canVote ? (
