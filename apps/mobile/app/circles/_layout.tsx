@@ -14,6 +14,7 @@ export default function CirclesLayout() {
         },
         headerShadowVisible: false,
         headerBackButtonDisplayMode: "minimal",
+        statusBarStyle: "dark",
         contentStyle: { backgroundColor: colors.bg },
       }}
     >

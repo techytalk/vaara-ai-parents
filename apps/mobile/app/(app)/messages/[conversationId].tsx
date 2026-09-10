@@ -19,10 +19,7 @@ import { DisclosurePrompt } from "@/components/DisclosurePrompt";
 import { InlineError, ScreenLoader } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import { useBottomChromeInset } from "@/hooks/useBottomChromeInset";
-import {
-  androidImeDockOffset,
-  useKeyboardHeight,
-} from "@/hooks/useKeyboardHeight";
+import { useAndroidImeDockOffset } from "@/hooks/useKeyboardHeight";
 import { useRealtimeChannel } from "@/hooks/useRealtimeChannel";
 import {
   api,
@@ -44,8 +41,7 @@ export default function ChatScreen() {
   const queryClient = useQueryClient();
   const headerHeight = useHeaderHeight();
   const bottomChrome = useBottomChromeInset();
-  const keyboardHeight = useKeyboardHeight();
-  const androidDockOffset = androidImeDockOffset(keyboardHeight, bottomChrome);
+  const androidDockOffset = useAndroidImeDockOffset(bottomChrome);
   const submitReport = useSubmitReport();
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);

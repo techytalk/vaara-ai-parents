@@ -20,10 +20,7 @@ import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useBottomChromeInset } from "@/hooks/useBottomChromeInset";
-import {
-  androidImeDockOffset,
-  useKeyboardHeight,
-} from "@/hooks/useKeyboardHeight";
+import { useAndroidImeDockOffset } from "@/hooks/useKeyboardHeight";
 import * as ImagePicker from "expo-image-picker";
 import {
   POST_TAGS,
@@ -88,11 +85,7 @@ export default function NewPostScreen() {
   const queryClient = useQueryClient();
   const headerHeight = useHeaderHeight();
   const bottomChrome = useBottomChromeInset();
-  const keyboardHeight = useKeyboardHeight();
-  const androidDockOffset = androidImeDockOffset(
-    keyboardHeight,
-    bottomChrome
-  );
+  const androidDockOffset = useAndroidImeDockOffset(bottomChrome);
   const bodyInputRef = useRef<TextInput>(null);
   const didFocusBody = useRef(false);
   const [body, setBody] = useState("");

@@ -18,6 +18,12 @@
       "icon": "./assets/icon.png",
       "color": "#0E9A8A"
     },
+    "androidStatusBar": {
+      "barStyle": "dark-content"
+    },
+    "androidNavigationBar": {
+      "barStyle": "dark-content"
+    },
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -37,6 +43,7 @@
     },
     "android": {
       "googleServicesFile": "./google-services.json",
+      "edgeToEdgeEnabled": true,
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./assets/splash-icon.png",
@@ -67,6 +74,16 @@
       ]
     },
     "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "compileSdkVersion": 36,
+            "targetSdkVersion": 36,
+            "buildToolsVersion": "36.0.0"
+          }
+        }
+      ],
       "expo-router",
       "expo-updates",
       "expo-secure-store",

@@ -116,7 +116,9 @@ export default function ChildrenListScreen() {
   const hasChildren = children.length > 0;
 
   return (
-    <SafeAreaView style={styles.safe} edges={["bottom"]}>
+    // This screen hides the stack header, so it owns the top inset. The
+    // onboarding layout already applies the bottom one.
+    <SafeAreaView style={styles.safe} edges={["top"]}>
       <ScrollView
         contentContainerStyle={styles.scroll}
         refreshControl={

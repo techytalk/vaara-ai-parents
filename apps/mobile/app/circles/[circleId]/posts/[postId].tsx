@@ -29,10 +29,7 @@ import {
 import { PostContextChips } from "@/components/circles/PostContextChips";
 import { PostDocumentList } from "@/components/circles/PostDocumentList";
 import { useBottomChromeInset } from "@/hooks/useBottomChromeInset";
-import {
-  androidImeDockOffset,
-  useKeyboardHeight,
-} from "@/hooks/useKeyboardHeight";
+import { useAndroidImeDockOffset } from "@/hooks/useKeyboardHeight";
 import { useRealtimeChannel } from "@/hooks/useRealtimeChannel";
 import { api, type CirclePost, type PostComment, type ThreadCapabilities } from "@/lib/api";
 import { sharePostLink, sharePostMedia } from "@/lib/share-post";
@@ -72,11 +69,7 @@ export default function PostThreadScreen() {
   const queryClient = useQueryClient();
   const headerHeight = useHeaderHeight();
   const bottomChrome = useBottomChromeInset();
-  const keyboardHeight = useKeyboardHeight();
-  const androidDockOffset = androidImeDockOffset(
-    keyboardHeight,
-    bottomChrome
-  );
+  const androidDockOffset = useAndroidImeDockOffset(bottomChrome);
   const submitReport = useSubmitReport();
   const [post, setPost] = useState<CirclePost | null>(null);
   const [comments, setComments] = useState<PostComment[]>([]);

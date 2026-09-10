@@ -1,37 +1,84 @@
 import { useLayoutEffect, useState } from "react";
-import { Keyboard, Platform, type KeyboardEvent } from "react-native";
+import {
+  Dimensions,
+  Keyboard,
+  Platform,
+  type KeyboardEvent,
+} from "react-native";
 
 /**
- * Shared IME height. Android 15 edge-to-edge does not shrink the window
- * (`adjustResize` is a no-op); composers must pad by this value instead.
+ * Shared IME state for composer docks.
  *
- * Uses `endCoordinates.height` only — not screen/window arithmetic.
+ * Android is the hard case: whether the app window shrinks when the keyboard
+ * opens depends on the OS version *and* on whether the app opted out of
+ * edge-to-edge enforcement, which cannot be derived from `Platform.Version`
+ * alone. So the window behaviour is measured once, the first time the keyboard
+ * opens, by comparing the window height against its keyboard-closed baseline.
+ *
+ * Heights come from `endCoordinates.height` only — never screen/window
+ * arithmetic, which OEM skins report inconsistently.
  */
-let subscribed = false;
-let currentHeight = 0;
-const subscribers = new Set<(height: number) => void>();
 
-/**
- * Android 15 enforces edge-to-edge for targetSdk 35: the window never resizes
- * for the IME, and the keyboard height RN reports stops at the visible view
- * area, i.e. above the navigation bar, so that strip has to be added back.
- */
-const ANDROID_EDGE_TO_EDGE =
-  Platform.OS === "android" && Number(Platform.Version) >= 35;
+type ImeState = {
+  height: number;
+  /**
+   * True when the window shrinks for the IME (`adjustResize` is in effect), so
+   * a dock is already lifted and must not be offset again. `null` until the
+   * keyboard has been opened at least once.
+   */
+  windowResizesForIme: boolean | null;
+};
+
+let subscribed = false;
+let current: ImeState = { height: 0, windowResizesForIme: null };
+let closedWindowHeight: number | null = null;
+const subscribers = new Set<(state: ImeState) => void>();
+
+function windowHeight(): number {
+  return Dimensions.get("window").height;
+}
 
 function heightFromEvent(event: KeyboardEvent): number {
   return Math.max(0, Math.round(event.endCoordinates.height));
 }
 
-function publish(next: number) {
-  if (next === currentHeight) return;
-  currentHeight = next;
+function publish(next: ImeState) {
+  if (
+    next.height === current.height &&
+    next.windowResizesForIme === current.windowResizesForIme
+  ) {
+    return;
+  }
+  current = next;
   subscribers.forEach((listener) => listener(next));
+}
+
+function handleShow(height: number) {
+  if (height <= 0) {
+    publish({ ...current, height: 0 });
+    return;
+  }
+
+  let resizes = current.windowResizesForIme;
+  if (Platform.OS === "android" && closedWindowHeight != null) {
+    // A window that resizes loses roughly the IME height. Half of it is a safe
+    // threshold: well above measurement noise, well below a real resize.
+    resizes = closedWindowHeight - windowHeight() >= height / 2;
+  }
+
+  publish({ height, windowResizesForIme: resizes });
+}
+
+function handleHide() {
+  closedWindowHeight = windowHeight();
+  publish({ ...current, height: 0 });
 }
 
 function ensureKeyboardSubscription() {
   if (subscribed) return;
   subscribed = true;
+
+  closedWindowHeight = windowHeight();
 
   const showEvent =
     Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
@@ -39,52 +86,59 @@ function ensureKeyboardSubscription() {
     Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
 
   Keyboard.addListener(showEvent, (event) => {
-    publish(heightFromEvent(event));
+    handleShow(heightFromEvent(event));
   });
-  Keyboard.addListener(hideEvent, () => {
-    publish(0);
-  });
+  Keyboard.addListener(hideEvent, handleHide);
+
   if (Platform.OS === "android") {
     Keyboard.addListener("keyboardDidChangeFrame", (event) => {
       const next = heightFromEvent(event);
       // Ignore junk frames; keep suggestion-bar growth (~IME height).
-      if (next === 0 || next >= 80) publish(next);
+      if (next === 0 || next >= 80) handleShow(next);
     });
   }
 
   const metrics = Keyboard.metrics();
   if (metrics?.height) {
-    publish(Math.round(metrics.height));
+    handleShow(Math.round(metrics.height));
   }
 }
 
-export function useKeyboardHeight(): number {
-  const [height, setHeight] = useState(currentHeight);
+function useImeState(): ImeState {
+  const [state, setState] = useState(current);
 
   useLayoutEffect(() => {
     ensureKeyboardSubscription();
-    setHeight(currentHeight);
-    subscribers.add(setHeight);
+    setState(current);
+    subscribers.add(setState);
     return () => {
-      subscribers.delete(setHeight);
+      subscribers.delete(setState);
     };
   }, []);
 
-  return height;
+  return state;
+}
+
+export function useKeyboardHeight(): number {
+  return useImeState().height;
 }
 
 /**
  * Space that must remain below an Android composer. Apply this as margin,
  * never padding: padding leaves children inside the IME-covered region.
- * Keyboard closed → nav/chrome inset. iOS callers return 0 and use KAV.
+ * Keyboard closed → nav/chrome inset. iOS callers get 0 and use KAV.
  */
-export function androidImeDockOffset(
-  keyboardHeight: number,
-  closedInset: number
-): number {
+export function useAndroidImeDockOffset(closedInset: number): number {
+  const { height, windowResizesForIme } = useImeState();
+
   if (Platform.OS !== "android") return 0;
+
   const navInset = Math.max(closedInset, 0);
-  if (keyboardHeight <= 0) return navInset;
-  // Below API 35 the window still resizes, so the composer is already lifted.
-  return ANDROID_EDGE_TO_EDGE ? keyboardHeight + navInset : 0;
+  if (height <= 0) return navInset;
+
+  // Window already shrank for the IME, so the dock is lifted; offsetting again
+  // would double-count and strand a keyboard-sized gap under the composer.
+  if (windowResizesForIme !== false) return 0;
+
+  return height + navInset;
 }

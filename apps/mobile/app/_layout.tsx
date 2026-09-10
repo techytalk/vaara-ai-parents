@@ -4,6 +4,10 @@ import * as Linking from "expo-linking";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import {
+  initialWindowMetrics,
+  SafeAreaProvider,
+} from "react-native-safe-area-context";
+import {
   PlusJakartaSans_400Regular,
   PlusJakartaSans_500Medium,
   PlusJakartaSans_600SemiBold,
@@ -62,35 +66,37 @@ export default function RootLayout() {
   if (!fontsLoaded && !fontError) return null;
 
   return (
-    <AppErrorBoundary>
-      <AppQueryProvider>
-        <ReportProvider>
-        <ClaritySession />
-        <StatusBar style="dark" backgroundColor={colors.bg} />
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: colors.bg },
-          }}
-        >
-          <Stack.Screen name="index" />
-          <Stack.Screen name="(auth)" />
-          <Stack.Screen name="onboarding" />
-          <Stack.Screen name="tour" options={{ headerShown: false }} />
-          <Stack.Screen name="(app)" />
-          <Stack.Screen name="(provider)" />
-          <Stack.Screen name="circles" options={{ headerShown: false }} />
-          <Stack.Screen name="p" options={{ headerShown: false }} />
-        </Stack>
-        <UpdatePrompt
-          visible={update.visible}
-          forced={update.forced}
-          latestVersion={update.latestVersion}
-          onUpdate={update.openStore}
-          onDismiss={update.dismiss}
-        />
-        </ReportProvider>
-      </AppQueryProvider>
-    </AppErrorBoundary>
+    <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+      <AppErrorBoundary>
+        <AppQueryProvider>
+          <ReportProvider>
+          <ClaritySession />
+          <StatusBar style="dark" backgroundColor={colors.bg} />
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: colors.bg },
+            }}
+          >
+            <Stack.Screen name="index" />
+            <Stack.Screen name="(auth)" />
+            <Stack.Screen name="onboarding" />
+            <Stack.Screen name="tour" options={{ headerShown: false }} />
+            <Stack.Screen name="(app)" />
+            <Stack.Screen name="(provider)" />
+            <Stack.Screen name="circles" options={{ headerShown: false }} />
+            <Stack.Screen name="p" options={{ headerShown: false }} />
+          </Stack>
+          <UpdatePrompt
+            visible={update.visible}
+            forced={update.forced}
+            latestVersion={update.latestVersion}
+            onUpdate={update.openStore}
+            onDismiss={update.dismiss}
+          />
+          </ReportProvider>
+        </AppQueryProvider>
+      </AppErrorBoundary>
+    </SafeAreaProvider>
   );
 }
