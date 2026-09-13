@@ -4,7 +4,8 @@ import { useRouter } from "expo-router";
 import { Button, Card, ScreenLoader } from "@/components/ui";
 import { colors, spacing, typography } from "@/constants/theme";
 import { api, type AuthUser } from "@/lib/api";
-import { clearSession, getToken } from "@/lib/session";
+import { endAuthenticatedSession } from "@/lib/authenticated-state";
+import { getToken } from "@/lib/session";
 
 export default function ProviderProfileScreen() {
   const router = useRouter();
@@ -23,7 +24,7 @@ export default function ProviderProfileScreen() {
   }, []);
 
   async function onSignOut() {
-    await clearSession();
+    await endAuthenticatedSession();
     router.replace("/(auth)/login");
   }
 

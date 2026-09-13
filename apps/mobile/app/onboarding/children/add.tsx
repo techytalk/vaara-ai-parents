@@ -9,6 +9,7 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { api, type Child, type Curriculum, type School } from "@/lib/api";
 import { trackEvent } from "@/lib/analytics";
+import { invalidateFamilyMeta } from "@/lib/authenticated-state";
 import { getToken, saveSession } from "@/lib/session";
 import { getCurriculaCached } from "@/lib/reference-cache";
 import { ChildFormFields } from "@/components/onboarding/ChildFormFields";
@@ -91,6 +92,7 @@ export default function AddChildScreen() {
 
       const result = await api.addChild(token, body);
       await saveSession(token, result.user);
+      invalidateFamilyMeta({ user: result.user });
       if (existingCount > 0) {
         trackEvent("second_child_added", {
           source: fromPrompt ? "completion_prompt" : "children_list",

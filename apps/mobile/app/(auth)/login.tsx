@@ -24,7 +24,7 @@ import {
   routeAfterAuth,
   shouldRouteAsNewParent,
 } from "@/lib/auth-navigation";
-import { saveSession } from "@/lib/session";
+import { beginAuthenticatedSession } from "@/lib/authenticated-state";
 import { isGoogleSignInConfigured } from "@/constants/google-auth";
 
 export default function LoginScreen() {
@@ -44,7 +44,7 @@ export default function LoginScreen() {
       method: "password" | "google" | "apple" = "password"
     ) => {
       trackAuthConversion("login", method);
-      await saveSession(result.token, result.user);
+      await beginAuthenticatedSession(result.token, result.user);
       await routeAfterAuth(router, result.user, {
         isNewUser: shouldRouteAsNewParent(result),
       });

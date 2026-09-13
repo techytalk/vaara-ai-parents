@@ -1,13 +1,13 @@
 import { Pressable, StyleSheet, Text } from "react-native";
 import { useRouter } from "expo-router";
-import { clearSession } from "@/lib/session";
+import { endAuthenticatedSession } from "@/lib/authenticated-state";
 import { colors } from "@/components/onboarding/ui";
 
 export function SignOutButton({ label = "Sign out" }: { label?: string }) {
   const router = useRouter();
 
   async function onSignOut() {
-    await clearSession();
+    await endAuthenticatedSession();
     router.replace("/(auth)/login");
   }
 

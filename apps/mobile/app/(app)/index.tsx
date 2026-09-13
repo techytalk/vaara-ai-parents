@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -9,17 +9,18 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import {
   useInfiniteQuery,
+  useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
 import { FeedPostCard } from "@/components/feed/FeedPostCard";
 import { EmptyState, Avatar, ScreenLoader } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import { useRealtimeChannels } from "@/hooks/useRealtimeChannels";
-import { api, type AuthUser, type Child, type Circle, type HomeFeedPost } from "@/lib/api";
+import { api, type HomeFeedPost } from "@/lib/api";
 import {
   composeParamsForMode,
   pickPrimaryCircle,
@@ -34,8 +35,11 @@ import {
   type CompletionPromptCandidate,
 } from "@/lib/completion-prompts";
 import { trackEvent } from "@/lib/analytics";
-import { getToken } from "@/lib/session";
-import { resolveParentOnboardingHref } from "@/lib/auth-navigation";
+import {
+  endAuthenticatedSession,
+  isUnauthorized,
+} from "@/lib/authenticated-state";
+import { getToken, saveSession } from "@/lib/session";
 import {
   clearOnboardingDraft,
   getOnboardingChildren,
@@ -53,61 +57,29 @@ function greetingForHour(hour: number) {
   return "Good evening";
 }
 
+async function authed<T>(fn: (token: string) => Promise<T>): Promise<T> {
+  const token = await getToken();
+  if (!token) throw new Error("Not signed in");
+  return fn(token);
+}
+
 export default function HomeScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const queryClient = useQueryClient();
   const submitReport = useSubmitReport();
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [circles, setCircles] = useState<Circle[]>([]);
+  const [draftSnapshot] = useState(() => ({
+    user: getOnboardingUser(),
+    circles: getOnboardingCircles(),
+    children: getOnboardingChildren(),
+  }));
   const [activePrompt, setActivePrompt] =
     useState<CompletionPromptCandidate | null>(null);
-  const [unreadAlerts, setUnreadAlerts] = useState(0);
-  const [savedPostIds, setSavedPostIds] = useState<Set<string>>(new Set());
+  const authExitStartedRef = useRef(false);
 
-  const loadMeta = useCallback(async () => {
-    const token = await getToken();
-    if (!token) {
-      router.replace("/(auth)/login");
-      return null;
-    }
-
-    const seededUser = getOnboardingUser();
-    const seededCircles = getOnboardingCircles();
-    const seededChildren = getOnboardingChildren();
-    const hadSeed =
-      seededUser != null || seededCircles != null || seededChildren != null;
-
-    const [me, circleList, kids, notifications, saved] = await Promise.all([
-      seededUser ?? api.me(token),
-      seededCircles ?? api.getCircles(token),
-      seededChildren ??
-        api.getChildren(token).catch(() => [] as Child[]),
-      api.getNotifications(token).catch(() => []),
-      api.getSaved(token).catch(() => ({ posts: [] })),
-    ]);
-
-    if (hadSeed) {
-      clearOnboardingDraft();
-    }
-
-    if (!me.onboardingComplete) {
-      const href = await resolveParentOnboardingHref(token);
-      router.replace(href as never);
-      return null;
-    }
-    setUser(me);
-    setCircles(circleList);
-    setUnreadAlerts(notifications.filter((item) => !item.readAt).length);
-    setSavedPostIds(new Set(saved.posts.map((post) => post.id)));
-    const gaps = evaluateCompletionGaps({ children: kids, circles: circleList });
-    if (await hasCompletedAppTour()) {
-      setActivePrompt(await pickActiveCompletionPrompt(gaps));
-    } else {
-      setActivePrompt(null);
-    }
-    return token;
-  }, [router]);
+  useEffect(() => {
+    clearOnboardingDraft();
+  }, []);
 
   const feedQuery = useInfiniteQuery({
     queryKey: ["homeFeed"],
@@ -115,13 +87,13 @@ export default function HomeScreen() {
     queryFn: async ({ pageParam }) => {
       const token = await getToken();
       if (!token) throw new Error("Not signed in");
-      if (!pageParam) await loadMeta();
       return api.getHomeFeed(token, {
         cursor: pageParam,
         limit: 20,
       });
     },
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    retry: false,
   });
 
   const posts = useMemo(
@@ -132,6 +104,119 @@ export default function HomeScreen() {
   const refreshFeed = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["homeFeed"] });
   }, [queryClient]);
+
+  const userQuery = useQuery({
+    queryKey: ["sessionUser"],
+    queryFn: async () => {
+      const token = await getToken();
+      if (!token) throw new Error("Not signed in");
+      const me = await api.me(token);
+      await saveSession(token, me);
+      return me;
+    },
+    initialData: draftSnapshot.user ?? undefined,
+    enabled: feedQuery.isSuccess,
+    retry: false,
+  });
+  const user = userQuery.data ?? null;
+
+  const circlesQuery = useQuery({
+    queryKey: ["circles"],
+    queryFn: () => authed((token) => api.getCircles(token)),
+    initialData: draftSnapshot.circles ?? undefined,
+    enabled: feedQuery.isSuccess,
+    retry: false,
+  });
+  const circles = circlesQuery.data ?? [];
+
+  const notificationsQuery = useQuery({
+    queryKey: ["me", "notifications"],
+    queryFn: () => authed((token) => api.getNotifications(token)),
+    enabled: feedQuery.isSuccess,
+    retry: false,
+  });
+  const unreadAlerts =
+    notificationsQuery.data?.filter((item) => !item.readAt).length ?? 0;
+
+  const savedQuery = useQuery({
+    queryKey: ["me", "savedPostIds"],
+    queryFn: async () => {
+      const result = await authed((token) => api.getSaved(token));
+      return result.posts.map((post) => post.id);
+    },
+    enabled: feedQuery.isSuccess,
+    retry: false,
+  });
+  const savedPostIds = useMemo(
+    () => new Set(savedQuery.data ?? []),
+    [savedQuery.data]
+  );
+
+  const childrenQuery = useQuery({
+    queryKey: ["me", "children"],
+    queryFn: () => authed((token) => api.getChildren(token)),
+    initialData: draftSnapshot.children ?? undefined,
+    enabled: feedQuery.isSuccess,
+    retry: false,
+  });
+
+  useEffect(() => {
+    const unauthorized = [
+      feedQuery.error,
+      userQuery.error,
+      circlesQuery.error,
+      notificationsQuery.error,
+      savedQuery.error,
+      childrenQuery.error,
+    ].some(isUnauthorized);
+    if (!unauthorized || authExitStartedRef.current) return;
+
+    authExitStartedRef.current = true;
+    void endAuthenticatedSession().finally(() => {
+      router.replace("/(auth)/login");
+    });
+  }, [
+    feedQuery.error,
+    userQuery.error,
+    circlesQuery.error,
+    notificationsQuery.error,
+    savedQuery.error,
+    childrenQuery.error,
+    router,
+  ]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (
+        !feedQuery.isSuccess ||
+        !circlesQuery.isSuccess ||
+        !childrenQuery.isSuccess
+      ) {
+        setActivePrompt(null);
+        return;
+      }
+      if (!(await hasCompletedAppTour())) {
+        if (!cancelled) setActivePrompt(null);
+        return;
+      }
+      const gaps = evaluateCompletionGaps({
+        children: childrenQuery.data ?? [],
+        circles: circlesQuery.data ?? [],
+      });
+      const prompt = await pickActiveCompletionPrompt(gaps);
+      if (!cancelled) setActivePrompt(prompt);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    feedQuery.isSuccess,
+    childrenQuery.data,
+    childrenQuery.isSuccess,
+    circlesQuery.data,
+    circlesQuery.isSuccess,
+  ]);
 
   const circleChannels = useMemo(
     () => circles.map((circle) => `circle:${circle.id}`),
@@ -173,16 +258,14 @@ export default function HomeScreen() {
     });
   }, [navigation, router, unreadAlerts]);
 
-  useFocusEffect(
-    useCallback(() => {
-      loadMeta();
-      refreshFeed();
-    }, [loadMeta, refreshFeed])
-  );
-
   const primaryCircle = useMemo(() => pickPrimaryCircle(circles), [circles]);
   const loading = feedQuery.isLoading && posts.length === 0;
-  const tour = useHomeTour(!loading && Boolean(user));
+  const composeLocked = circlesQuery.isPending || circlesQuery.isError;
+  const circlesKnown = circlesQuery.isSuccess;
+  const hasCircles = circlesKnown && circles.length > 0;
+  const tour = useHomeTour(
+    !feedQuery.isLoading && Boolean(user) && circlesQuery.isSuccess
+  );
 
   async function onDismissPrompt() {
     if (!activePrompt) return;
@@ -201,6 +284,9 @@ export default function HomeScreen() {
   }
 
   function openNewPost(mode?: ComposeMode) {
+    if (circlesQuery.isPending || circlesQuery.isError) {
+      return;
+    }
     if (!primaryCircle) {
       router.push("/onboarding/children");
       return;
@@ -287,15 +373,18 @@ export default function HomeScreen() {
     try {
       if (isSaved) {
         await api.unsaveItem(token, "post", postId);
-        setSavedPostIds((current) => {
-          const next = new Set(current);
-          next.delete(postId);
-          return next;
-        });
       } else {
         await api.saveItem(token, { itemType: "post", itemId: postId });
-        setSavedPostIds((current) => new Set(current).add(postId));
       }
+      queryClient.setQueryData(
+        ["me", "savedPostIds"],
+        (current: string[] | undefined) => {
+          const next = new Set(current ?? []);
+          if (isSaved) next.delete(postId);
+          else next.add(postId);
+          return [...next];
+        }
+      );
     } catch {
       // ignore save errors in feed
     }
@@ -361,8 +450,9 @@ export default function HomeScreen() {
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Create a post"
+        disabled={composeLocked}
         onPress={() => openNewPost()}
-        style={styles.composeCard}
+        style={[styles.composeCard, composeLocked && styles.composeLocked]}
       >
         <Avatar
           handle={user?.anonymousHandle ?? "Parent"}
@@ -374,21 +464,24 @@ export default function HomeScreen() {
 
       <View style={styles.composeActions}>
         <Pressable
-          style={styles.composeAction}
+          style={[styles.composeAction, composeLocked && styles.composeLocked]}
+          disabled={composeLocked}
           onPress={() => openNewPost("photo")}
         >
           <Ionicons name="image-outline" size={18} color={colors.primaryDark} />
           <Text style={styles.composeActionText}>Photo</Text>
         </Pressable>
         <Pressable
-          style={styles.composeAction}
+          style={[styles.composeAction, composeLocked && styles.composeLocked]}
+          disabled={composeLocked}
           onPress={() => openNewPost("poll")}
         >
           <Ionicons name="bar-chart-outline" size={18} color={colors.primaryDark} />
           <Text style={styles.composeActionText}>Poll</Text>
         </Pressable>
         <Pressable
-          style={styles.composeAction}
+          style={[styles.composeAction, composeLocked && styles.composeLocked]}
+          disabled={composeLocked}
           onPress={() => openNewPost("recommendation")}
         >
           <Ionicons
@@ -402,8 +495,24 @@ export default function HomeScreen() {
     </View>
   );
 
-  if (loading) {
+  if (loading || isUnauthorized(feedQuery.error)) {
     return <ScreenLoader label="Loading your feed" />;
+  }
+
+  if (feedQuery.isError) {
+    return (
+      <View style={styles.screen}>
+        <EmptyState
+          icon="cloud-offline-outline"
+          title="Couldn't load your feed"
+          message="Check your connection and try again."
+          actionLabel="Retry"
+          onAction={() => {
+            void feedQuery.refetch();
+          }}
+        />
+      </View>
+    );
   }
 
   return (
@@ -418,8 +527,14 @@ export default function HomeScreen() {
             refreshing={feedQuery.isRefetching && !feedQuery.isFetchingNextPage}
             tintColor={colors.primary}
             onRefresh={async () => {
-              await loadMeta();
-              await feedQuery.refetch();
+              await Promise.all([
+                feedQuery.refetch(),
+                userQuery.refetch(),
+                circlesQuery.refetch(),
+                notificationsQuery.refetch(),
+                savedQuery.refetch(),
+                childrenQuery.refetch(),
+              ]);
             }}
           />
         }
@@ -442,12 +557,22 @@ export default function HomeScreen() {
             icon="newspaper-outline"
             title="No posts yet"
             message={
-              circles.length > 0
+              hasCircles
                 ? "Be the first to share something with parents in your circles."
-                : "Complete your profile to join circles. We'll also suggest posts from other parent groups nearby."
+                : circlesKnown
+                  ? "Complete your profile to join circles. We'll also suggest posts from other parent groups nearby."
+                  : "Posts from your circles will show up here."
             }
-            actionLabel={circles.length > 0 ? "Create post" : "Complete profile"}
-            onAction={() => openNewPost()}
+            actionLabel={
+              hasCircles
+                ? "Create post"
+                : circlesKnown
+                  ? "Complete profile"
+                  : undefined
+            }
+            onAction={
+              hasCircles || circlesKnown ? () => openNewPost() : undefined
+            }
           />
         }
         renderItem={({ item }) => (
@@ -459,7 +584,9 @@ export default function HomeScreen() {
             saved={savedPostIds.has(item.id)}
             onPress={() => openPost(item)}
             onComment={() => openPost(item)}
-            onToggleSave={() => toggleSave(item.id)}
+            onToggleSave={
+              savedQuery.isSuccess ? () => toggleSave(item.id) : undefined
+            }
             onToggleHelpful={
               item.discovery ? undefined : () => toggleHelpful(item)
             }
@@ -563,6 +690,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontFamily: typography.semibold,
   },
+  composeLocked: { opacity: 0.5 },
   bellBtn: { marginRight: 8, position: "relative" },
   bellBadge: {
     position: "absolute",

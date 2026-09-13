@@ -4,8 +4,10 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, type Circle } from "@/lib/api";
 import { trackEvent, trackOnboardingComplete } from "@/lib/analytics";
+import { seedHomeMeta } from "@/lib/authenticated-state";
 import { getToken, getStoredUser, saveSession } from "@/lib/session";
 import {
+  getOnboardingChildren,
   getOnboardingCircles,
   getOnboardingUser,
 } from "@/lib/onboarding-draft";
@@ -28,14 +30,19 @@ export default function OnboardingReadyScreen() {
       try {
         const draftedCircles = getOnboardingCircles();
         const draftedUser = getOnboardingUser();
+        const draftedChildren = getOnboardingChildren();
         if (draftedCircles) {
           setCircles(draftedCircles);
-          if (draftedUser) {
-            const stored = await getStoredUser();
-            if (stored) {
-              await saveSession(token, { ...stored, ...draftedUser });
-            }
+          const stored = draftedUser ? await getStoredUser() : null;
+          const nextUser = stored && draftedUser ? { ...stored, ...draftedUser } : null;
+          if (stored && nextUser) {
+            await saveSession(token, nextUser);
           }
+          seedHomeMeta({
+            user: nextUser,
+            circles: draftedCircles,
+            children: draftedChildren,
+          });
         } else {
           const [list, me] = await Promise.all([
             api.getCircles(token),
@@ -43,9 +50,15 @@ export default function OnboardingReadyScreen() {
           ]);
           setCircles(list);
           const stored = await getStoredUser();
+          const nextUser = stored ? { ...stored, ...me } : me;
           if (stored) {
-            await saveSession(token, { ...stored, ...me });
+            await saveSession(token, nextUser);
           }
+          seedHomeMeta({
+            user: nextUser,
+            circles: list,
+            children: draftedChildren,
+          });
         }
       } catch (e) {
         setError(e instanceof Error ? e.message : "Could not load your circles");

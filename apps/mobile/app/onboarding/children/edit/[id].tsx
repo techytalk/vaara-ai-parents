@@ -8,6 +8,7 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { api, type Child, type Curriculum, type School } from "@/lib/api";
+import { invalidateFamilyMeta } from "@/lib/authenticated-state";
 import { getToken } from "@/lib/session";
 import { getCurriculaCached } from "@/lib/reference-cache";
 import { ChildFormFields } from "@/components/onboarding/ChildFormFields";
@@ -114,6 +115,7 @@ export default function EditChildScreen() {
       if (dateOfBirth) body.dateOfBirth = toIsoDateOnly(dateOfBirth);
 
       await api.updateChild(token, id, body);
+      invalidateFamilyMeta();
       if (router.canGoBack()) {
         router.back();
       } else {

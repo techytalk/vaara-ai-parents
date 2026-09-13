@@ -8,6 +8,7 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { EmptyState, ScreenLoader } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
@@ -39,6 +40,7 @@ function formatNotificationTime(iso: string) {
 
 export default function NotificationsScreen() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [items, setItems] = useState<AppNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -48,7 +50,8 @@ export default function NotificationsScreen() {
     if (!token) return;
     const list = await api.getNotifications(token);
     setItems(list);
-  }, []);
+    queryClient.setQueryData(["me", "notifications"], list);
+  }, [queryClient]);
 
   useEffect(() => {
     trackEvent("notification_center_opened");
@@ -62,10 +65,18 @@ export default function NotificationsScreen() {
     if (!token) return;
     if (!item.readAt) {
       await api.markNotificationRead(token, item.id);
+      const now = new Date().toISOString();
       setItems((prev) =>
-        prev.map((n) =>
-          n.id === item.id ? { ...n, readAt: new Date().toISOString() } : n
-        )
+        prev.map((n) => (n.id === item.id ? { ...n, readAt: n.readAt ?? now } : n))
+      );
+      queryClient.setQueryData(
+        ["me", "notifications"],
+        (current: AppNotification[] | undefined) => {
+          if (!current) return current;
+          return current.map((n) =>
+            n.id === item.id ? { ...n, readAt: n.readAt ?? now } : n
+          );
+        }
       );
     }
 
@@ -111,7 +122,15 @@ export default function NotificationsScreen() {
     const token = await getToken();
     if (!token) return;
     await api.markAllNotificationsRead(token);
-    await load();
+    const now = new Date().toISOString();
+    setItems((prev) => prev.map((n) => ({ ...n, readAt: n.readAt ?? now })));
+    queryClient.setQueryData(
+      ["me", "notifications"],
+      (current: AppNotification[] | undefined) => {
+        if (!current) return current;
+        return current.map((n) => ({ ...n, readAt: n.readAt ?? now }));
+      }
+    );
   }
 
   if (loading) {

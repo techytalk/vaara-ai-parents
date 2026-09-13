@@ -11,6 +11,7 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { api, type Child, type Curriculum } from "@/lib/api";
+import { invalidateFamilyMeta } from "@/lib/authenticated-state";
 import { getToken } from "@/lib/session";
 import { getCurriculaCached } from "@/lib/reference-cache";
 import { GENDER_LABEL } from "@/constants/onboarding";
@@ -82,6 +83,7 @@ export default function ChildDetailScreen() {
             setRemoving(true);
             try {
               await api.deleteChild(token, child.id);
+              invalidateFamilyMeta();
               router.back();
             } catch (e) {
               setError(e instanceof Error ? e.message : "Failed to remove");

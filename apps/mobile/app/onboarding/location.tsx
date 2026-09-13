@@ -13,6 +13,7 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, type PostalCountry } from "@/lib/api";
 import { trackEvent, trackOnboardingBegin } from "@/lib/analytics";
+import { invalidateFamilyMeta } from "@/lib/authenticated-state";
 import { getToken, getStoredUser, saveSession } from "@/lib/session";
 import {
   getOnboardingLocation,
@@ -250,10 +251,16 @@ export default function LocationScreen() {
 
       const storedUser = await getStoredUser();
       if (storedUser) {
-        await saveSession(token, {
+        const nextUser = {
           ...storedUser,
           onboardingComplete: result.onboardingComplete ?? storedUser.onboardingComplete,
-        });
+        };
+        await saveSession(token, nextUser);
+        if (alreadyComplete) {
+          invalidateFamilyMeta({ user: nextUser, children: false });
+        }
+      } else if (alreadyComplete) {
+        invalidateFamilyMeta({ children: false });
       }
 
       if (alreadyComplete) {

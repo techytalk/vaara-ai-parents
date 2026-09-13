@@ -3,6 +3,11 @@ import { ActivityIndicator, View } from "react-native";
 import { Redirect } from "expo-router";
 import { api } from "@/lib/api";
 import { resolveParentOnboardingHref } from "@/lib/auth-navigation";
+import {
+  endAuthenticatedSession,
+  isUnauthorized,
+  seedSessionUser,
+} from "@/lib/authenticated-state";
 import { getToken, saveSession } from "@/lib/session";
 import { colors } from "@/constants/theme";
 
@@ -22,6 +27,7 @@ export default function Index() {
       try {
         const user = await api.me(token);
         await saveSession(token, user);
+        seedSessionUser(user);
 
         if (!user.onboardingComplete) {
           if (user.role === "provider") {
@@ -34,7 +40,10 @@ export default function Index() {
         } else {
           setTarget("/(app)");
         }
-      } catch {
+      } catch (error) {
+        if (isUnauthorized(error)) {
+          await endAuthenticatedSession();
+        }
         setTarget("/(auth)/login");
       } finally {
         setLoading(false);

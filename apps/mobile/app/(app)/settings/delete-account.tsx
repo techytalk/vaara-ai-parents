@@ -4,7 +4,8 @@ import { useRouter } from "expo-router";
 import { Button, InlineError } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import { api } from "@/lib/api";
-import { clearSession, getToken } from "@/lib/session";
+import { endAuthenticatedSession } from "@/lib/authenticated-state";
+import { getToken } from "@/lib/session";
 
 export default function DeleteAccountScreen() {
   const router = useRouter();
@@ -21,7 +22,7 @@ export default function DeleteAccountScreen() {
         return;
       }
       await api.deleteAccount(token);
-      await clearSession();
+      await endAuthenticatedSession();
       router.replace("/(auth)/login");
     } catch (err) {
       setError(

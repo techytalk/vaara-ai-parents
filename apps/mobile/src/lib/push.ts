@@ -1,8 +1,13 @@
 import * as Device from "expo-device";
 import Constants from "expo-constants";
 import { AppState, Platform } from "react-native";
+import { queryClient } from "@/providers/QueryProvider";
 import { api } from "./api";
 import { getToken } from "./session";
+
+function invalidateNotificationBadge() {
+  void queryClient.invalidateQueries({ queryKey: ["me", "notifications"] });
+}
 
 const ANDROID_DEFAULT_CHANNEL = "default";
 
@@ -78,6 +83,7 @@ export function setupPushNotifications(): () => void {
 
   let cancelled = false;
   let tokenSubscription: { remove?: () => void } | undefined;
+  let receivedSubscription: { remove?: () => void } | undefined;
   let appStateSubscription: { remove?: () => void } | undefined;
 
   const register = () => {
@@ -102,6 +108,11 @@ export function setupPushNotifications(): () => void {
         tokenSubscription = Notifications.addPushTokenListener(() => {
           register();
         });
+        receivedSubscription = Notifications.addNotificationReceivedListener(
+          () => {
+            invalidateNotificationBadge();
+          }
+        );
       } catch {
         // Incomplete native binaries can throw NativeEventEmitter errors.
       }
@@ -111,12 +122,14 @@ export function setupPushNotifications(): () => void {
   appStateSubscription = AppState.addEventListener("change", (state) => {
     if (state === "active") {
       register();
+      invalidateNotificationBadge();
     }
   });
 
   return () => {
     cancelled = true;
     tokenSubscription?.remove?.();
+    receivedSubscription?.remove?.();
     appStateSubscription?.remove?.();
   };
 }
