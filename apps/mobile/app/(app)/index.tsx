@@ -39,6 +39,7 @@ import {
   endAuthenticatedSession,
   isUnauthorized,
 } from "@/lib/authenticated-state";
+import { setSavedPostId } from "@/lib/post-cache";
 import { getToken, saveSession } from "@/lib/session";
 import {
   clearOnboardingDraft,
@@ -376,15 +377,7 @@ export default function HomeScreen() {
       } else {
         await api.saveItem(token, { itemType: "post", itemId: postId });
       }
-      queryClient.setQueryData(
-        ["me", "savedPostIds"],
-        (current: string[] | undefined) => {
-          const next = new Set(current ?? []);
-          if (isSaved) next.delete(postId);
-          else next.add(postId);
-          return [...next];
-        }
-      );
+      setSavedPostId(queryClient, postId, !isSaved);
     } catch {
       // ignore save errors in feed
     }

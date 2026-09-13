@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   Alert,
   FlatList,
@@ -10,10 +10,10 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
@@ -31,7 +31,22 @@ import { PostDocumentList } from "@/components/circles/PostDocumentList";
 import { useBottomChromeInset } from "@/hooks/useBottomChromeInset";
 import { useAndroidImeDockOffset } from "@/hooks/useKeyboardHeight";
 import { useRealtimeChannel } from "@/hooks/useRealtimeChannel";
-import { api, type CirclePost, type PostComment, type ThreadCapabilities } from "@/lib/api";
+import { api, type AuthUser, type PostComment } from "@/lib/api";
+import {
+  endAuthenticatedSession,
+  isUnauthorized,
+} from "@/lib/authenticated-state";
+import {
+  appendThreadReply,
+  findCachedCirclePost,
+  mergeCirclePostFields,
+  mergeThreadPoll,
+  postThreadQueryKey,
+  removePostFromFeeds,
+  removePostThreadQueries,
+  setSavedPostId,
+  type PostThreadData,
+} from "@/lib/post-cache";
 import { sharePostLink, sharePostMedia } from "@/lib/share-post";
 import { getStoredUser, getToken } from "@/lib/session";
 import { useSubmitReport } from "@/providers/ReportProvider";
@@ -71,57 +86,102 @@ export default function PostThreadScreen() {
   const bottomChrome = useBottomChromeInset();
   const androidDockOffset = useAndroidImeDockOffset(bottomChrome);
   const submitReport = useSubmitReport();
-  const [post, setPost] = useState<CirclePost | null>(null);
-  const [comments, setComments] = useState<PostComment[]>([]);
-  const [readOnly, setReadOnly] = useState(false);
-  const [capabilities, setCapabilities] = useState<ThreadCapabilities | null>(
-    null
-  );
-  const [saved, setSaved] = useState(false);
   const [commentText, setCommentText] = useState("");
-  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    const token = await getToken();
-    if (!token) return;
-    const user = await getStoredUser();
-    setCurrentUserId(user?.id ?? null);
-    try {
-      const [data, savedData] = await Promise.all([
-        api.getPost(token, circleId, postId, shareId),
-        api.getSaved(token).catch(() => ({ posts: [] })),
-      ]);
-      setPost(data.post);
-      setComments(data.replies);
-      setReadOnly(Boolean(data.readOnly ?? data.post.readOnly));
-      setCapabilities(data.capabilities ?? null);
-      setSaved(savedData.posts.some((item) => item.id === postId));
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Failed to load");
-    } finally {
-      setLoading(false);
-    }
-  }, [circleId, postId, shareId]);
-
-  useFocusEffect(
-    useCallback(() => {
-      load();
-    }, [load])
+  const authExitStartedRef = useRef(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(
+    () => queryClient.getQueryData<AuthUser>(["sessionUser"])?.id ?? null
   );
+
+  const cachedPost = findCachedCirclePost(
+    queryClient,
+    circleId,
+    postId,
+    shareId
+  );
+  const threadKey = postThreadQueryKey(circleId, postId, shareId);
+
+  const threadQuery = useQuery({
+    queryKey: threadKey,
+    queryFn: async (): Promise<PostThreadData> => {
+      const token = await getToken();
+      if (!token) throw new Error("Not signed in");
+      const data = await api.getPost(token, circleId, postId, shareId);
+      return {
+        post: data.post,
+        replies: data.replies,
+        readOnly: Boolean(data.readOnly ?? data.post.readOnly),
+        capabilities: data.capabilities ?? null,
+        authoritative: true,
+      };
+    },
+    initialData: cachedPost
+      ? {
+          post: cachedPost,
+          replies: [],
+          readOnly: true,
+          capabilities: null,
+          authoritative: false,
+        }
+      : undefined,
+    initialDataUpdatedAt: cachedPost ? 0 : undefined,
+    retry: false,
+  });
+
+  const savedQuery = useQuery({
+    queryKey: ["me", "savedPostIds"],
+    queryFn: async () => {
+      const token = await getToken();
+      if (!token) throw new Error("Not signed in");
+      const result = await api.getSaved(token);
+      return result.posts.map((post) => post.id);
+    },
+    enabled:
+      queryClient.getQueryData<string[]>(["me", "savedPostIds"]) !== undefined ||
+      threadQuery.data?.authoritative === true,
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (currentUserId) return;
+    void getStoredUser().then((user) => {
+      setCurrentUserId(user?.id ?? null);
+    });
+  }, [currentUserId]);
+
+  useEffect(() => {
+    const unauthorized = [threadQuery.error, savedQuery.error].some(
+      isUnauthorized
+    );
+    if (!unauthorized || authExitStartedRef.current) return;
+    authExitStartedRef.current = true;
+    void endAuthenticatedSession().finally(() => {
+      router.replace("/(auth)/login");
+    });
+  }, [threadQuery.error, savedQuery.error, router]);
+
+  const refreshThread = useCallback(() => {
+    void threadQuery.refetch();
+  }, [threadQuery]);
 
   useRealtimeChannel({
     channel: postId ? `post:${postId}` : null,
     onEvent: (event) => {
       if (event.type === "reply.new" && event.postId === postId) {
-        load();
+        queryClient.invalidateQueries({ queryKey: threadKey });
       }
     },
-    onPollFallback: load,
+    onPollFallback: refreshThread,
   });
+
+  const post = threadQuery.data?.post ?? null;
+  const comments = threadQuery.data?.replies ?? [];
+  const authoritative = threadQuery.data?.authoritative === true;
+  const capabilities = authoritative ? threadQuery.data?.capabilities ?? null : null;
+  const readOnly = authoritative ? Boolean(threadQuery.data?.readOnly) : true;
+  const saved = (savedQuery.data ?? []).includes(postId);
 
   const showPostSafetyActions = useCallback(() => {
     if (!post) return;
@@ -161,100 +221,34 @@ export default function PostThreadScreen() {
     ]);
   }, [circleId, post, postId, submitReport]);
 
-  useLayoutEffect(() => {
-    const isOwnPost =
-      Boolean(currentUserId) &&
-      (post?.authorId === currentUserId || post?.author.userId === currentUserId);
-    navigation.setOptions({
-      title: "Post",
-      headerLeft: () => (
-        <Pressable
-          onPress={() => {
-            if (router.canGoBack()) {
-              router.back();
-            } else {
-              router.replace("/(app)" as never);
-            }
-          }}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-          style={styles.headerBack}
-        >
-          <Ionicons name="chevron-back" size={28} color={theme.text} />
-        </Pressable>
-      ),
-      headerRight: () => (
-        <View style={styles.headerActions}>
-          {isOwnPost && (capabilities?.canEdit ?? !readOnly) ? (
-            <Pressable
-              onPress={() =>
-                router.push({
-                  pathname: "/circles/[circleId]/new-post",
-                  params: { circleId, postId },
-                })
-              }
-              hitSlop={8}
-              style={styles.headerEdit}
-              accessibilityRole="button"
-              accessibilityLabel="Edit post"
-            >
-              <Ionicons name="pencil-outline" size={22} color={theme.text} />
-            </Pressable>
-          ) : null}
-          {isOwnPost ? (
-            <Pressable
-              onPress={confirmDelete}
-              hitSlop={8}
-              style={styles.headerDelete}
-              accessibilityRole="button"
-              accessibilityLabel="Delete post"
-              disabled={deleting}
-            >
-              <Ionicons name="trash-outline" size={22} color={theme.error} />
-            </Pressable>
-          ) : (
-            <Pressable
-              onPress={showPostSafetyActions}
-              hitSlop={8}
-              style={styles.headerMore}
-              accessibilityRole="button"
-              accessibilityLabel="Post safety options"
-            >
-              <Ionicons
-                name="ellipsis-horizontal"
-                size={22}
-                color={theme.text}
-              />
-            </Pressable>
-          )}
-          {capabilities?.canSave !== false ? (
-          <Pressable onPress={toggleSave} hitSlop={8} style={styles.headerSave}>
-            <Ionicons
-              name={saved ? "bookmark" : "bookmark-outline"}
-              size={22}
-              color={theme.primary}
-            />
-          </Pressable>
-          ) : null}
-        </View>
-      ),
-    });
-  }, [
-    navigation,
-    saved,
-    currentUserId,
-    post,
-    deleting,
-    capabilities,
-    readOnly,
-    circleId,
-    postId,
-    router,
-    showPostSafetyActions,
-  ]);
+  const onDelete = useCallback(async () => {
+    const token = await getToken();
+    if (!token) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      await api.deletePost(token, circleId, postId);
+      removePostFromFeeds(queryClient, postId, circleId, {
+        removeThreadQueries: false,
+      });
+      router.back();
+      removePostThreadQueries(queryClient, circleId, postId);
+    } catch (cause) {
+      if (isUnauthorized(cause)) {
+        if (!authExitStartedRef.current) {
+          authExitStartedRef.current = true;
+          await endAuthenticatedSession();
+          router.replace("/(auth)/login");
+        }
+        return;
+      }
+      setError(cause instanceof Error ? cause.message : "Could not delete post");
+    } finally {
+      setDeleting(false);
+    }
+  }, [circleId, postId, queryClient, router]);
 
-  function confirmDelete() {
+  const confirmDelete = useCallback(() => {
     Alert.alert(
       "Delete post?",
       "This will permanently remove your post and its comments.",
@@ -263,58 +257,40 @@ export default function PostThreadScreen() {
         { text: "Delete", style: "destructive", onPress: () => void onDelete() },
       ]
     );
-  }
+  }, [onDelete]);
 
-  async function onDelete() {
-    const token = await getToken();
-    if (!token) return;
-    setDeleting(true);
-    setError(null);
-    try {
-      await api.deletePost(token, circleId, postId);
-      queryClient.setQueryData(
-        ["circleFeed", circleId],
-        (current: { posts: CirclePost[]; memberCount: number } | undefined) =>
-          current
-            ? {
-                ...current,
-                posts: current.posts.filter((item) => item.id !== postId),
-              }
-            : current
-      );
-      router.back();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not delete post");
-    } finally {
-      setDeleting(false);
-    }
-  }
-
-  async function toggleSave() {
+  const toggleSave = useCallback(async () => {
     const token = await getToken();
     if (!token) return;
     try {
       if (saved) {
         await api.unsaveItem(token, "post", postId);
-        setSaved(false);
+        setSavedPostId(queryClient, postId, false);
       } else {
         await api.saveItem(token, { itemType: "post", itemId: postId });
-        setSaved(true);
+        setSavedPostId(queryClient, postId, true);
       }
     } catch (cause) {
+      if (isUnauthorized(cause)) {
+        if (!authExitStartedRef.current) {
+          authExitStartedRef.current = true;
+          await endAuthenticatedSession();
+          router.replace("/(auth)/login");
+        }
+        return;
+      }
       setError(
         cause instanceof Error ? cause.message : "Could not update save"
       );
     }
-  }
+  }, [postId, queryClient, router, saved]);
 
   async function toggleHelpful() {
     const token = await getToken();
     if (!token || !post) return;
     try {
       const result = await api.togglePostHelpful(token, postId);
-      setPost({
-        ...post,
+      mergeCirclePostFields(queryClient, circleId, postId, shareId, {
         myHelpful: result.helpful,
         helpfulCount: result.helpfulCount,
       });
@@ -339,14 +315,17 @@ export default function PostThreadScreen() {
         return;
       }
       const comment = await api.addReply(token, circleId, postId, text);
-      setComments((prev) => [...prev, comment]);
+      appendThreadReply(queryClient, circleId, postId, shareId, comment);
       setCommentText("");
-      setPost((current) =>
-        current
-          ? { ...current, replyCount: current.replyCount + 1 }
-          : current
-      );
     } catch (cause) {
+      if (isUnauthorized(cause)) {
+        if (!authExitStartedRef.current) {
+          authExitStartedRef.current = true;
+          await endAuthenticatedSession();
+          router.replace("/(auth)/login");
+        }
+        return;
+      }
       const message =
         cause instanceof Error ? cause.message : "Failed to comment";
       setError(message);
@@ -444,35 +423,151 @@ export default function PostThreadScreen() {
     if (!token || !post) return;
     try {
       const { poll } = await api.votePoll(token, circleId, postId, optionId);
-      if (poll) setPost({ ...post, poll });
+      if (poll) mergeThreadPoll(queryClient, circleId, postId, shareId, poll);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not vote");
     }
   }
 
-  if (loading) {
-    return <ScreenLoader />;
-  }
+  const isOwnPost =
+    Boolean(currentUserId) &&
+    Boolean(post) &&
+    (post?.authorId === currentUserId || post?.author.userId === currentUserId);
+  const canEdit =
+    authoritative && isOwnPost && (capabilities?.canEdit ?? !readOnly);
+  const canDelete =
+    authoritative && isOwnPost && (capabilities?.canDelete ?? true);
+  const canReply = authoritative && (capabilities?.canReply ?? !readOnly);
+  const canVote = authoritative && (capabilities?.canVote ?? !readOnly);
+  const canMarkHelpful =
+    authoritative && (capabilities?.canMarkHelpful ?? !readOnly);
+  const canSave =
+    authoritative &&
+    savedQuery.isSuccess &&
+    capabilities?.canSave !== false;
+  const canMessageAuthor =
+    authoritative &&
+    (capabilities?.canMessageAuthor ?? (!readOnly && !isOwnPost)) &&
+    !isOwnPost &&
+    Boolean(post?.authorId ?? post?.author.userId);
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      title: "Post",
+      headerLeft: () => (
+        <Pressable
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace("/(app)" as never);
+            }
+          }}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          style={styles.headerBack}
+        >
+          <Ionicons name="chevron-back" size={28} color={theme.text} />
+        </Pressable>
+      ),
+      headerRight: () => (
+        <View style={styles.headerActions}>
+          {canEdit ? (
+            <Pressable
+              onPress={() =>
+                router.push({
+                  pathname: "/circles/[circleId]/new-post",
+                  params: { circleId, postId },
+                })
+              }
+              hitSlop={8}
+              style={styles.headerEdit}
+              accessibilityRole="button"
+              accessibilityLabel="Edit post"
+            >
+              <Ionicons name="pencil-outline" size={22} color={theme.text} />
+            </Pressable>
+          ) : null}
+          {canDelete ? (
+            <Pressable
+              onPress={confirmDelete}
+              hitSlop={8}
+              style={styles.headerDelete}
+              accessibilityRole="button"
+              accessibilityLabel="Delete post"
+              disabled={deleting}
+            >
+              <Ionicons name="trash-outline" size={22} color={theme.error} />
+            </Pressable>
+          ) : post && authoritative && !isOwnPost ? (
+            <Pressable
+              onPress={showPostSafetyActions}
+              hitSlop={8}
+              style={styles.headerMore}
+              accessibilityRole="button"
+              accessibilityLabel="Post safety options"
+            >
+              <Ionicons
+                name="ellipsis-horizontal"
+                size={22}
+                color={theme.text}
+              />
+            </Pressable>
+          ) : null}
+          {canSave ? (
+            <Pressable onPress={toggleSave} hitSlop={8} style={styles.headerSave}>
+              <Ionicons
+                name={saved ? "bookmark" : "bookmark-outline"}
+                size={22}
+                color={theme.primary}
+              />
+            </Pressable>
+          ) : null}
+        </View>
+      ),
+    });
+  }, [
+    navigation,
+    saved,
+    canEdit,
+    canDelete,
+    canSave,
+    isOwnPost,
+    authoritative,
+    post,
+    deleting,
+    circleId,
+    postId,
+    router,
+    showPostSafetyActions,
+    confirmDelete,
+    toggleSave,
+  ]);
 
   if (!post) {
+    if (threadQuery.isLoading || threadQuery.isPending) {
+      return <ScreenLoader />;
+    }
     return (
       <View style={styles.centered}>
-        <Text style={styles.notFound}>{error ?? "Post not found"}</Text>
+        <Text style={styles.notFound}>
+          {threadQuery.error instanceof Error
+            ? threadQuery.error.message
+            : "Post not found"}
+        </Text>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => void threadQuery.refetch()}
+          style={styles.retryBtn}
+        >
+          <Text style={styles.retryText}>Retry</Text>
+        </Pressable>
       </View>
     );
   }
 
   const helpfulCount = post.helpfulCount ?? 0;
-  const isOwnPost =
-    Boolean(currentUserId) &&
-    (post.authorId === currentUserId || post.author.userId === currentUserId);
-  const canReply = capabilities?.canReply ?? !readOnly;
-  const canVote = capabilities?.canVote ?? !readOnly;
-  const canMarkHelpful = capabilities?.canMarkHelpful ?? !readOnly;
-  const canMessageAuthor =
-    (capabilities?.canMessageAuthor ?? (!readOnly && !isOwnPost)) &&
-    !isOwnPost &&
-    Boolean(post.authorId ?? post.author.userId);
 
   return (
     <SafeAreaView
@@ -486,7 +581,7 @@ export default function PostThreadScreen() {
       >
       <FlatList
         style={styles.list}
-        data={comments}
+        data={authoritative ? comments : []}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
         keyboardShouldPersistTaps="handled"
@@ -495,11 +590,11 @@ export default function PostThreadScreen() {
             <View style={[styles.postCard, cardShadow()]}>
               <View style={styles.postAccent} />
               <View style={styles.postInner}>
-                {readOnly ? (
+                {authoritative && readOnly ? (
                   <Text style={styles.discoveryBanner}>
                     You’re not part of this circle.
                   </Text>
-                ) : capabilities && !capabilities.canOpenCircle ? (
+                ) : authoritative && capabilities && !capabilities.canOpenCircle ? (
                   <Text style={styles.discoveryBanner}>
                     You can follow replies here. You are not a member of this
                     circle.
@@ -596,28 +691,43 @@ export default function PostThreadScreen() {
             <View style={styles.commentsHeader}>
               <Text style={styles.commentsTitle}>
                 Comments
-                {comments.length > 0 ? ` (${comments.length})` : ""}
+                {authoritative && comments.length > 0
+                  ? ` (${comments.length})`
+                  : ""}
               </Text>
-              {comments.length === 0 ? (
+              {!authoritative ? (
+                <Text style={styles.commentsHint}>Loading comments</Text>
+              ) : comments.length === 0 ? (
                 <Text style={styles.commentsHint}>
                   {readOnly
                     ? "Join this circle to see comments and join the conversation."
                     : "Be the first to respond to this post"}
                 </Text>
               ) : null}
+              {threadQuery.isError && !authoritative ? (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => void threadQuery.refetch()}
+                  style={styles.inlineRetry}
+                >
+                  <Text style={styles.retryText}>Retry</Text>
+                </Pressable>
+              ) : null}
             </View>
           </>
         }
         renderItem={({ item }) => <CommentCard comment={item} />}
         ListEmptyComponent={
-          <View style={styles.noComments}>
-            <Ionicons
-              name="chatbubble-outline"
-              size={28}
-              color={theme.textMuted}
-            />
-            <Text style={styles.noCommentsText}>No comments yet</Text>
-          </View>
+          authoritative ? (
+            <View style={styles.noComments}>
+              <Ionicons
+                name="chatbubble-outline"
+                size={28}
+                color={theme.textMuted}
+              />
+              <Text style={styles.noCommentsText}>No comments yet</Text>
+            </View>
+          ) : null
         }
       />
 
@@ -663,7 +773,7 @@ export default function PostThreadScreen() {
           )}
         </Pressable>
       </View>
-      ) : (
+      ) : authoritative ? (
         <View
           style={[
             styles.composer,
@@ -678,7 +788,7 @@ export default function PostThreadScreen() {
             you cannot comment or open the rest of the circle.
           </Text>
         </View>
-      )}
+      ) : null}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -703,8 +813,18 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: theme.bg,
+    gap: 12,
+    padding: 24,
   },
-  notFound: { color: theme.textMuted, fontSize: 15 },
+  notFound: { color: theme.textMuted, fontSize: 15, textAlign: "center" },
+  retryBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: theme.primary,
+  },
+  retryText: { color: theme.primary, fontSize: 14, fontWeight: "700" },
+  inlineRetry: { marginTop: 8 },
   listContent: { padding: 16, paddingBottom: 8 },
   postCard: {
     backgroundColor: theme.card,

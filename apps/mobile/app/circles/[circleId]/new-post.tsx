@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ActivityIndicator,
   Alert,
@@ -34,7 +34,20 @@ import {
   PostTypeSheet,
   TopicsSheet,
 } from "@/components/circles/PostComposerPickers";
-import { api, type Circle, type GuestQuota } from "@/lib/api";
+import { api, type AuthUser, type CirclePost, type GuestQuota } from "@/lib/api";
+import {
+  authed,
+  endAuthenticatedSession,
+  isUnauthorized,
+} from "@/lib/authenticated-state";
+import {
+  findCachedCirclePost,
+  mapWithConcurrency,
+  mergePostIntoMyPosts,
+  postThreadQueryKey,
+  upsertPostInFeeds,
+  type PostThreadData,
+} from "@/lib/post-cache";
 import {
   persistPickedMediaUri,
   resolveMediaBytes,
@@ -49,7 +62,7 @@ import {
   type PendingDocument,
   uploadAndScanDocument,
 } from "@/lib/document-upload";
-import { getStoredUser, getToken } from "@/lib/session";
+import { getStoredUser } from "@/lib/session";
 import { LEGAL_URLS } from "@/constants/legal";
 
 type PendingMedia = {
@@ -63,6 +76,43 @@ type PendingMedia = {
   height?: number;
   durationMs?: number;
 };
+
+function editorStateFromPost(post: CirclePost) {
+  const nextTag: PostTagValue =
+    post.tag === "recommendation" ||
+    post.tag === "question" ||
+    post.tag === "heads_up" ||
+    post.tag === "general"
+      ? post.tag
+      : "general";
+  return {
+    body: post.body ?? "",
+    tag: nextTag,
+    selectedTopicSlugs: post.topics?.map((topic) => topic.slug) ?? [],
+    media: (post.media ?? []).map((item, index) => ({
+      id: item.id,
+      uri: item.url,
+      fileName: `${item.type}-${index + 1}`,
+      mediaType: item.type,
+      mimeType: item.mimeType,
+      width: item.width ?? undefined,
+      height: item.height ?? undefined,
+      durationMs: item.durationMs ?? undefined,
+    })),
+    documents: (post.documents ?? []).map((item) => ({
+      localId: item.id,
+      id: item.id,
+      fileName: item.fileName,
+      mimeType: item.mimeType,
+      sizeBytes: item.sizeBytes,
+      status: "clean" as const,
+    })),
+    pollEnabled: Boolean(post.poll),
+    pollQuestion: post.poll?.question ?? "",
+    pollOptions: post.poll?.options.map((option) => option.label) ?? ["", ""],
+    pollLocked: Boolean(post.poll && post.poll.totalVotes > 0),
+  };
+}
 
 const PLACEHOLDERS: Record<PostTagValue, string> = {
   general: "What's on your mind?",
@@ -88,8 +138,16 @@ export default function NewPostScreen() {
   const androidDockOffset = useAndroidImeDockOffset(bottomChrome);
   const bodyInputRef = useRef<TextInput>(null);
   const didFocusBody = useRef(false);
-  const [body, setBody] = useState("");
+  const authExitStartedRef = useRef(false);
+  const [seededPost] = useState(() =>
+    isEditing && circleId && postId
+      ? findCachedCirclePost(queryClient, circleId, postId)
+      : undefined
+  );
+  const seededEditor = seededPost ? editorStateFromPost(seededPost) : null;
+  const [body, setBody] = useState(() => seededEditor?.body ?? "");
   const [tag, setTag] = useState<PostTagValue>(() => {
+    if (seededEditor) return seededEditor.tag;
     if (tagParam === "recommendation" || tagParam === "question" || tagParam === "heads_up" || tagParam === "general") {
       return tagParam;
     }
@@ -97,33 +155,89 @@ export default function NewPostScreen() {
     if (compose === "question") return "question";
     return "general";
   });
-  const [circles, setCircles] = useState<Circle[]>([]);
   const [additionalCircleIds, setAdditionalCircleIds] = useState<string[]>([]);
-  const [media, setMedia] = useState<PendingMedia[]>([]);
-  const [documents, setDocuments] = useState<PendingDocument[]>([]);
-  const [pollEnabled, setPollEnabled] = useState(compose === "poll");
-  const [pollQuestion, setPollQuestion] = useState("");
-  const [pollOptions, setPollOptions] = useState(["", ""]);
-  const [pollLocked, setPollLocked] = useState(false);
-  const [editReady, setEditReady] = useState(!isEditing);
-  const [mediaEnabled, setMediaEnabled] = useState<boolean | null>(null);
+  const [media, setMedia] = useState<PendingMedia[]>(() => seededEditor?.media ?? []);
+  const [documents, setDocuments] = useState<PendingDocument[]>(
+    () => seededEditor?.documents ?? []
+  );
+  const [pollEnabled, setPollEnabled] = useState(
+    () => seededEditor?.pollEnabled ?? compose === "poll"
+  );
+  const [pollQuestion, setPollQuestion] = useState(
+    () => seededEditor?.pollQuestion ?? ""
+  );
+  const [pollOptions, setPollOptions] = useState(
+    () => seededEditor?.pollOptions ?? ["", ""]
+  );
+  const [pollLocked, setPollLocked] = useState(
+    () => seededEditor?.pollLocked ?? false
+  );
+  const [editReady, setEditReady] = useState(!isEditing || Boolean(seededEditor));
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [topicOptions, setTopicOptions] = useState<
-    Array<{ slug: string; name: string }>
-  >([]);
-  const [selectedTopicSlugs, setSelectedTopicSlugs] = useState<string[]>([]);
+  const [selectedTopicSlugs, setSelectedTopicSlugs] = useState<string[]>(
+    () => seededEditor?.selectedTopicSlugs ?? []
+  );
   const [composeHandled, setComposeHandled] = useState(false);
   const [audienceOpen, setAudienceOpen] = useState(false);
   const [topicsOpen, setTopicsOpen] = useState(false);
   const [typeOpen, setTypeOpen] = useState(false);
   const [guestQuota, setGuestQuota] = useState<GuestQuota | null>(null);
+  const [postLoadError, setPostLoadError] = useState<unknown>(null);
+
+  const circlesQuery = useQuery({
+    queryKey: ["circles"],
+    queryFn: () => authed((token) => api.getCircles(token)),
+    retry: false,
+  });
+  const topicsQuery = useQuery({
+    queryKey: ["topicsCatalog"],
+    queryFn: () => authed((token) => api.getTopicsCatalog(token)),
+    retry: false,
+  });
+  const mediaStatusQuery = useQuery({
+    queryKey: ["mediaStatus"],
+    queryFn: () => authed((token) => api.getMediaStatus(token)),
+    retry: false,
+  });
+
+  const circles = circlesQuery.data ?? [];
+  const mediaEnabled = mediaStatusQuery.data?.configured ?? null;
+  const topicOptions = Object.values(topicsQuery.data?.categories ?? {})
+    .flat()
+    .map((topic) => ({ slug: topic.slug, name: topic.name }));
+  const audienceReady = isEditing || circlesQuery.isSuccess;
 
   function showSubmitError(message: string) {
     setError(message);
     Alert.alert(isEditing ? "Could not save" : "Could not post", message);
   }
+
+  function startAuthExit() {
+    if (authExitStartedRef.current) return;
+    authExitStartedRef.current = true;
+    void endAuthenticatedSession().finally(() => {
+      router.replace("/(auth)/login");
+    });
+  }
+
+  useEffect(() => {
+    const unauthorized = [
+      circlesQuery.error,
+      topicsQuery.error,
+      mediaStatusQuery.error,
+      postLoadError,
+    ].some(isUnauthorized);
+    if (!unauthorized) return;
+    startAuthExit();
+  }, [
+    circlesQuery.error,
+    mediaStatusQuery.error,
+    postLoadError,
+    router,
+    topicsQuery.error,
+  ]);
 
   useEffect(() => {
     if (isEditing || didFocusBody.current) return;
@@ -134,88 +248,74 @@ export default function NewPostScreen() {
     return () => task.cancel();
   }, [isEditing]);
 
+  function applyEditorState(next: ReturnType<typeof editorStateFromPost>) {
+    setBody(next.body);
+    setTag(next.tag);
+    setSelectedTopicSlugs(next.selectedTopicSlugs);
+    setMedia(next.media);
+    setDocuments(next.documents);
+    setPollEnabled(next.pollEnabled);
+    setPollQuestion(next.pollQuestion);
+    setPollOptions(next.pollOptions);
+    setPollLocked(next.pollLocked);
+  }
+
+  async function assertCanEdit(post: CirclePost) {
+    const user =
+      queryClient.getQueryData<AuthUser>(["sessionUser"]) ??
+      (await getStoredUser());
+    const authorId = post.authorId ?? post.author.userId;
+    if (!user?.id || authorId !== user.id) {
+      Alert.alert("Can’t edit", "You can only edit your own posts.", [
+        { text: "OK", onPress: () => router.back() },
+      ]);
+      return false;
+    }
+    return true;
+  }
+
   useEffect(() => {
-    getToken().then(async (token) => {
-      if (!token) return;
+    if (!isEditing || !seededPost) return;
+    void assertCanEdit(seededPost);
+  }, [isEditing, seededPost]);
+
+  useEffect(() => {
+    if (!isEditing || !postId || !circleId || seededPost) return;
+    let cancelled = false;
+    void (async () => {
       try {
-        const [circleList, mediaStatus, catalog] = await Promise.all([
-          api.getCircles(token),
-          api.getMediaStatus(token).catch(() => ({ configured: false })),
-          api.getTopicsCatalog(token).catch(() => ({ categories: {} })),
-        ]);
-        setCircles(circleList);
-        setMediaEnabled(mediaStatus.configured);
-        const flat = Object.values(catalog.categories).flat();
-        setTopicOptions(flat.map((t) => ({ slug: t.slug, name: t.name })));
-
-        if (!isEditing || !postId || !circleId) {
-          setEditReady(true);
-          return;
-        }
-
-        const data = await api.getPost(token, circleId, postId);
-        const user = await getStoredUser();
-        const authorId = data.post.authorId ?? data.post.author.userId;
-        if (!user?.id || authorId !== user.id) {
-          Alert.alert(
-            "Can’t edit",
-            "You can only edit your own posts.",
-            [{ text: "OK", onPress: () => router.back() }]
-          );
-          return;
-        }
-
-        const post = data.post;
-        setBody(post.body ?? "");
-        if (
-          post.tag === "recommendation" ||
-          post.tag === "question" ||
-          post.tag === "heads_up" ||
-          post.tag === "general"
-        ) {
-          setTag(post.tag);
-        }
-        setSelectedTopicSlugs(post.topics?.map((topic) => topic.slug) ?? []);
-        setMedia(
-          (post.media ?? []).map((item, index) => ({
-            id: item.id,
-            uri: item.url,
-            fileName: `${item.type}-${index + 1}`,
-            mediaType: item.type,
-            mimeType: item.mimeType,
-            width: item.width ?? undefined,
-            height: item.height ?? undefined,
-            durationMs: item.durationMs ?? undefined,
-          }))
+        const data = await authed((token) =>
+          api.getPost(token, circleId, postId)
         );
-        setDocuments(
-          (post.documents ?? []).map((item) => ({
-            localId: item.id,
-            id: item.id,
-            fileName: item.fileName,
-            mimeType: item.mimeType,
-            sizeBytes: item.sizeBytes,
-            status: "clean" as const,
-          }))
+        if (cancelled) return;
+        if (!(await assertCanEdit(data.post))) return;
+        queryClient.setQueryData<PostThreadData>(
+          postThreadQueryKey(circleId, postId),
+          {
+            post: data.post,
+            replies: data.replies,
+            readOnly: Boolean(data.readOnly ?? data.post.readOnly),
+            capabilities: data.capabilities ?? null,
+            authoritative: true,
+          }
         );
-        if (post.poll) {
-          setPollEnabled(true);
-          setPollQuestion(post.poll.question);
-          setPollOptions(post.poll.options.map((option) => option.label));
-          setPollLocked(post.poll.totalVotes > 0);
-        }
+        applyEditorState(editorStateFromPost(data.post));
         setEditReady(true);
       } catch (cause) {
+        if (cancelled) return;
+        if (isUnauthorized(cause)) {
+          setPostLoadError(cause);
+          return;
+        }
         setError(
-          isEditing
-            ? cause instanceof Error
-              ? cause.message
-              : "Could not load this post"
-            : "Could not load your circles"
+          cause instanceof Error ? cause.message : "Could not load this post"
         );
       }
-    });
-  }, [circleId, isEditing, postId, router]);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [circleId, isEditing, postId, seededPost]);
 
   async function pickMedia() {
     if (!mediaEnabled) {
@@ -298,17 +398,27 @@ export default function NewPostScreen() {
     if (picked.length === 0) return;
     setDocuments((current) => [...current, ...picked].slice(0, MAX_POST_DOCUMENTS));
     setError(null);
-    const token = await getToken();
-    if (!token) return;
-    for (const doc of picked) {
-      if (doc.status !== "uploading") continue;
-      await uploadAndScanDocument(token, doc, (next) => {
-        setDocuments((current) =>
-          current.map((item) =>
-            item.localId === next.localId ? next : item
-          )
-        );
+    try {
+      await authed(async (token) => {
+        for (const doc of picked) {
+          if (doc.status !== "uploading") continue;
+          await uploadAndScanDocument(token, doc, (next) => {
+            setDocuments((current) =>
+              current.map((item) =>
+                item.localId === next.localId ? next : item
+              )
+            );
+          });
+        }
       });
+    } catch (cause) {
+      if (isUnauthorized(cause)) {
+        startAuthExit();
+        return;
+      }
+      setError(
+        cause instanceof Error ? cause.message : "Could not upload document"
+      );
     }
   }
 
@@ -320,18 +430,28 @@ export default function NewPostScreen() {
     void pickMedia();
   }, [compose, composeHandled, isEditing, mediaEnabled]);
 
-  async function uploadMedia(token: string) {
-    const uploaded: Array<{
-      storageKey: string;
-      mediaType: "image" | "video";
-      mimeType: string;
+  async function uploadMediaItems(token: string, items: PendingMedia[]) {
+    type MediaPayload = {
+      id?: string;
+      storageKey?: string;
+      mediaType?: "image" | "video";
+      mimeType?: string;
       width?: number;
       height?: number;
       durationMs?: number;
-    }> = [];
-    for (const [index, item] of media.entries()) {
-      setUploadProgress(`Uploading ${index + 1} of ${media.length}…`);
-      const { sizeBytes, body } = await resolveMediaBytes(
+    };
+    const payload: MediaPayload[] = items.map((item) =>
+      item.id ? { id: item.id } : {}
+    );
+    const pending = items
+      .map((item, index) => ({ item, index }))
+      .filter(({ item }) => !item.id);
+    let completed = 0;
+    if (pending.length > 0) {
+      setUploadProgress(`Uploading 0 of ${pending.length}…`);
+    }
+    await mapWithConcurrency(pending, 2, async ({ item, index }) => {
+      const { sizeBytes, body: bytes } = await resolveMediaBytes(
         item.uri,
         item.fileName,
         item.fileSize
@@ -344,20 +464,22 @@ export default function NewPostScreen() {
       });
       await uploadMediaBytes(
         upload.uploadUrl,
-        body,
+        bytes,
         item.mimeType,
         item.fileName
       );
-      uploaded.push({
+      payload[index] = {
         storageKey: upload.storageKey,
         mediaType: item.mediaType,
         mimeType: item.mimeType,
         width: item.width,
         height: item.height,
         durationMs: item.durationMs,
-      });
-    }
-    return uploaded;
+      };
+      completed += 1;
+      setUploadProgress(`Uploading ${completed} of ${pending.length}…`);
+    });
+    return payload;
   }
 
   async function onSubmit() {
@@ -390,126 +512,123 @@ export default function NewPostScreen() {
     setLoading(true);
     setError(null);
     try {
-      const token = await getToken();
-      if (!token) {
-        showSubmitError("Your session expired. Please sign in again.");
-        return;
-      }
-      const circleList = await api.getCircles(token);
-      setCircles(circleList);
-      const memberIds = new Set(circleList.map((circle) => circle.id));
-      if (!memberIds.has(circleId)) {
-        showSubmitError(
-          "You are not in this circle. Open Circles, refresh, and try again."
-        );
-        return;
-      }
-      if (isEditing && postId) {
-        const mediaPayload: Array<{
-          id?: string;
-          storageKey?: string;
-          mediaType?: "image" | "video";
-          mimeType?: string;
-          width?: number;
-          height?: number;
-          durationMs?: number;
-        }> = [];
-        const newItems = media.filter((item) => !item.id);
-        let uploadedCount = 0;
-        for (const item of media) {
-          if (item.id) {
-            mediaPayload.push({ id: item.id });
-            continue;
+      await authed(async (token) => {
+        let circleList = circlesQuery.data;
+        if (!circleList?.some((circle) => circle.id === circleId)) {
+          try {
+            circleList = await api.getCircles(token);
+            queryClient.setQueryData(["circles"], circleList);
+          } catch (cause) {
+            if (isUnauthorized(cause)) throw cause;
+            if (!isEditing) {
+              showSubmitError(
+                cause instanceof Error
+                  ? cause.message
+                  : "Could not load your circles"
+              );
+              return;
+            }
           }
-          uploadedCount += 1;
-          setUploadProgress(`Uploading ${uploadedCount} of ${newItems.length}…`);
-          const { sizeBytes, body } = await resolveMediaBytes(
-            item.uri,
-            item.fileName,
-            item.fileSize
-          );
-          const upload = await api.createMediaUpload(token, {
-            fileName: item.fileName,
-            mediaType: item.mediaType,
-            mimeType: item.mimeType,
-            sizeBytes,
-          });
-          await uploadMediaBytes(
-            upload.uploadUrl,
-            body,
-            item.mimeType,
-            item.fileName
-          );
-          mediaPayload.push({
-            storageKey: upload.storageKey,
-            mediaType: item.mediaType,
-            mimeType: item.mimeType,
-            width: item.width,
-            height: item.height,
-            durationMs: item.durationMs,
-          });
         }
-        setUploadProgress("Saving post…");
-        await api.updatePost(token, circleId, postId, {
+        if (!isEditing) {
+          const memberIds = new Set((circleList ?? []).map((circle) => circle.id));
+          if (!memberIds.has(circleId)) {
+            showSubmitError(
+              "You are not in this circle. Open Circles, refresh, and try again."
+            );
+            return;
+          }
+        }
+        if (isEditing && postId) {
+          const mediaPayload = await uploadMediaItems(token, media);
+          setUploadProgress("Saving post…");
+          const updated = await api.updatePost(token, circleId, postId, {
+            body: text,
+            tag,
+            media: mediaPayload,
+            documents: cleanDocumentsForPayload(documents),
+            poll:
+              pollEnabled && !pollLocked
+                ? {
+                    question: pollQuestion.trim(),
+                    options,
+                  }
+                : undefined,
+            topicSlugs: selectedTopicSlugs,
+          });
+          const threadKey = postThreadQueryKey(circleId, postId);
+          const hadThread = Boolean(
+            queryClient.getQueryData<PostThreadData>(threadKey)
+          );
+          queryClient.setQueryData<PostThreadData | undefined>(
+            threadKey,
+            (current) =>
+              current
+                ? { ...current, post: { ...current.post, ...updated } }
+                : current
+          );
+          upsertPostInFeeds(queryClient, updated, circleId);
+          mergePostIntoMyPosts(queryClient, updated, circleId);
+          void queryClient.invalidateQueries({ queryKey: ["topicFeed"] });
+          router.back();
+          if (!hadThread) {
+            void queryClient.invalidateQueries({ queryKey: threadKey });
+          }
+          return;
+        }
+        const uploadedMedia = (await uploadMediaItems(token, media)).filter(
+          (
+            item
+          ): item is {
+            storageKey: string;
+            mediaType: "image" | "video";
+            mimeType: string;
+            width?: number;
+            height?: number;
+            durationMs?: number;
+          } => Boolean(item.storageKey && item.mediaType && item.mimeType)
+        );
+        setUploadProgress("Publishing post…");
+        const targetCircleIds = [
+          ...new Set([circleId, ...additionalCircleIds].filter(Boolean)),
+        ];
+        const result = await api.createCrossPosts(token, {
           body: text,
           tag,
-          media: mediaPayload,
-          documents: cleanDocumentsForPayload(documents),
-          poll:
-            pollEnabled && !pollLocked
-              ? {
-                  question: pollQuestion.trim(),
-                  options,
-                }
-              : undefined,
-          topicSlugs: selectedTopicSlugs,
+          targetCircleIds,
+          media: uploadedMedia,
+          documents: cleanDocumentsForCreate(documents),
+          poll: pollEnabled
+            ? {
+                question: pollQuestion.trim(),
+                options,
+              }
+            : undefined,
+          topicSlugs:
+            selectedTopicSlugs.length > 0 ? selectedTopicSlugs : undefined,
         });
+        if (result.guestQuota) {
+          setGuestQuota(result.guestQuota);
+        }
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: ["circleFeed"] }),
           queryClient.invalidateQueries({ queryKey: ["homeFeed"] }),
           queryClient.invalidateQueries({ queryKey: ["circles"] }),
-          queryClient.invalidateQueries({ queryKey: ["topicFeed"] }),
+          queryClient.invalidateQueries({ queryKey: ["myPosts"] }),
         ]);
-        router.back();
-        return;
-      }
-      const uploadedMedia = await uploadMedia(token);
-      setUploadProgress("Publishing post…");
-      const targetCircleIds = [
-        ...new Set([circleId, ...additionalCircleIds].filter(Boolean)),
-      ];
-      const result = await api.createCrossPosts(token, {
-        body: text,
-        tag,
-        targetCircleIds,
-        media: uploadedMedia,
-        documents: cleanDocumentsForCreate(documents),
-        poll: pollEnabled
-          ? {
-              question: pollQuestion.trim(),
-              options,
-            }
-          : undefined,
-        topicSlugs:
-          selectedTopicSlugs.length > 0 ? selectedTopicSlugs : undefined,
-      });
-      if (result.guestQuota) {
-        setGuestQuota(result.guestQuota);
-      }
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["circleFeed"] }),
-        queryClient.invalidateQueries({ queryKey: ["homeFeed"] }),
-        queryClient.invalidateQueries({ queryKey: ["circles"] }),
-        queryClient.invalidateQueries({ queryKey: ["myPosts"] }),
-      ]);
-      router.replace({
-        pathname: "/circles/[circleId]/posts/[postId]",
-        params: {
-          circleId: result.primaryCircleId,
-          postId: result.postId,
-        },
+        router.replace({
+          pathname: "/circles/[circleId]/posts/[postId]",
+          params: {
+            circleId: result.primaryCircleId,
+            postId: result.postId,
+          },
+        });
       });
     } catch (e) {
+      if (isUnauthorized(e)) {
+        startAuthExit();
+        return;
+      }
       showSubmitError(e instanceof Error ? e.message : "Failed to post");
     } finally {
       setUploadProgress(null);
@@ -593,7 +712,11 @@ export default function NewPostScreen() {
               ? `Posted to ${audienceLabel}. Circles can’t be changed`
               : `Post to ${audienceLabel}. Change circles`
           }
-          style={styles.audiencePill}
+          style={[
+            styles.audiencePill,
+            !audienceReady && styles.audiencePillDisabled,
+          ]}
+          disabled={!audienceReady}
           onPress={() => setAudienceOpen(true)}
         >
           <Ionicons name="people" size={14} color={theme.primaryDark} />
@@ -906,7 +1029,7 @@ export default function NewPostScreen() {
             label="Add interests"
             count={selectedTopicSlugs.length}
             active={selectedTopicSlugs.length > 0}
-            disabled={topicOptions.length === 0}
+            disabled={!topicsQuery.isSuccess}
             onPress={() => setTopicsOpen(true)}
           />
           <View style={styles.toolbarSpacer} />
@@ -1072,6 +1195,9 @@ const styles = StyleSheet.create({
     backgroundColor: theme.primarySoft,
     borderWidth: 1,
     borderColor: theme.primaryLight,
+  },
+  audiencePillDisabled: {
+    opacity: 0.55,
   },
   audienceText: {
     flexShrink: 1,

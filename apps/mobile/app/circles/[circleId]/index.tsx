@@ -28,6 +28,7 @@ import { PostDocumentList } from "@/components/circles/PostDocumentList";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import { useRealtimeChannel } from "@/hooks/useRealtimeChannel";
 import { api, type CirclePost } from "@/lib/api";
+import { removePostFromFeeds, setSavedPostId } from "@/lib/post-cache";
 import { getStoredUser, getToken } from "@/lib/session";
 
 function PostCard({
@@ -274,9 +275,11 @@ export default function CircleFeedScreen() {
           next.delete(postId);
           return next;
         });
+        setSavedPostId(queryClient, postId, false);
       } else {
         await api.saveItem(token, { itemType: "post", itemId: postId });
         setSavedPostIds((current) => new Set(current).add(postId));
+        setSavedPostId(queryClient, postId, true);
       }
     } catch {
       // ignore save errors in feed
@@ -303,16 +306,7 @@ export default function CircleFeedScreen() {
     if (!token) return;
     try {
       await api.deletePost(token, circleId, postId);
-      queryClient.setQueryData(
-        ["circleFeed", circleId],
-        (current: { posts: CirclePost[]; memberCount: number } | undefined) =>
-          current
-            ? {
-                ...current,
-                posts: current.posts.filter((post) => post.id !== postId),
-              }
-            : current
-      );
+      removePostFromFeeds(queryClient, postId, circleId);
       setSavedPostIds((current) => {
         const next = new Set(current);
         next.delete(postId);

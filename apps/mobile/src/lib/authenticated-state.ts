@@ -1,6 +1,12 @@
 import type { AuthUser, Child, Circle } from "@/lib/api";
-import { clearSession, saveSession } from "@/lib/session";
+import { clearSession, getToken, saveSession } from "@/lib/session";
 import { queryClient } from "@/providers/QueryProvider";
+
+export async function authed<T>(fn: (token: string) => Promise<T>): Promise<T> {
+  const token = await getToken();
+  if (!token) throw new Error("Not signed in");
+  return fn(token);
+}
 
 export function isUnauthorized(error: unknown): boolean {
   if (!error) return false;

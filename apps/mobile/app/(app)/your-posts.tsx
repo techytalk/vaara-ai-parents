@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useRef } from "react";
 import {
   FlatList,
   Pressable,
@@ -6,32 +6,35 @@ import {
   StyleSheet,
   Text,
 } from "react-native";
+import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { EmptyState, ScreenLoader } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
-import { api, type AuthoredPost } from "@/lib/api";
-import { getToken } from "@/lib/session";
+import { api } from "@/lib/api";
+import { authed, endAuthenticatedSession, isUnauthorized } from "@/lib/authenticated-state";
 
 export default function YourPostsScreen() {
   const router = useRouter();
-  const [posts, setPosts] = useState<AuthoredPost[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-
-  const load = useCallback(async () => {
-    const token = await getToken();
-    if (!token) return;
-    const data = await api.getMyPosts(token);
-    setPosts(data.posts);
-  }, []);
+  const authExitStartedRef = useRef(false);
+  const myPostsQuery = useQuery({
+    queryKey: ["myPosts"],
+    queryFn: () => authed((token) => api.getMyPosts(token).then((r) => r.posts)),
+    retry: false,
+  });
 
   useEffect(() => {
-    load()
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [load]);
+    if (!isUnauthorized(myPostsQuery.error) || authExitStartedRef.current) {
+      return;
+    }
+    authExitStartedRef.current = true;
+    void endAuthenticatedSession().finally(() => {
+      router.replace("/(auth)/login");
+    });
+  }, [myPostsQuery.error, router]);
 
-  if (loading) {
+  const posts = myPostsQuery.data ?? [];
+
+  if (myPostsQuery.isLoading && posts.length === 0) {
     return <ScreenLoader label="Loading your posts" />;
   }
 
@@ -42,15 +45,10 @@ export default function YourPostsScreen() {
       keyExtractor={(item) => item.id}
       refreshControl={
         <RefreshControl
-          refreshing={refreshing}
+          refreshing={myPostsQuery.isRefetching && !myPostsQuery.isLoading}
           tintColor={colors.primary}
-          onRefresh={async () => {
-            setRefreshing(true);
-            try {
-              await load();
-            } finally {
-              setRefreshing(false);
-            }
+          onRefresh={() => {
+            void myPostsQuery.refetch();
           }}
         />
       }
