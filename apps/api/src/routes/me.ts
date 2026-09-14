@@ -7,6 +7,10 @@ import {
   syncCircleMembership,
 } from "../services/circle-sync.js";
 import { togglePostHelpful } from "../services/feed.js";
+import {
+  parseImpressionPostIds,
+  recordHomeFeedImpressions,
+} from "../services/feed-impressions.js";
 import { loadHomeFeedResolved } from "../services/feed-timeline.js";
 import { authMiddleware, type AuthVariables } from "../middleware/auth.js";
 import {
@@ -1306,6 +1310,21 @@ export function createMeRoutes() {
     } finally {
       client.release();
     }
+  });
+
+  app.post("/feed/impressions", async (c) => {
+    const userId = c.get("user").sub;
+    const parsed = parseImpressionPostIds(await c.req.json().catch(() => null));
+    if ("error" in parsed) {
+      return c.json({ error: parsed.error }, 400);
+    }
+    try {
+      await recordHomeFeedImpressions({ userId, postIds: parsed.postIds });
+    } catch (error) {
+      console.error("[feed.impressions] write failed", error);
+      return c.json({ error: "Could not record impressions" }, 500);
+    }
+    return c.body(null, 204);
   });
 
   app.get("/feed", async (c) => {

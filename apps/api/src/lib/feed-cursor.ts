@@ -3,11 +3,28 @@ export type FeedCursor = {
   postId?: string;
 };
 
-export type HomeFeedPhase = "primary" | "discovery";
+export type HomeFeedPhase =
+  | "primary"
+  | "discovery"
+  | "member_unseen"
+  | "discovery_unseen"
+  | "member_seen"
+  | "discovery_seen";
 
 export type HomeFeedCursor = FeedCursor & {
   phase: HomeFeedPhase;
+  asOf?: string;
+  relevance?: number;
+  helpfulCount?: number;
+  version?: 1 | 2;
 };
+
+const FRESHNESS_PHASES: HomeFeedPhase[] = [
+  "member_unseen",
+  "discovery_unseen",
+  "member_seen",
+  "discovery_seen",
+];
 
 export function toIsoTimestamp(value: unknown): string {
   if (value instanceof Date) return value.toISOString();
@@ -33,9 +50,39 @@ export function encodeFeedCursor(createdAt: string, postId: string): string {
   return `${createdAt}|${postId}`;
 }
 
+export function isLegacyHomeCursor(cursor?: string | null): boolean {
+  if (!cursor) return false;
+  return !cursor.startsWith("v2.");
+}
+
 export function parseHomeFeedCursor(cursor?: string | null): HomeFeedCursor {
   if (!cursor) {
-    return { phase: "primary", createdAt: "" };
+    return { phase: "primary", createdAt: "", version: 1 };
+  }
+  if (cursor.startsWith("v2.")) {
+    try {
+      const raw = Buffer.from(cursor.slice(3), "base64url").toString("utf8");
+      const parsed = JSON.parse(raw) as HomeFeedCursor;
+      if (
+        parsed &&
+        typeof parsed.phase === "string" &&
+        FRESHNESS_PHASES.includes(parsed.phase) &&
+        typeof parsed.asOf === "string"
+      ) {
+        return {
+          version: 2,
+          phase: parsed.phase,
+          asOf: parsed.asOf,
+          createdAt: parsed.createdAt ?? "",
+          postId: parsed.postId,
+          relevance: parsed.relevance,
+          helpfulCount: parsed.helpfulCount,
+        };
+      }
+    } catch {
+      return { phase: "primary", createdAt: "", version: 1 };
+    }
+    return { phase: "primary", createdAt: "", version: 1 };
   }
   let phase: HomeFeedPhase = "primary";
   let rest = cursor;
@@ -48,6 +95,7 @@ export function parseHomeFeedCursor(cursor?: string | null): HomeFeedCursor {
   }
   const parsed = parseFeedCursor(rest);
   return {
+    version: 1,
     phase,
     createdAt: parsed?.createdAt ?? rest,
     postId: parsed?.postId,
@@ -60,6 +108,25 @@ export function encodeHomeFeedCursor(
   postId: string
 ): string {
   return `${phase === "primary" ? "p" : "d"}|${encodeFeedCursor(createdAt, postId)}`;
+}
+
+export function encodeHomeFeedCursorV2(cursor: {
+  phase: HomeFeedPhase;
+  asOf: string;
+  createdAt: string;
+  postId: string;
+  relevance?: number;
+  helpfulCount?: number;
+}): string {
+  return `v2.${Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url")}`;
+}
+
+export function nextFreshnessPhase(
+  phase: HomeFeedPhase
+): HomeFeedPhase | null {
+  const index = FRESHNESS_PHASES.indexOf(phase);
+  if (index < 0 || index === FRESHNESS_PHASES.length - 1) return null;
+  return FRESHNESS_PHASES[index + 1];
 }
 
 export function exclusiveCreatedAtSql(

@@ -22,7 +22,11 @@ import {
   toIsoTimestamp,
   type FeedCursor,
 } from "../lib/feed-cursor.js";
-import { circleTimelineMode, homeTimelineMode } from "../lib/timeline-mode.js";
+import {
+  circleTimelineMode,
+  homeFeedFreshnessEnabled,
+  homeTimelineMode,
+} from "../lib/timeline-mode.js";
 import {
   hydrateCirclePosts,
   hydrateHomeRows,
@@ -302,7 +306,8 @@ export async function loadHomeFeedResolved(params: {
   limit?: number;
 }): Promise<HomeFeedResult> {
   const mode = homeTimelineMode();
-  const useRedis = isRedisEnabled() && mode !== "off";
+  const useRedis =
+    isRedisEnabled() && mode !== "off" && !homeFeedFreshnessEnabled();
   if (!useRedis) {
     console.log("[feed.path=sql]", { surface: "home" });
     return loadHomeFeed(params);

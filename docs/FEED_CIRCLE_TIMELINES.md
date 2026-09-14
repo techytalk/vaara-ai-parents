@@ -168,8 +168,9 @@ Env:
 | Variable | Default | Meaning |
 |---|---|---|
 | `REDIS_URL` | unset = SQL only | existing |
-| `CIRCLE_TIMELINE` | `0` | `0` SQL, `shadow` compute Redis+SQL serve SQL, `1` serve Redis |
-| `HOME_FEED_TIMELINE` | `0` | same, Phase 2 only |
+| `CIRCLE_TIMELINE` | `0` / `off` | Code default is off. `shadow` computes Redis+SQL and serves SQL. `1` serves Redis. Set explicitly in production. |
+| `HOME_FEED_TIMELINE` | `0` / `off` | Same as circle. Do not rely on an implicit `on` default. |
+| `HOME_FEED_FRESHNESS` | `0` | Collect impressions anytime. Set `1` to rank unseen member, unseen discovery, then seen history. |
 | `CIRCLE_TIMELINE_MAX` | `500` | ZSET cap |
 
 ## Cursor contract

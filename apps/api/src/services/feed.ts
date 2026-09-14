@@ -3,10 +3,15 @@ import { pool, readPool } from "@vaara/db";
 import {
   encodeFeedCursor,
   encodeHomeFeedCursor,
+  encodeHomeFeedCursorV2,
+  isLegacyHomeCursor,
+  nextFreshnessPhase,
   parseFeedCursor,
   parseHomeFeedCursor,
   toIsoTimestamp,
+  type HomeFeedPhase,
 } from "../lib/feed-cursor.js";
+import { homeFeedFreshnessEnabled } from "../lib/timeline-mode.js";
 import {
   assertCircleMember,
   buildAuthorViewForCircleAccess,
@@ -278,6 +283,24 @@ const MEMBER_HOME_FEED_SQL = `
       OR p.created_at < $2::timestamptz
       OR ($3::uuid IS NOT NULL AND p.created_at = $2::timestamptz AND p.id < $3::uuid)
     )
+    AND ($6::timestamptz IS NULL OR p.created_at <= $6::timestamptz)
+    AND (
+      $5::text = 'any'
+      OR (
+        $5::text = 'unseen'
+        AND NOT EXISTS (
+          SELECT 1 FROM feed_post_impressions fpi
+          WHERE fpi.user_id = $1 AND fpi.post_id = p.id
+        )
+      )
+      OR (
+        $5::text = 'seen'
+        AND EXISTS (
+          SELECT 1 FROM feed_post_impressions fpi
+          WHERE fpi.user_id = $1 AND fpi.post_id = p.id
+        )
+      )
+    )
   )
   SELECT *
   FROM post_circles
@@ -338,10 +361,23 @@ const DISCOVERY_HOME_FEED_SQL = `
         WHERE already.post_id = p.id
           AND cm.user_id = $1
       )
+      AND ($6::timestamptz IS NULL OR p.created_at <= $6::timestamptz)
       AND (
-        $2::timestamptz IS NULL
-        OR p.created_at < $2::timestamptz
-        OR ($3::uuid IS NOT NULL AND p.created_at = $2::timestamptz AND p.id < $3::uuid)
+        $5::text = 'any'
+        OR (
+          $5::text = 'unseen'
+          AND NOT EXISTS (
+            SELECT 1 FROM feed_post_impressions fpi
+            WHERE fpi.user_id = $1 AND fpi.post_id = p.id
+          )
+        )
+        OR (
+          $5::text = 'seen'
+          AND EXISTS (
+            SELECT 1 FROM feed_post_impressions fpi
+            WHERE fpi.user_id = $1 AND fpi.post_id = p.id
+          )
+        )
       )
   ),
   ranked AS (
@@ -366,6 +402,26 @@ const DISCOVERY_HOME_FEED_SQL = `
   SELECT *
   FROM ranked
   WHERE rn = 1
+    AND (
+      $7::int IS NULL
+      OR relevance > $7
+      OR (relevance = $7 AND helpful_count < $8)
+      OR (
+        relevance = $7
+        AND helpful_count = $8
+        AND (
+          $2::timestamptz IS NULL
+          OR created_at < $2::timestamptz
+          OR ($3::uuid IS NOT NULL AND created_at = $2::timestamptz AND id < $3::uuid)
+        )
+      )
+    )
+    AND (
+      $7::int IS NOT NULL
+      OR $2::timestamptz IS NULL
+      OR created_at < $2::timestamptz
+      OR ($3::uuid IS NOT NULL AND created_at = $2::timestamptz AND id < $3::uuid)
+    )
   ORDER BY relevance ASC, helpful_count DESC, created_at DESC, id DESC
   LIMIT $4`;
 
@@ -500,6 +556,8 @@ async function loadPostHelpfulCounts(
   return result;
 }
 
+export type FeedSeenMode = "any" | "unseen" | "seen";
+
 export async function loadMemberHomeRows(
   client: PoolClient,
   params: {
@@ -507,6 +565,8 @@ export async function loadMemberHomeRows(
     createdAt?: string | null;
     postId?: string;
     limit: number;
+    seen?: FeedSeenMode;
+    asOf?: string | null;
   }
 ): Promise<Array<Record<string, unknown>>> {
   const { rows } = await client.query(MEMBER_HOME_FEED_SQL, [
@@ -514,6 +574,8 @@ export async function loadMemberHomeRows(
     params.createdAt ?? null,
     params.postId ?? null,
     params.limit,
+    params.seen ?? "any",
+    params.asOf ?? null,
   ]);
   return rows;
 }
@@ -525,6 +587,10 @@ export async function loadDiscoveryHomeRows(
     createdAt?: string | null;
     postId?: string;
     limit: number;
+    seen?: FeedSeenMode;
+    asOf?: string | null;
+    relevance?: number;
+    helpfulCount?: number;
   }
 ): Promise<Array<Record<string, unknown>>> {
   const { rows } = await client.query(DISCOVERY_HOME_FEED_SQL, [
@@ -532,6 +598,10 @@ export async function loadDiscoveryHomeRows(
     params.createdAt ?? null,
     params.postId ?? null,
     params.limit,
+    params.seen ?? "any",
+    params.asOf ?? null,
+    params.relevance ?? null,
+    params.helpfulCount ?? null,
   ]);
   return rows;
 }
@@ -640,93 +710,237 @@ export async function hydrateCirclePosts(params: {
   };
 }
 
+function isDiscoveryPhase(phase: HomeFeedPhase) {
+  return (
+    phase === "discovery" ||
+    phase === "discovery_unseen" ||
+    phase === "discovery_seen"
+  );
+}
+
+function seenModeForPhase(phase: HomeFeedPhase): FeedSeenMode {
+  if (phase === "member_unseen" || phase === "discovery_unseen") return "unseen";
+  if (phase === "member_seen" || phase === "discovery_seen") return "seen";
+  return "any";
+}
+
+async function loadHomeFeedLegacy(params: {
+  userId: string;
+  cursor?: string | null;
+  limit: number;
+  client: import("pg").PoolClient;
+}): Promise<HomeFeedResult> {
+  const { userId, limit, client } = params;
+  const parsed = parseHomeFeedCursor(params.cursor);
+  if (parsed.phase === "discovery") {
+    const rows = await loadDiscoveryHomeRows(client, {
+      userId,
+      createdAt: parsed.createdAt || null,
+      postId: parsed.postId,
+      limit,
+    });
+    const posts = await hydrateHomeRows(client, userId, rows, true);
+    const last = posts[posts.length - 1];
+    return {
+      posts,
+      nextCursor:
+        posts.length === limit && last
+          ? encodeHomeFeedCursor("discovery", last.createdAt, last.id)
+          : null,
+    };
+  }
+
+  const primaryRows = await loadMemberHomeRows(client, {
+    userId,
+    createdAt: parsed.createdAt || null,
+    postId: parsed.postId,
+    limit,
+  });
+
+  if (primaryRows.length === limit) {
+    const posts = await hydrateHomeRows(client, userId, primaryRows, false);
+    const last = posts[posts.length - 1];
+    return {
+      posts,
+      nextCursor: last
+        ? encodeHomeFeedCursor("primary", last.createdAt, last.id)
+        : null,
+    };
+  }
+
+  const primaryPosts = await hydrateHomeRows(
+    client,
+    userId,
+    primaryRows,
+    false
+  );
+  const discoveryLimit = limit - primaryRows.length;
+  if (discoveryLimit <= 0) {
+    return { posts: primaryPosts, nextCursor: null };
+  }
+
+  const discoveryRows = await loadDiscoveryHomeRows(client, {
+    userId,
+    createdAt: null,
+    postId: undefined,
+    limit: discoveryLimit,
+  });
+  const discoveryPosts = await hydrateHomeRows(
+    client,
+    userId,
+    discoveryRows,
+    true
+  );
+  const seen = new Set(primaryPosts.map((post) => post.id));
+  const posts = [
+    ...primaryPosts,
+    ...discoveryPosts.filter((post) => !seen.has(post.id)),
+  ];
+  const last = posts[posts.length - 1];
+  const endedOnDiscovery = discoveryPosts.some((post) => post.id === last?.id);
+  return {
+    posts,
+    nextCursor:
+      posts.length === limit && last
+        ? encodeHomeFeedCursor(
+            endedOnDiscovery ? "discovery" : "primary",
+            last.createdAt,
+            last.id
+          )
+        : null,
+  };
+}
+
+async function loadHomeFeedFresh(params: {
+  userId: string;
+  cursor?: string | null;
+  limit: number;
+  client: import("pg").PoolClient;
+}): Promise<HomeFeedResult> {
+  const { userId, limit, client } = params;
+  const parsed = parseHomeFeedCursor(params.cursor);
+  const asOf = parsed.asOf || new Date().toISOString();
+  let phase: HomeFeedPhase =
+    parsed.version === 2 ? parsed.phase : "member_unseen";
+  let createdAt = parsed.version === 2 ? parsed.createdAt || null : null;
+  let postId = parsed.version === 2 ? parsed.postId : undefined;
+  let relevance = parsed.version === 2 ? parsed.relevance : undefined;
+  let helpfulCount = parsed.version === 2 ? parsed.helpfulCount : undefined;
+
+  const posts: HomeFeedPost[] = [];
+  const seenIds = new Set<string>();
+  const sourceById = new Map<string, Record<string, unknown>>();
+
+  while (posts.length < limit && phase) {
+    const need = limit - posts.length;
+    const rows = isDiscoveryPhase(phase)
+      ? await loadDiscoveryHomeRows(client, {
+          userId,
+          createdAt,
+          postId,
+          limit: need,
+          seen: seenModeForPhase(phase),
+          asOf,
+          relevance,
+          helpfulCount,
+        })
+      : await loadMemberHomeRows(client, {
+          userId,
+          createdAt,
+          postId,
+          limit: need,
+          seen: seenModeForPhase(phase),
+          asOf,
+        });
+    for (const row of rows) sourceById.set(String(row.id), row);
+    const hydrated = await hydrateHomeRows(
+      client,
+      userId,
+      rows.filter((row) => !seenIds.has(String(row.id))),
+      isDiscoveryPhase(phase)
+    );
+    for (const post of hydrated) {
+      if (seenIds.has(post.id)) continue;
+      seenIds.add(post.id);
+      posts.push(post);
+      if (posts.length === limit) break;
+    }
+
+    if (posts.length === limit) break;
+
+    if (rows.length < need) {
+      const next = nextFreshnessPhase(phase);
+      if (!next) break;
+      phase = next;
+      createdAt = null;
+      postId = undefined;
+      relevance = undefined;
+      helpfulCount = undefined;
+      continue;
+    }
+
+    const lastRow = rows[rows.length - 1];
+    createdAt = toIsoTimestamp(lastRow.created_at);
+    postId = String(lastRow.id);
+    relevance =
+      lastRow.relevance === undefined || lastRow.relevance === null
+        ? undefined
+        : Number(lastRow.relevance);
+    helpfulCount =
+      lastRow.helpful_count === undefined || lastRow.helpful_count === null
+        ? undefined
+        : Number(lastRow.helpful_count);
+  }
+
+  const last = posts[posts.length - 1];
+  if (!last || posts.length < limit) {
+    return { posts, nextCursor: null };
+  }
+
+  const source = sourceById.get(last.id);
+  return {
+    posts,
+    nextCursor: encodeHomeFeedCursorV2({
+      phase,
+      asOf,
+      createdAt: last.createdAt,
+      postId: last.id,
+      relevance:
+        source?.relevance === undefined || source?.relevance === null
+          ? undefined
+          : Number(source.relevance),
+      helpfulCount:
+        source?.helpful_count === undefined || source?.helpful_count === null
+          ? undefined
+          : Number(source.helpful_count),
+    }),
+  };
+}
+
 export async function loadHomeFeed(params: {
   userId: string;
   cursor?: string | null;
   limit?: number;
 }): Promise<HomeFeedResult> {
   const limit = Math.min(params.limit ?? 20, 50);
-  const parsed = parseHomeFeedCursor(params.cursor);
   const client = await readPool.connect();
-
   try {
-    if (parsed.phase === "discovery") {
-      const rows = await loadDiscoveryHomeRows(client, {
-        userId: params.userId,
-        createdAt: parsed.createdAt || null,
-        postId: parsed.postId,
-        limit,
-      });
-      const posts = await hydrateHomeRows(client, params.userId, rows, true);
-      const last = posts[posts.length - 1];
-      return {
-        posts,
-        nextCursor:
-          posts.length === limit && last
-            ? encodeHomeFeedCursor("discovery", last.createdAt, last.id)
-            : null,
-      };
-    }
-
-    const primaryRows = await loadMemberHomeRows(client, {
-      userId: params.userId,
-      createdAt: parsed.createdAt || null,
-      postId: parsed.postId,
-      limit,
-    });
-
-    if (primaryRows.length === limit) {
-      const posts = await hydrateHomeRows(
-        client,
-        params.userId,
-        primaryRows,
-        false
-      );
-      const last = posts[posts.length - 1];
-      return {
-        posts,
-        nextCursor: last
-          ? encodeHomeFeedCursor("primary", last.createdAt, last.id)
-          : null,
-      };
-    }
-
-    const primaryPosts = await hydrateHomeRows(
-      client,
-      params.userId,
-      primaryRows,
-      false
-    );
-    const discoveryLimit = limit - primaryRows.length;
-    if (discoveryLimit <= 0) {
-      return { posts: primaryPosts, nextCursor: null };
-    }
-
-    const discoveryRows = await loadDiscoveryHomeRows(client, {
-      userId: params.userId,
-      createdAt: null,
-      postId: undefined,
-      limit: discoveryLimit,
-    });
-    const discoveryPosts = await hydrateHomeRows(
-      client,
-      params.userId,
-      discoveryRows,
-      true
-    );
-    const seen = new Set(primaryPosts.map((post) => post.id));
-    const posts = [
-      ...primaryPosts,
-      ...discoveryPosts.filter((post) => !seen.has(post.id)),
-    ];
-    const last = discoveryPosts[discoveryPosts.length - 1];
-    return {
-      posts,
-      nextCursor:
-        discoveryPosts.length === discoveryLimit && last
-          ? encodeHomeFeedCursor("discovery", last.createdAt, last.id)
-          : null,
-    };
+    const freshnessOn =
+      homeFeedFreshnessEnabled() &&
+      (!params.cursor || !isLegacyHomeCursor(params.cursor));
+    return freshnessOn
+      ? loadHomeFeedFresh({
+          userId: params.userId,
+          cursor: params.cursor,
+          limit,
+          client,
+        })
+      : loadHomeFeedLegacy({
+          userId: params.userId,
+          cursor: params.cursor,
+          limit,
+          client,
+        });
   } finally {
     client.release();
   }

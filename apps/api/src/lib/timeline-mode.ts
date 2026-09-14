@@ -7,10 +7,23 @@ function parseMode(raw: string | undefined, fallback: TimelineMode): TimelineMod
   return "off";
 }
 
+export function resolveTimelineMode(raw: string | undefined): TimelineMode {
+  return parseMode(raw, "off");
+}
+
+export function resolveFreshnessFlag(raw: string | undefined): boolean {
+  const value = (raw ?? "0").trim().toLowerCase();
+  return value === "1" || value === "on" || value === "true";
+}
+
 export function circleTimelineMode(): TimelineMode {
-  return parseMode(process.env.CIRCLE_TIMELINE, "on");
+  return resolveTimelineMode(process.env.CIRCLE_TIMELINE);
 }
 
 export function homeTimelineMode(): TimelineMode {
-  return parseMode(process.env.HOME_FEED_TIMELINE, "on");
+  return resolveTimelineMode(process.env.HOME_FEED_TIMELINE);
+}
+
+export function homeFeedFreshnessEnabled(): boolean {
+  return resolveFreshnessFlag(process.env.HOME_FEED_FRESHNESS);
 }

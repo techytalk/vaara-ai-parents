@@ -39,6 +39,10 @@ import {
   endAuthenticatedSession,
   isUnauthorized,
 } from "@/lib/authenticated-state";
+import {
+  HOME_FEED_VIEWABILITY_CONFIG,
+  useHomeFeedImpressions,
+} from "@/lib/home-feed-impressions";
 import { setSavedPostId } from "@/lib/post-cache";
 import { getToken, saveSession } from "@/lib/session";
 import {
@@ -77,6 +81,8 @@ export default function HomeScreen() {
   const [activePrompt, setActivePrompt] =
     useState<CompletionPromptCandidate | null>(null);
   const authExitStartedRef = useRef(false);
+  const { onViewableItemsChanged } = useHomeFeedImpressions();
+  const viewabilityConfigRef = useRef(HOME_FEED_VIEWABILITY_CONFIG);
 
   useEffect(() => {
     clearOnboardingDraft();
@@ -537,6 +543,8 @@ export default function HomeScreen() {
           }
         }}
         onEndReachedThreshold={0.4}
+        viewabilityConfig={viewabilityConfigRef.current}
+        onViewableItemsChanged={onViewableItemsChanged}
         ListFooterComponent={
           feedQuery.isFetchingNextPage ? (
             <ActivityIndicator

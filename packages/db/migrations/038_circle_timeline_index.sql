@@ -8,6 +8,9 @@ WHERE p.id = t.post_id
   AND t.post_created_at IS NULL;
 
 ALTER TABLE circle_post_targets
+  ALTER COLUMN post_created_at SET DEFAULT now();
+
+ALTER TABLE circle_post_targets
   ALTER COLUMN post_created_at SET NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_circle_post_targets_circle_created

@@ -655,6 +655,10 @@ async function requestOnce<T>(
     });
     const data = await res.json().catch(() => ({}));
 
+    if (res.status === 204) {
+      return undefined as T;
+    }
+
     if (!res.ok) {
       const message =
         (typeof data.error === "string" && data.error) ||
@@ -945,6 +949,16 @@ export const api = {
     request<{ ok: boolean }>(
       `/v1/circles/${circleId}/mark-read`,
       { method: "POST" },
+      token
+    ),
+
+  recordHomeFeedImpressions: (token: string, postIds: string[]) =>
+    request<void>(
+      "/v1/me/feed/impressions",
+      {
+        method: "POST",
+        body: JSON.stringify({ postIds }),
+      },
       token
     ),
 
