@@ -169,6 +169,9 @@ export function FeedPostCard({
               size={20}
               color={theme.textMuted}
             />
+            {post.replyCount > 0 ? (
+              <Text style={styles.iconCount}>{post.replyCount}</Text>
+            ) : null}
           </Pressable>
           <Pressable
             style={styles.iconAction}
@@ -291,10 +294,18 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   iconAction: {
-    width: 40,
+    minWidth: 40,
     height: 36,
+    paddingHorizontal: 4,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: 4,
+  },
+  iconCount: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontFamily: typography.semibold,
   },
   actionText: {
     ...typography.caption,

@@ -439,12 +439,21 @@ export default function PostThreadScreen() {
     authoritative && isOwnPost && (capabilities?.canDelete ?? true);
   const canReply = authoritative && (capabilities?.canReply ?? !readOnly);
   const canVote = authoritative && (capabilities?.canVote ?? !readOnly);
+  const isPreview = authoritative && readOnly;
+  const seededDiscovery = Boolean(
+    post && "discovery" in post && (post as { discovery?: boolean }).discovery
+  );
   const canMarkHelpful =
-    authoritative && (capabilities?.canMarkHelpful ?? !readOnly);
+    !isPreview &&
+    (authoritative
+      ? Boolean(capabilities?.canMarkHelpful) || isOwnPost
+      : !seededDiscovery);
+  const showHelpful = !isPreview;
   const canSave =
-    authoritative &&
     savedQuery.isSuccess &&
-    capabilities?.canSave !== false;
+    capabilities?.canSave !== false &&
+    !isPreview;
+  const showSave = !isPreview && capabilities?.canSave !== false;
   const canMessageAuthor =
     authoritative &&
     (capabilities?.canMessageAuthor ?? (!readOnly && !isOwnPost)) &&
@@ -515,24 +524,13 @@ export default function PostThreadScreen() {
               />
             </Pressable>
           ) : null}
-          {canSave ? (
-            <Pressable onPress={toggleSave} hitSlop={8} style={styles.headerSave}>
-              <Ionicons
-                name={saved ? "bookmark" : "bookmark-outline"}
-                size={22}
-                color={theme.primary}
-              />
-            </Pressable>
-          ) : null}
         </View>
       ),
     });
   }, [
     navigation,
-    saved,
     canEdit,
     canDelete,
-    canSave,
     isOwnPost,
     authoritative,
     post,
@@ -542,7 +540,6 @@ export default function PostThreadScreen() {
     router,
     showPostSafetyActions,
     confirmDelete,
-    toggleSave,
   ]);
 
   if (!post) {
@@ -568,6 +565,7 @@ export default function PostThreadScreen() {
   }
 
   const helpfulCount = post.helpfulCount ?? 0;
+  const commentCount = Math.max(post.replyCount ?? 0, comments.length);
 
   return (
     <SafeAreaView
@@ -633,15 +631,25 @@ export default function PostThreadScreen() {
                   <Text style={styles.engagement}>
                     {helpfulCount} parent{helpfulCount === 1 ? "" : "s"} found
                     this helpful
+                    {commentCount > 0
+                      ? ` · ${commentCount} comment${commentCount === 1 ? "" : "s"}`
+                      : ""}
+                  </Text>
+                ) : commentCount > 0 ? (
+                  <Text style={styles.engagement}>
+                    {commentCount} comment{commentCount === 1 ? "" : "s"}
                   </Text>
                 ) : null}
 
                 <View style={styles.actions}>
-                  {canMarkHelpful ? (
+                  {showHelpful ? (
                     <Pressable
-                      style={styles.action}
+                      style={styles.helpfulAction}
                       onPress={toggleHelpful}
                       hitSlop={8}
+                      disabled={!canMarkHelpful}
+                      accessibilityRole="button"
+                      accessibilityLabel="Mark as helpful"
                     >
                       <Ionicons
                         name={post.myHelpful ? "thumbs-up" : "thumbs-up-outline"}
@@ -657,43 +665,77 @@ export default function PostThreadScreen() {
                         Helpful
                       </Text>
                     </Pressable>
-                  ) : null}
+                  ) : (
+                    <View style={styles.helpfulAction} />
+                  )}
+                  <View style={styles.iconActions}>
+                    <View
+                      style={styles.iconAction}
+                      accessibilityRole="text"
+                      accessibilityLabel={
+                        commentCount > 0
+                          ? `${commentCount} comments`
+                          : "No comments yet"
+                      }
+                    >
+                      <Ionicons
+                        name="chatbubble-outline"
+                        size={20}
+                        color={theme.textMuted}
+                      />
+                      <Text style={styles.iconCount}>{commentCount}</Text>
+                    </View>
+                    <Pressable
+                      style={styles.iconAction}
+                      onPress={onSharePost}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel="Share"
+                    >
+                      <Ionicons
+                        name="share-outline"
+                        size={20}
+                        color={theme.textMuted}
+                      />
+                    </Pressable>
+                    {showSave ? (
+                      <Pressable
+                        style={styles.iconAction}
+                        onPress={toggleSave}
+                        hitSlop={8}
+                        disabled={!canSave}
+                        accessibilityRole="button"
+                        accessibilityLabel={saved ? "Unsave post" : "Save post"}
+                      >
+                        <Ionicons
+                          name={saved ? "bookmark" : "bookmark-outline"}
+                          size={20}
+                          color={saved ? theme.primary : theme.textMuted}
+                        />
+                      </Pressable>
+                    ) : null}
+                  </View>
+                </View>
+                {canMessageAuthor ? (
                   <Pressable
-                    style={styles.action}
-                    onPress={onSharePost}
+                    style={styles.messageAuthor}
+                    onPress={onMessageAuthor}
                     hitSlop={8}
                   >
                     <Ionicons
-                      name="share-outline"
-                      size={18}
+                      name="chatbubble-ellipses-outline"
+                      size={16}
                       color={theme.textMuted}
                     />
-                    <Text style={styles.actionText}>Share</Text>
+                    <Text style={styles.actionText}>Message author</Text>
                   </Pressable>
-                  {canMessageAuthor ? (
-                    <Pressable
-                      style={styles.action}
-                      onPress={onMessageAuthor}
-                      hitSlop={8}
-                    >
-                      <Ionicons
-                        name="chatbubble-ellipses-outline"
-                        size={18}
-                        color={theme.textMuted}
-                      />
-                      <Text style={styles.actionText}>Message</Text>
-                    </Pressable>
-                  ) : null}
-                </View>
+                ) : null}
               </View>
             </View>
 
             <View style={styles.commentsHeader}>
               <Text style={styles.commentsTitle}>
-                Comments
-                {authoritative && comments.length > 0
-                  ? ` (${comments.length})`
-                  : ""}
+                Comments ({commentCount})
               </Text>
               {!authoritative ? (
                 <Text style={styles.commentsHint}>Loading comments</Text>
@@ -803,8 +845,7 @@ const styles = StyleSheet.create({
   headerBack: { marginLeft: 4, paddingRight: 4 },
   headerEdit: { marginRight: 4 },
   headerDelete: { marginRight: 4 },
-  headerMore: { marginRight: 4 },
-  headerSave: { marginRight: 8 },
+  headerMore: { marginRight: 8 },
   safe: { flex: 1, backgroundColor: theme.bg },
   container: { flex: 1, backgroundColor: theme.bg },
   list: { flex: 1 },
@@ -857,18 +898,44 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
     marginTop: 12,
     paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: theme.border,
   },
-  action: {
-    flex: 1,
+  helpfulAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    minHeight: 36,
+    paddingRight: 8,
+  },
+  iconActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  iconAction: {
+    minWidth: 40,
+    height: 36,
+    paddingHorizontal: 4,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: 4,
+  },
+  iconCount: {
+    fontSize: 12,
+    color: theme.textMuted,
+    fontWeight: "600",
+  },
+  messageAuthor: {
+    flexDirection: "row",
+    alignItems: "center",
     gap: 6,
-    minHeight: 40,
+    marginTop: 8,
+    minHeight: 36,
   },
   actionText: {
     fontSize: 12,
