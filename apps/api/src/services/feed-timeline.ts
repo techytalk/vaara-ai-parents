@@ -313,23 +313,35 @@ export async function loadHomeFeedResolved(params: {
     return loadHomeFeed(params);
   }
 
-  const redisResult = await loadHomeFeedFromTimeline(params);
+  let redisResult: HomeFeedResult | null = null;
+  try {
+    redisResult = await loadHomeFeedFromTimeline(params);
+  } catch (error) {
+    console.error("[timeline.home.redis_failed]", error);
+    if (mode !== "shadow") {
+      console.log("[feed.path=sql]", { surface: "home", reason: "redis_failed" });
+      return loadHomeFeed(params);
+    }
+  }
+
   if (mode === "shadow") {
     const sqlResult = await loadHomeFeed(params);
-    const sqlIds = sqlResult.posts.map((post) => post.id).join(",");
-    const redisIds = redisResult.posts.map((post) => post.id).join(",");
-    if (sqlIds !== redisIds) {
-      console.error("[timeline.shadow.diff]", {
-        surface: "home",
-        sqlIds,
-        redisIds,
-      });
+    if (redisResult) {
+      const sqlIds = sqlResult.posts.map((post) => post.id).join(",");
+      const redisIds = redisResult.posts.map((post) => post.id).join(",");
+      if (sqlIds !== redisIds) {
+        console.error("[timeline.shadow.diff]", {
+          surface: "home",
+          sqlIds,
+          redisIds,
+        });
+      }
     }
     console.log("[feed.path=shadow]", { surface: "home" });
     return sqlResult;
   }
   console.log("[feed.path=redis]", { surface: "home" });
-  return redisResult;
+  return redisResult ?? loadHomeFeed(params);
 }
 
 export async function loadHomeFeedFromTimeline(params: {
@@ -417,32 +429,47 @@ export async function loadHomeFeedFromTimeline(params: {
       return a.postId < b.postId ? 1 : -1;
     });
 
-    const preview = await hydrateCirclePosts({
-      client,
-      userId: params.userId,
-      circle: {
-        id: "home",
-        circle_type: "locality",
-        key: "home",
-        display_name: "Home",
-        metadata: {},
-      },
-      postIds: ranked.map((item) => item.postId),
-      includeMissingRetry: true,
-    });
+    const previewIds = ranked.map((item) => item.postId);
+    const loadPreview = async (
+      db: typeof client,
+      ids: string[]
+    ): Promise<Array<Record<string, unknown>>> => {
+      if (ids.length === 0) return [];
+      const { rows } = await db.query(
+        `SELECT p.id, p.body, p.tag, p.reply_count, p.created_at, p.edited_at, p.author_id,
+                u.anonymous_handle, u.avatar_key
+         FROM circle_posts p
+         JOIN users u ON u.id = p.author_id
+         WHERE p.id = ANY($1::uuid[])`,
+        [ids]
+      );
+      return rows as Array<Record<string, unknown>>;
+    };
+    let previewRows = await loadPreview(client, previewIds);
+    const found = new Set(previewRows.map((row) => String(row.id)));
+    const missing = previewIds.filter((id) => !found.has(id));
+    if (missing.length > 0) {
+      const primary = await pool.connect();
+      try {
+        const retried = await loadPreview(primary, missing);
+        previewRows = [...previewRows, ...retried];
+      } finally {
+        primary.release();
+      }
+    }
 
-    const byId = new Map(preview.posts.map((post) => [post.id, post]));
+    const byId = new Map(previewRows.map((row) => [String(row.id), row]));
     const pinChecked = await authorsSharingPin(
       client,
       params.userId,
-      preview.posts.map((post) => post.author.userId)
+      previewRows.map((row) => String(row.author_id))
     );
 
     const primaryCandidates = ranked.filter((item) => {
       const post = byId.get(item.postId);
       if (!post) return false;
       if (item.circleType !== "curriculum") return true;
-      return pinChecked.has(post.author.userId);
+      return pinChecked.has(String(post.author_id));
     });
 
     const chosen = primaryCandidates.slice(0, limit);
@@ -454,12 +481,12 @@ export async function loadHomeFeedFromTimeline(params: {
           id: post.id,
           body: post.body,
           tag: post.tag,
-          reply_count: post.replyCount,
-          created_at: post.createdAt,
-          edited_at: post.editedAt,
-          author_id: post.author.userId,
-          anonymous_handle: post.author.anonymousHandle,
-          avatar_key: post.author.avatarKey,
+          reply_count: post.reply_count,
+          created_at: post.created_at,
+          edited_at: post.edited_at,
+          author_id: post.author_id,
+          anonymous_handle: post.anonymous_handle,
+          avatar_key: post.avatar_key,
           circle_id: item.circleId,
           circle_name: item.circleName,
           circle_type: item.circleType,
