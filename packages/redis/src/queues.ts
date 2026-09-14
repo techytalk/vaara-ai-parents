@@ -34,6 +34,10 @@ export type MessageCreatedJob = {
   messagePreview: string;
 };
 
+export type TimelineSyncJob = {
+  reason?: string;
+};
+
 export type ListingCreatedJob = {
   listingId: string;
   sellerId: string;
@@ -99,6 +103,18 @@ export async function enqueueMessageCreated(
     backoff: { type: "exponential", delay: 500 },
     removeOnComplete: 100,
     removeOnFail: 500,
+  });
+}
+
+export async function enqueueTimelineSync(
+  job: TimelineSyncJob = {}
+): Promise<void> {
+  if (!process.env.REDIS_URL) return;
+  await getMaintenanceQueue().add("timeline.sync", job, {
+    attempts: 5,
+    backoff: { type: "exponential", delay: 500 },
+    removeOnComplete: 50,
+    removeOnFail: 200,
   });
 }
 

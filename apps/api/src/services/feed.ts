@@ -1,5 +1,12 @@
 import type { PoolClient } from "pg";
-import { readPool } from "@vaara/db";
+import { pool, readPool } from "@vaara/db";
+import {
+  encodeFeedCursor,
+  encodeHomeFeedCursor,
+  parseFeedCursor,
+  parseHomeFeedCursor,
+  toIsoTimestamp,
+} from "../lib/feed-cursor.js";
 import {
   assertCircleMember,
   buildAuthorViewForCircleAccess,
@@ -44,7 +51,7 @@ export type CircleFeedResult = {
   nextCursor: string | null;
 };
 
-function mapPost(
+export function mapPost(
   row: Record<string, unknown>,
   author: {
     anonymousHandle: string;
@@ -64,7 +71,7 @@ function mapPost(
     body: row.body as string,
     tag: row.tag as string,
     replyCount: row.reply_count as number,
-    createdAt: row.created_at as string,
+    createdAt: toIsoTimestamp(row.created_at),
     editedAt: (row.edited_at as string | null) ?? null,
     media,
     documents,
@@ -127,13 +134,20 @@ export async function loadCircleFeed(params: {
       paramIdx++;
     }
 
-    if (params.cursor) {
-      query += ` AND p.created_at < $${paramIdx}::timestamptz`;
-      sqlParams.push(params.cursor);
-      paramIdx++;
+    const parsedCursor = parseFeedCursor(params.cursor);
+    if (parsedCursor) {
+      if (parsedCursor.postId) {
+        query += ` AND (p.created_at < $${paramIdx}::timestamptz OR (p.created_at = $${paramIdx}::timestamptz AND p.id < $${paramIdx + 1}::uuid))`;
+        sqlParams.push(parsedCursor.createdAt, parsedCursor.postId);
+        paramIdx += 2;
+      } else {
+        query += ` AND p.created_at < $${paramIdx}::timestamptz`;
+        sqlParams.push(parsedCursor.createdAt);
+        paramIdx += 1;
+      }
     }
 
-    query += ` ORDER BY p.created_at DESC LIMIT $${paramIdx}`;
+    query += ` ORDER BY p.created_at DESC, p.id DESC LIMIT $${paramIdx}`;
     sqlParams.push(limit);
 
     const { rows } = await client.query(query, sqlParams);
@@ -183,8 +197,11 @@ export async function loadCircleFeed(params: {
       })
     );
 
+    const last = posts[posts.length - 1];
     const nextCursor =
-      rows.length === limit ? (rows[rows.length - 1].created_at as string) : null;
+      posts.length === limit && last
+        ? encodeFeedCursor(last.createdAt, last.id)
+        : null;
 
     return { posts, nextCursor };
   } finally {
@@ -204,31 +221,6 @@ export type HomeFeedResult = {
   posts: HomeFeedPost[];
   nextCursor: string | null;
 };
-
-type HomeFeedPhase = "primary" | "discovery";
-
-function parseHomeFeedCursor(cursor?: string | null): {
-  phase: HomeFeedPhase;
-  before: string | null;
-} {
-  if (!cursor) {
-    return { phase: "primary", before: null };
-  }
-  if (cursor.startsWith("d|")) {
-    return { phase: "discovery", before: cursor.slice(2) || null };
-  }
-  if (cursor.startsWith("p|")) {
-    return { phase: "primary", before: cursor.slice(2) || null };
-  }
-  return { phase: "primary", before: cursor };
-}
-
-function encodeHomeFeedCursor(
-  phase: HomeFeedPhase,
-  createdAt: string
-): string {
-  return `${phase === "primary" ? "p" : "d"}|${createdAt}`;
-}
 
 const MEMBER_HOME_FEED_SQL = `
   WITH member_circles AS (
@@ -281,13 +273,17 @@ const MEMBER_HOME_FEED_SQL = `
           AND author_loc.user_id = p.author_id
       )
     )
-    AND ($2::timestamptz IS NULL OR p.created_at < $2::timestamptz)
+    AND (
+      $2::timestamptz IS NULL
+      OR p.created_at < $2::timestamptz
+      OR ($3::uuid IS NOT NULL AND p.created_at = $2::timestamptz AND p.id < $3::uuid)
+    )
   )
   SELECT *
   FROM post_circles
   WHERE rn = 1
-  ORDER BY created_at DESC
-  LIMIT $3`;
+  ORDER BY created_at DESC, id DESC
+  LIMIT $4`;
 
 const DISCOVERY_HOME_FEED_SQL = `
   WITH viewer_pin AS (
@@ -337,10 +333,16 @@ const DISCOVERY_HOME_FEED_SQL = `
     WHERE p.author_id <> $1
       AND NOT EXISTS (
         SELECT 1
-        FROM circle_members cm
-        WHERE cm.circle_id = c.id AND cm.user_id = $1
+        FROM circle_post_targets already
+        JOIN circle_members cm ON cm.circle_id = already.circle_id
+        WHERE already.post_id = p.id
+          AND cm.user_id = $1
       )
-      AND ($2::timestamptz IS NULL OR p.created_at < $2::timestamptz)
+      AND (
+        $2::timestamptz IS NULL
+        OR p.created_at < $2::timestamptz
+        OR ($3::uuid IS NOT NULL AND p.created_at = $2::timestamptz AND p.id < $3::uuid)
+      )
   ),
   ranked AS (
     SELECT
@@ -364,10 +366,10 @@ const DISCOVERY_HOME_FEED_SQL = `
   SELECT *
   FROM ranked
   WHERE rn = 1
-  ORDER BY relevance ASC, helpful_count DESC, created_at DESC
-  LIMIT $3`;
+  ORDER BY relevance ASC, helpful_count DESC, created_at DESC, id DESC
+  LIMIT $4`;
 
-async function hydrateHomeFeedPosts(
+export async function hydrateHomeRows(
   client: PoolClient,
   userId: string,
   rows: Array<Record<string, unknown>>,
@@ -498,56 +500,198 @@ async function loadPostHelpfulCounts(
   return result;
 }
 
+export async function loadMemberHomeRows(
+  client: PoolClient,
+  params: {
+    userId: string;
+    createdAt?: string | null;
+    postId?: string;
+    limit: number;
+  }
+): Promise<Array<Record<string, unknown>>> {
+  const { rows } = await client.query(MEMBER_HOME_FEED_SQL, [
+    params.userId,
+    params.createdAt ?? null,
+    params.postId ?? null,
+    params.limit,
+  ]);
+  return rows;
+}
+
+export async function loadDiscoveryHomeRows(
+  client: PoolClient,
+  params: {
+    userId: string;
+    createdAt?: string | null;
+    postId?: string;
+    limit: number;
+  }
+): Promise<Array<Record<string, unknown>>> {
+  const { rows } = await client.query(DISCOVERY_HOME_FEED_SQL, [
+    params.userId,
+    params.createdAt ?? null,
+    params.postId ?? null,
+    params.limit,
+  ]);
+  return rows;
+}
+
+export async function hydrateCirclePosts(params: {
+  client: PoolClient;
+  userId: string;
+  circle: {
+    id: string;
+    circle_type: string;
+    key: string;
+    display_name?: string;
+    metadata: Record<string, unknown>;
+  };
+  postIds: string[];
+  includeMissingRetry?: boolean;
+}): Promise<{ posts: FeedPost[]; missingIds: string[] }> {
+  if (params.postIds.length === 0) return { posts: [], missingIds: [] };
+
+  const loadRows = async (client: PoolClient, ids: string[]) => {
+    if (ids.length === 0) return [];
+    const { rows } = await client.query(
+      `SELECT p.id, p.body, p.tag, p.reply_count, p.created_at, p.edited_at, p.author_id,
+              u.anonymous_handle, u.avatar_key
+       FROM circle_posts p
+       JOIN users u ON u.id = p.author_id
+       WHERE p.id = ANY($1::uuid[])`,
+      [ids]
+    );
+    return rows as Array<Record<string, unknown>>;
+  };
+
+  let rows = await loadRows(params.client, params.postIds);
+  let found = new Set(rows.map((row) => String(row.id)));
+  let missing = params.postIds.filter((id) => !found.has(id));
+
+  if (missing.length > 0 && params.includeMissingRetry !== false) {
+    const primary = await pool.connect();
+    try {
+      const retried = await loadRows(primary, missing);
+      rows = [...rows, ...retried];
+      found = new Set(rows.map((row) => String(row.id)));
+      missing = params.postIds.filter((id) => !found.has(id));
+    } finally {
+      primary.release();
+    }
+  }
+
+  const attachmentsByPost = await loadPostAttachments(
+    params.client,
+    rows.map((row) => String(row.id))
+  );
+  const memberCountResult = params.circle.id === "home"
+    ? { rows: [{ count: 1 }] }
+    : await params.client.query(
+        `SELECT COUNT(*)::int AS count FROM circle_members WHERE circle_id = $1`,
+        [params.circle.id]
+      );
+  const memberCount = memberCountResult.rows[0]?.count ?? 0;
+  const pollsByPost = await loadPostPolls(
+    params.client,
+    rows.map((row) => String(row.id)),
+    params.userId,
+    memberCount
+  );
+  const topicsByPost = await loadTopicsForPosts(
+    params.client,
+    rows.map((row) => String(row.id))
+  );
+  const circlesByPost = await loadCirclesForPosts(
+    params.client,
+    rows.map((row) => String(row.id))
+  );
+
+  const byId = new Map<string, FeedPost>();
+  await Promise.all(
+    rows.map(async (row) => {
+      const author = await buildAuthorViewForCircleAccess(
+        params.client,
+        String(row.author_id),
+        String(row.anonymous_handle),
+        params.circle,
+        row.avatar_key as string | null
+      );
+      const attachments = attachmentsByPost.get(String(row.id));
+      byId.set(
+        String(row.id),
+        mapPost(
+          row,
+          author,
+          attachments?.media ?? [],
+          pollsByPost.get(String(row.id)),
+          topicsByPost.get(String(row.id)) ?? [],
+          circlesByPost.get(String(row.id)) ?? [],
+          attachments?.documents ?? []
+        )
+      );
+    })
+  );
+
+  return {
+    posts: params.postIds
+      .map((id) => byId.get(id))
+      .filter((post): post is FeedPost => Boolean(post)),
+    missingIds: missing,
+  };
+}
+
 export async function loadHomeFeed(params: {
   userId: string;
   cursor?: string | null;
   limit?: number;
 }): Promise<HomeFeedResult> {
   const limit = Math.min(params.limit ?? 20, 50);
-  const { phase, before } = parseHomeFeedCursor(params.cursor);
+  const parsed = parseHomeFeedCursor(params.cursor);
   const client = await readPool.connect();
 
   try {
-    if (phase === "discovery") {
-      const { rows } = await client.query(DISCOVERY_HOME_FEED_SQL, [
-        params.userId,
-        before,
+    if (parsed.phase === "discovery") {
+      const rows = await loadDiscoveryHomeRows(client, {
+        userId: params.userId,
+        createdAt: parsed.createdAt || null,
+        postId: parsed.postId,
         limit,
-      ]);
-      const posts = await hydrateHomeFeedPosts(client, params.userId, rows, true);
-      const nextCursor =
-        rows.length === limit
-          ? encodeHomeFeedCursor(
-              "discovery",
-              rows[rows.length - 1].created_at as string
-            )
-          : null;
-      return { posts, nextCursor };
+      });
+      const posts = await hydrateHomeRows(client, params.userId, rows, true);
+      const last = posts[posts.length - 1];
+      return {
+        posts,
+        nextCursor:
+          posts.length === limit && last
+            ? encodeHomeFeedCursor("discovery", last.createdAt, last.id)
+            : null,
+      };
     }
 
-    const { rows: primaryRows } = await client.query(MEMBER_HOME_FEED_SQL, [
-      params.userId,
-      before,
+    const primaryRows = await loadMemberHomeRows(client, {
+      userId: params.userId,
+      createdAt: parsed.createdAt || null,
+      postId: parsed.postId,
       limit,
-    ]);
+    });
 
     if (primaryRows.length === limit) {
-      const posts = await hydrateHomeFeedPosts(
+      const posts = await hydrateHomeRows(
         client,
         params.userId,
         primaryRows,
         false
       );
+      const last = posts[posts.length - 1];
       return {
         posts,
-        nextCursor: encodeHomeFeedCursor(
-          "primary",
-          primaryRows[primaryRows.length - 1].created_at as string
-        ),
+        nextCursor: last
+          ? encodeHomeFeedCursor("primary", last.createdAt, last.id)
+          : null,
       };
     }
 
-    const primaryPosts = await hydrateHomeFeedPosts(
+    const primaryPosts = await hydrateHomeRows(
       client,
       params.userId,
       primaryRows,
@@ -558,26 +702,31 @@ export async function loadHomeFeed(params: {
       return { posts: primaryPosts, nextCursor: null };
     }
 
-    const { rows: discoveryRows } = await client.query(
-      DISCOVERY_HOME_FEED_SQL,
-      [params.userId, null, discoveryLimit]
-    );
-    const discoveryPosts = await hydrateHomeFeedPosts(
+    const discoveryRows = await loadDiscoveryHomeRows(client, {
+      userId: params.userId,
+      createdAt: null,
+      postId: undefined,
+      limit: discoveryLimit,
+    });
+    const discoveryPosts = await hydrateHomeRows(
       client,
       params.userId,
       discoveryRows,
       true
     );
-    const posts = [...primaryPosts, ...discoveryPosts];
-    const nextCursor =
-      discoveryRows.length === discoveryLimit
-        ? encodeHomeFeedCursor(
-            "discovery",
-            discoveryRows[discoveryRows.length - 1].created_at as string
-          )
-        : null;
-
-    return { posts, nextCursor };
+    const seen = new Set(primaryPosts.map((post) => post.id));
+    const posts = [
+      ...primaryPosts,
+      ...discoveryPosts.filter((post) => !seen.has(post.id)),
+    ];
+    const last = discoveryPosts[discoveryPosts.length - 1];
+    return {
+      posts,
+      nextCursor:
+        discoveryPosts.length === discoveryLimit && last
+          ? encodeHomeFeedCursor("discovery", last.createdAt, last.id)
+          : null,
+    };
   } finally {
     client.release();
   }

@@ -22,3 +22,4 @@ web-build/
 .idea/
 .vscode/
 .vercel
+.env*.local

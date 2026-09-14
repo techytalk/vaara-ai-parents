@@ -7,6 +7,7 @@ import {
   type NotificationPrefs,
 } from "../lib/notification-prefs.js";
 import { isInQuietHours, nextAllowedPushTime } from "../lib/quiet-hours.js";
+import { drainTimelineOutbox } from "./timeline-outbox.js";
 
 type NotificationType =
   | "circle_post"
@@ -668,10 +669,18 @@ export async function processBackgroundJobs(client: PoolClient): Promise<{
   pushesDelivered: number;
   digestsSent: number;
   listingsExpired: number;
+  timelineOutbox: number;
 }> {
   const remindersSent = await processPendingReminders(client);
   const digestsSent = await processNotificationDigests(client);
   const pushesDelivered = await processNotificationOutbox(client);
   const listingsExpired = await processExpiredListings(client);
-  return { remindersSent, pushesDelivered, digestsSent, listingsExpired };
+  const timelineOutbox = await drainTimelineOutbox();
+  return {
+    remindersSent,
+    pushesDelivered,
+    digestsSent,
+    listingsExpired,
+    timelineOutbox,
+  };
 }

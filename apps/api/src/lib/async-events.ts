@@ -13,6 +13,7 @@ import {
   type CircleTarget,
 } from "@vaara/redis";
 import { notifyCirclePostMulti, notifyDirectMessage } from "../services/notifications.js";
+import { applyTimelineWrites } from "../services/timeline-outbox.js";
 import { notifyTopicFollowers } from "./topics.js";
 
 export async function dispatchPostCreated(params: {
@@ -24,6 +25,7 @@ export async function dispatchPostCreated(params: {
   topicPreview: string;
   topicSlugs: string[];
   circleIds: string[];
+  createdAt: string;
 }) {
   let queued = false;
   if (isRedisEnabled()) {
@@ -65,6 +67,13 @@ export async function dispatchPostCreated(params: {
       client.release();
     }
   }
+
+  await applyTimelineWrites({
+    op: "add",
+    postId: params.postId,
+    circleIds: params.circleIds,
+    createdAt: params.createdAt,
+  });
 
   await Promise.all(
     params.circleIds.map(async (circleId) => {

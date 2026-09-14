@@ -662,6 +662,7 @@ export function createSchoolsRoutes() {
         userId,
         body: text,
         postId: result.postId,
+        createdAt: result.createdAt,
         classifiedTargets: targets,
         topicIds: [],
         topicSlugs: [],

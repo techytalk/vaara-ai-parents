@@ -1,5 +1,15 @@
 import { config } from "dotenv";
-import { resolve } from "path";
+import { dirname, resolve } from "path";
+import { fileURLToPath } from "url";
 
-config({ path: resolve(process.cwd(), "../../.env.local") });
-config({ path: resolve(process.cwd(), ".env.local") });
+const here = dirname(fileURLToPath(import.meta.url));
+
+for (const path of [
+  resolve(here, "../../../.env.local"),
+  resolve(here, "../../../.vercel/.env.production.local"),
+  resolve(process.cwd(), "../../.env.local"),
+  resolve(process.cwd(), "../../.vercel/.env.production.local"),
+  resolve(process.cwd(), ".env.local"),
+]) {
+  config({ path });
+}

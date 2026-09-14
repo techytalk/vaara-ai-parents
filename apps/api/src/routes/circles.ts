@@ -1,14 +1,10 @@
 import { Hono } from "hono";
 import { pool } from "@vaara/db";
 import {
-  feedCacheKey,
-  getCachedJson,
   invalidateCircleFeedCache,
-  isRedisEnabled,
   publishCircleEvent,
   publishPostEvent,
   publishUserInboxEvent,
-  setCachedJson,
 } from "@vaara/redis";
 import type { PoolClient } from "pg";
 import {
@@ -53,8 +49,13 @@ import {
 } from "../lib/polls.js";
 import { applyDocumentReplace, applyMediaReplace, sameStringList } from "../lib/post-update.js";
 import { syncCircleMembership } from "../services/circle-sync.js";
-import { loadCircleFeed } from "../services/feed.js";
+import { loadCircleFeedResolved } from "../services/feed-timeline.js";
 import { dispatchPostCreated, dispatchMessageCreated } from "../lib/async-events.js";
+import {
+  applyTimelineWrites,
+  insertTimelineOutbox,
+} from "../services/timeline-outbox.js";
+import { toIsoTimestamp } from "../lib/feed-cursor.js";
 import { parseReportReason } from "../lib/report-reasons.js";
 import { rejectObjectionableText } from "../lib/content-guard.js";
 import { rateLimitMiddleware } from "../middleware/rate-limit.js";
@@ -261,17 +262,7 @@ export function createCirclesRoutes() {
     const scope = c.req.query("scope") ?? "local";
     const limit = Math.min(Number(c.req.query("limit") ?? 20), 50);
 
-    if (!cursor && isRedisEnabled()) {
-      const cacheKey = feedCacheKey({ circleId, userId, scope, cursor });
-      const cached = await getCachedJson<{ posts: unknown[]; nextCursor: string | null }>(
-        cacheKey
-      );
-      if (cached) {
-        return c.json(cached);
-      }
-    }
-
-    const result = await loadCircleFeed({
+    const result = await loadCircleFeedResolved({
       userId,
       circleId,
       scope,
@@ -281,11 +272,6 @@ export function createCirclesRoutes() {
 
     if ("error" in result) {
       return c.json({ error: "Circle not found" }, 404);
-    }
-
-    if (!cursor && isRedisEnabled()) {
-      const cacheKey = feedCacheKey({ circleId, userId, scope, cursor });
-      await setCachedJson(cacheKey, result);
     }
 
     return c.json(result);
@@ -524,10 +510,19 @@ export function createCirclesRoutes() {
       );
 
       await client.query(
-        `INSERT INTO circle_post_targets (post_id, circle_id, is_primary)
-         SELECT $1, target_id, target_id = $2
+        `INSERT INTO circle_post_targets (post_id, circle_id, is_primary, post_created_at)
+         SELECT $1, target_id, target_id = $2, $4::timestamptz
          FROM unnest($3::uuid[]) AS target_id`,
-        [rows[0].id, circleId, targetCircleIds]
+        [rows[0].id, circleId, targetCircleIds, rows[0].created_at]
+      );
+      await insertTimelineOutbox(
+        client,
+        targetCircleIds.map((targetId) => ({
+          op: "add" as const,
+          postId: String(rows[0].id),
+          circleId: String(targetId),
+          createdAt: rows[0].created_at,
+        }))
       );
 
       const mediaViews: PostMediaView[] = [];
@@ -626,6 +621,7 @@ export function createCirclesRoutes() {
 
       await dispatchPostCreated({
         postId: String(rows[0].id),
+        createdAt: toIsoTimestamp(rows[0].created_at),
         authorId: userId,
         postPreview:
           text ||
@@ -1358,7 +1354,7 @@ export function createCirclesRoutes() {
       }
 
       const targetResult = await client.query(
-        `SELECT circle_id FROM circle_post_targets WHERE post_id = $1`,
+        `SELECT circle_id, post_created_at FROM circle_post_targets WHERE post_id = $1`,
         [postId]
       );
       const circleIds = targetResult.rows.map((row) => String(row.circle_id));
@@ -1372,6 +1368,15 @@ export function createCirclesRoutes() {
       );
 
       await client.query("BEGIN");
+      await insertTimelineOutbox(
+        client,
+        targetResult.rows.map((row) => ({
+          op: "remove" as const,
+          postId,
+          circleId: String(row.circle_id),
+          createdAt: row.post_created_at,
+        }))
+      );
       await client.query(
         `UPDATE reports SET target_post_id = NULL WHERE target_post_id = $1`,
         [postId]
@@ -1398,6 +1403,11 @@ export function createCirclesRoutes() {
         }
       }
 
+      await applyTimelineWrites({
+        op: "remove",
+        postId,
+        circleIds,
+      });
       await Promise.all(
         circleIds.map((targetCircleId) => invalidateCircleFeedCache(targetCircleId))
       );

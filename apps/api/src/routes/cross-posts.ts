@@ -261,6 +261,7 @@ export function createCrossPostRoutes() {
         body: text,
         pollQuestion: body.poll?.question,
         postId: result.postId,
+        createdAt: result.createdAt,
         classifiedTargets: targets,
         topicIds: result.topicIds,
         topicSlugs: result.topicSlugs,

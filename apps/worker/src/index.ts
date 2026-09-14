@@ -11,6 +11,7 @@ import {
   type MessageCreatedJob,
   type PostCreatedJob,
 } from "@vaara/redis";
+import { drainTimelineOutbox } from "@vaara/api/timeline";
 import { notifyTopicFollowers } from "@vaara/api/topics";
 import {
   notifyCirclePostMulti,
@@ -85,10 +86,11 @@ async function processMaintenanceTick() {
       result.remindersSent > 0 ||
       result.digestsSent > 0 ||
       result.pushesDelivered > 0 ||
-      result.listingsExpired > 0
+      result.listingsExpired > 0 ||
+      result.timelineOutbox > 0
     ) {
       console.log(
-        `Maintenance: ${result.remindersSent} reminders, ${result.digestsSent} digests, ${result.pushesDelivered} pushes, ${result.listingsExpired} listings expired`
+        `Maintenance: ${result.remindersSent} reminders, ${result.digestsSent} digests, ${result.pushesDelivered} pushes, ${result.listingsExpired} listings expired, ${result.timelineOutbox} timeline outbox`
       );
     }
   } finally {
@@ -131,6 +133,12 @@ const maintenanceWorker = new Worker(
   async (job) => {
     if (job.name === "background.tick") {
       await processMaintenanceTick();
+    }
+    if (job.name === "timeline.sync") {
+      const processed = await drainTimelineOutbox();
+      if (processed > 0) {
+        console.log(`[timeline.outbox.retry] drained ${processed}`);
+      }
     }
   },
   { connection, concurrency: 1 }

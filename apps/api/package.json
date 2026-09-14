@@ -16,6 +16,11 @@
       "import": "./dist/services/notifications.js",
       "default": "./dist/services/notifications.js"
     },
+    "./timeline": {
+      "types": "./dist/services/timeline-outbox.d.ts",
+      "import": "./dist/services/timeline-outbox.js",
+      "default": "./dist/services/timeline-outbox.js"
+    },
     "./topics": {
       "types": "./dist/lib/topics.d.ts",
       "import": "./dist/lib/topics.js",
@@ -32,7 +37,8 @@
     "build": "tsc",
     "test": "tsx --test test/*.test.ts",
     "test:audit": "RUN_E2E_AUDIT=1 tsx --test test/e2e-audit.test.ts",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "rebuild:timelines": "tsx src/scripts/rebuild-circle-timeline.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1118.0",

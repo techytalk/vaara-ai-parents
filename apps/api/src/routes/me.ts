@@ -6,10 +6,8 @@ import {
   evaluateOnboardingComplete,
   syncCircleMembership,
 } from "../services/circle-sync.js";
-import {
-  loadHomeFeed,
-  togglePostHelpful,
-} from "../services/feed.js";
+import { togglePostHelpful } from "../services/feed.js";
+import { loadHomeFeedResolved } from "../services/feed-timeline.js";
 import { authMiddleware, type AuthVariables } from "../middleware/auth.js";
 import {
   mergeNotificationPrefs,
@@ -1314,7 +1312,7 @@ export function createMeRoutes() {
     const userId = c.get("user").sub;
     const cursor = c.req.query("cursor");
     const limit = Math.min(Number(c.req.query("limit") ?? 20), 50);
-    const result = await loadHomeFeed({ userId, cursor, limit });
+    const result = await loadHomeFeedResolved({ userId, cursor, limit });
     return c.json(result);
   });
 

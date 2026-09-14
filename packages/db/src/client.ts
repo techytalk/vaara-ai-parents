@@ -1,14 +1,26 @@
 import { config } from "dotenv";
-import { resolve } from "path";
+import { dirname, resolve } from "path";
+import { fileURLToPath } from "url";
 import { Pool } from "pg";
 
-config({ path: resolve(process.cwd(), "../../.env.local") });
-config({ path: resolve(process.cwd(), ".env.local") });
+const here = dirname(fileURLToPath(import.meta.url));
+
+for (const path of [
+  resolve(here, "../../../.env.local"),
+  resolve(here, "../../../.vercel/.env.production.local"),
+  resolve(process.cwd(), "../../.env.local"),
+  resolve(process.cwd(), "../../.vercel/.env.production.local"),
+  resolve(process.cwd(), ".env.local"),
+]) {
+  config({ path });
+}
 
 const connectionString = process.env.DATABASE_URL;
 
 if (!connectionString) {
-  throw new Error("DATABASE_URL is not set");
+  throw new Error(
+    "DATABASE_URL is not set. Add it to .env.local at the repo root, or run `vercel env pull .env.local`."
+  );
 }
 
 const poolConfig = {

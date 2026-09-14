@@ -8,6 +8,8 @@ import { type MediaType } from "../lib/media-storage.js";
 import { insertPostDocuments, type VerifiedDocument } from "../lib/post-attachments.js";
 import { dispatchPostCreated } from "../lib/async-events.js";
 import type { CircleTarget } from "@vaara/redis";
+import { toIsoTimestamp } from "../lib/feed-cursor.js";
+import { insertTimelineOutbox } from "./timeline-outbox.js";
 
 export const MAX_GUEST_CIRCLES_PER_POST = 5;
 /** Soft safety cap on member circles in one publish (not a product “5” limit). */
@@ -229,6 +231,7 @@ export type CreateCrossPostsResult =
       };
       topicIds: string[];
       topicSlugs: string[];
+      createdAt: string;
       circleRows: Array<{
         id: string;
         circle_type: string;
@@ -373,7 +376,7 @@ export async function createCrossPosts(
     `INSERT INTO circle_posts
        (circle_id, author_id, body, tag, posting_context, cross_post_group_id)
      VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING id`,
+     RETURNING id, created_at`,
     [
       primary.id,
       params.userId,
@@ -384,14 +387,24 @@ export async function createCrossPosts(
     ]
   );
   const postId = postRows[0].id as string;
+  const createdAt = postRows[0].created_at as string | Date;
 
   for (const target of classified) {
     await client.query(
-      `INSERT INTO circle_post_targets (post_id, circle_id, is_primary, access_mode)
-       VALUES ($1, $2, $3, $4)`,
-      [postId, target.id, target.id === primary.id, target.accessMode]
+      `INSERT INTO circle_post_targets (post_id, circle_id, is_primary, access_mode, post_created_at)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [postId, target.id, target.id === primary.id, target.accessMode, createdAt]
     );
   }
+  await insertTimelineOutbox(
+    client,
+    classified.map((target) => ({
+      op: "add" as const,
+      postId,
+      circleId: target.id,
+      createdAt,
+    }))
+  );
 
   for (const [index, item] of params.media.entries()) {
     await client.query(
@@ -452,6 +465,7 @@ export async function createCrossPosts(
     guestQuota,
     topicIds,
     topicSlugs,
+    createdAt: toIsoTimestamp(createdAt),
     circleRows: circleResult.rows.map((row) => ({
       id: row.id as string,
       circle_type: row.circle_type as string,
@@ -468,6 +482,7 @@ export async function dispatchCrossPostsCreated(params: {
   body: string;
   pollQuestion?: string;
   postId: string;
+  createdAt: string;
   classifiedTargets: CircleTarget[];
   topicIds: string[];
   topicSlugs: string[];
@@ -483,6 +498,7 @@ export async function dispatchCrossPostsCreated(params: {
 
   await dispatchPostCreated({
     postId: params.postId,
+    createdAt: params.createdAt,
     authorId: params.userId,
     postPreview: preview,
     targets: params.classifiedTargets,
