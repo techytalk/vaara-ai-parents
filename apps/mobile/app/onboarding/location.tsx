@@ -444,7 +444,7 @@ export default function LocationScreen() {
         compact
         title={hook.title}
         body={hook.body}
-        illustration={require("../../assets/illustrations/onboarding-location-near-you.jpg")}
+        illustration={require("../../assets/illustrations/onboarding-location-near-you.png")}
       />
 
       <FieldLabel>Country</FieldLabel>

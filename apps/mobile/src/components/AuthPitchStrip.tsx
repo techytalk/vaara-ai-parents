@@ -20,19 +20,19 @@ const slides: Array<{
 }> = [
   {
     key: "circles",
-    image: require("../../assets/illustrations/auth-school-circles.jpg"),
+    image: require("../../assets/illustrations/auth-school-circles.png"),
     title: "Your kids’ school and class circles",
     body: "Meet parents from your child’s school, class and neighbourhood. Ask. Share. Learn. Together.",
   },
   {
     key: "curriculum",
-    image: require("../../assets/illustrations/auth-same-board.jpg"),
+    image: require("../../assets/illustrations/auth-same-board.png"),
     title: "Advice from the same board",
     body: "Hear from CBSE, IB, IGCSE and Cambridge parents facing the same choices.",
   },
   {
     key: "community",
-    image: require("../../assets/illustrations/auth-ask-private.jpg"),
+    image: require("../../assets/illustrations/auth-ask-private.png"),
     title: "Ask anything, stay private",
     body: "Real opinions and local tips — without sharing your real name.",
   },
@@ -128,7 +128,6 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 16,
-    backgroundColor: colors.card,
   },
   copy: { flex: 1 },
   title: {

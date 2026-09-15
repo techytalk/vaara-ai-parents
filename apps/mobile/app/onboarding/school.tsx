@@ -135,7 +135,7 @@ export default function OnboardingSchoolScreen() {
         compact
         title={hook.title}
         body={hook.body}
-        illustration={require("../../assets/illustrations/onboarding-school-same-school.jpg")}
+        illustration={require("../../assets/illustrations/onboarding-school-same-school.png")}
       />
 
       <SchoolPicker

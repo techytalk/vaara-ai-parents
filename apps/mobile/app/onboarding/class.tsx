@@ -171,8 +171,8 @@ export default function OnboardingClassScreen() {
   const hook = classHook({ boardName, gradeLabel });
   const canContinue = Boolean(curriculumId && gradeId);
   const heroArt = boardName
-    ? require("../../assets/illustrations/onboarding-class-parents-who-get-it.jpg")
-    : require("../../assets/illustrations/onboarding-class-same-questions.jpg");
+    ? require("../../assets/illustrations/onboarding-class-parents-who-get-it.png")
+    : require("../../assets/illustrations/onboarding-class-same-questions.png");
 
   async function onFinish() {
     if (!token || !school || !curriculumId || !gradeId) return;
@@ -261,7 +261,7 @@ export default function OnboardingClassScreen() {
       {selectedCurriculum ? (
         <View style={styles.boardCard}>
           <Image
-            source={require("../../assets/illustrations/board-grad-cap-badge.jpg")}
+            source={require("../../assets/illustrations/board-grad-cap-badge.png")}
             style={styles.boardCardArt}
             resizeMode="contain"
             accessibilityIgnoresInvertColors
@@ -402,7 +402,6 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 10,
-    backgroundColor: colors.card,
   },
   boardCardText: {
     flex: 1,

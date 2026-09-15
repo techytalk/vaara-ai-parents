@@ -485,7 +485,7 @@ export function SchoolPicker({
       {selected ? (
         <View style={styles.selectedCard}>
           <Image
-            source={require("../../../assets/illustrations/school-selected-badge.jpg")}
+            source={require("../../../assets/illustrations/school-selected-badge.png")}
             style={styles.selectedArt}
             resizeMode="contain"
             accessibilityIgnoresInvertColors
@@ -547,7 +547,6 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 12,
-    backgroundColor: colors.card,
   },
   selectedCopy: { flex: 1 },
   selectedBadge: {
