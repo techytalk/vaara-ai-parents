@@ -33,7 +33,7 @@ import {
   PrimaryButton,
   useOnboardingContentStyle,
 } from "@/components/onboarding/ui";
-import { SignOutButton } from "@/components/SignOutButton";
+import { OnboardingAccountSwitch } from "@/components/SignOutButton";
 
 const FEATURED_COUNTRY_CODES = ["IN", "US", "GB", "CA", "AU", "SG", "AE", "DE"];
 
@@ -527,7 +527,7 @@ export default function LocationScreen() {
         disabled={!canContinue}
       />
 
-      {alreadyComplete ? null : <SignOutButton />}
+      {alreadyComplete ? null : <OnboardingAccountSwitch step="location" />}
 
       <Modal
         visible={countryOpen}

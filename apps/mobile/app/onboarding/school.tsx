@@ -20,7 +20,7 @@ import {
   SecondaryButton,
   useOnboardingContentStyle,
 } from "@/components/onboarding/ui";
-import { SignOutButton } from "@/components/SignOutButton";
+import { OnboardingAccountSwitch } from "@/components/SignOutButton";
 
 export default function OnboardingSchoolScreen() {
   const router = useRouter();
@@ -130,7 +130,7 @@ export default function OnboardingSchoolScreen() {
         label="Back"
         onPress={() => router.replace("/onboarding/location" as never)}
       />
-      <SignOutButton />
+      <OnboardingAccountSwitch step="school" />
     </ScrollView>
   );
 }

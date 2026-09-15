@@ -29,6 +29,7 @@ export type AnalyticsEvent =
   | "onboarding_class_complete"
   | "onboarding_ready_view"
   | "onboarding_children_complete"
+  | "onboarding_account_switch"
   | "location_screen_view"
   | "pin_lookup"
   | "area_selected"
