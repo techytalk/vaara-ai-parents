@@ -13,6 +13,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Link, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SocialAuthSection } from "@/components/SocialAuthSection";
+import { AuthHookHeadline } from "@/components/AuthHookHeadline";
 import { AuthPitchStrip } from "@/components/AuthPitchStrip";
 import { LegalFooter } from "@/components/LegalFooter";
 import { VaaraLogo } from "@/components/VaaraLogo";
@@ -94,28 +95,37 @@ export default function RegisterScreen() {
         >
           <VaaraLogo compact />
 
-          <View style={styles.heading}>
-            <Text style={styles.kicker}>
-              {role === "parent" ? "New to Vaara" : "For schools & trainers"}
-            </Text>
-            <Text style={styles.title}>
-              {role === "parent"
-                ? "Create your parent account"
-                : "Create your school, trainer or institution account"}
-            </Text>
-            <Text style={styles.lead}>
-              {role === "parent"
-                ? "Free for parents. Join circles from your child’s school, class and locality."
-                : "For teachers, schools, trainers and institutions. You’ll add your organisation after sign-up."}
-            </Text>
-          </View>
+          {role === "parent" ? (
+            <AuthHookHeadline
+              kicker="Create your Vaara account"
+              headline={[
+                { text: "Ever wished you could ask another parent " },
+                { text: "anonymously?", accent: true },
+              ]}
+              lead={[
+                { text: "Find other parents from your child’s " },
+                { text: "school", accent: true },
+                { text: " and " },
+                { text: "neighbourhood", accent: true },
+                { text: ", and get real opinions and experiences." },
+              ]}
+            />
+          ) : (
+            <AuthHookHeadline
+              kicker="For schools & trainers"
+              headline={[
+                { text: "Create your school, trainer or institution account" },
+              ]}
+              lead="For teachers, schools, trainers and institutions. You’ll add your organisation after sign-up."
+            />
+          )}
 
           <SocialAuthSection
             onSuccess={(result, method) => completeAuth(result, method)}
             onError={setGoogleError}
             role={role}
             displayName={displayName}
-            googleLabel="Sign up with Google"
+            googleLabel="Continue with Google"
             appleButtonType="signUp"
           />
 
@@ -186,7 +196,7 @@ export default function RegisterScreen() {
                 style={styles.emailButton}
               >
                 <Ionicons name="mail-outline" size={18} color={colors.text} />
-                <Text style={styles.emailButtonText}>Sign up with email</Text>
+                <Text style={styles.emailButtonText}>Continue with email</Text>
               </Pressable>
             </>
           )}
@@ -195,7 +205,7 @@ export default function RegisterScreen() {
             <Link href="/(auth)/login" asChild>
               <Pressable accessibilityRole="link" style={styles.loginRow}>
                 <Text style={styles.loginMuted}>Already have an account?</Text>
-                <Text style={styles.loginAction}> Sign in</Text>
+                <Text style={styles.loginAction}> Sign in →</Text>
               </Pressable>
             </Link>
           </View>
@@ -235,31 +245,6 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   container: {
     flexGrow: 1,
-  },
-  heading: {
-    marginTop: spacing.md,
-    marginBottom: spacing.md,
-  },
-  kicker: {
-    ...typography.caption,
-    fontFamily: typography.bold,
-    color: colors.primaryDark,
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-    marginBottom: 6,
-  },
-  title: {
-    ...typography.display,
-    fontFamily: typography.bold,
-    color: colors.text,
-    letterSpacing: -0.8,
-  },
-  lead: {
-    ...typography.body,
-    color: colors.textMuted,
-    fontFamily: typography.regular,
-    marginTop: spacing.xs,
-    lineHeight: 22,
   },
   emailForm: {
     marginTop: spacing.xs,

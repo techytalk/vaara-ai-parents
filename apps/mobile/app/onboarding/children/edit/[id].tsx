@@ -93,7 +93,7 @@ export default function EditChildScreen() {
   }
 
   async function onSave() {
-    if (!token || !curriculumId || !gradeId || !selectedSchool) return;
+    if (!token || !curriculumId || !gradeId || !selectedSchool || !gender) return;
 
     setError(null);
     setSubmitting(true);
@@ -148,7 +148,7 @@ export default function EditChildScreen() {
     );
   }
 
-  const canSave = Boolean(selectedSchool && gradeId && curriculumId);
+  const canSave = Boolean(selectedSchool && gender && gradeId && curriculumId);
 
   return (
     <ScrollView

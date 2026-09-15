@@ -62,8 +62,8 @@ export function OnboardingPayoff({
   secondaryIcon,
   compact = false,
 }: {
-  title: string;
-  body?: string;
+  title: ReactNode;
+  body?: ReactNode;
   primaryIcon?: IoniconName;
   secondaryIcon?: IoniconName;
   /** Compact chrome: no icon hero, tighter spacing (Steps 1–3). */
@@ -191,9 +191,14 @@ export function Chip({
       style={[chipStyles.chip, selected && chipStyles.chipActive]}
       onPress={onPress}
     >
-      <Text style={[chipStyles.text, selected && chipStyles.textActive]}>
-        {label}
-      </Text>
+      <View style={chipStyles.row}>
+        {selected ? (
+          <Ionicons name="checkmark" size={14} color={colors.textInverse} />
+        ) : null}
+        <Text style={[chipStyles.text, selected && chipStyles.textActive]}>
+          {label}
+        </Text>
+      </View>
     </Pressable>
   );
 }
@@ -408,6 +413,11 @@ const chipStyles = StyleSheet.create({
   chipActive: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
   },
   text: { fontSize: 13, color: colors.text, fontFamily: typography.medium },
   textActive: {

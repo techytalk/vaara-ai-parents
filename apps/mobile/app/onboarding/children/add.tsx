@@ -35,7 +35,7 @@ export default function AddChildScreen() {
   const [nickname, setNickname] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState<Date | null>(null);
   const [selectedSchool, setSelectedSchool] = useState<School | null>(null);
-  const [gender, setGender] = useState("unspecified");
+  const [gender, setGender] = useState("");
   const [curriculumId, setCurriculumId] = useState<string | null>(null);
   const [gradeId, setGradeId] = useState<string | null>(null);
 
@@ -69,7 +69,7 @@ export default function AddChildScreen() {
   }, [router]);
 
   async function onSave() {
-    if (!token || !curriculumId || !gradeId || !selectedSchool) return;
+    if (!token || !curriculumId || !gradeId || !selectedSchool || !gender) return;
 
     setError(null);
     setSubmitting(true);
@@ -115,7 +115,7 @@ export default function AddChildScreen() {
     );
   }
 
-  const canSave = Boolean(selectedSchool && curriculumId && gradeId);
+  const canSave = Boolean(selectedSchool && gender && curriculumId && gradeId);
 
   return (
     <ScrollView
@@ -125,8 +125,9 @@ export default function AddChildScreen() {
     >
       <Text style={styles.title}>Add a child</Text>
       <Text style={styles.subtitle}>
-        School, board and class place you in the right circles. Nickname and
-        date of birth are optional and stay private.
+        School, gender, board and class are required so we can place you in
+        the right circles. Nickname and date of birth are optional and stay
+        private.
       </Text>
 
       <ChildFormFields

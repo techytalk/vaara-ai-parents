@@ -7,6 +7,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import {
   ApiError,
   api,
@@ -278,20 +279,41 @@ export function SchoolPicker({
   const showOther =
     showSearchResults && searchSettled && !searching;
 
+  const selectedMeta = selected
+    ? [selected.branch, selected.city].filter(Boolean).join(" · ")
+    : "";
+
   return (
     <View style={styles.wrap}>
-      <TextInput
-        style={styles.input}
-        placeholder="Search school name"
-        placeholderTextColor={colors.textSubtle}
-        value={query}
-        onChangeText={(text) => {
-          if (selected) onSelect(null);
-          setQuery(text);
-        }}
-        autoCorrect={false}
-        autoCapitalize="words"
-      />
+      <FieldLabel>Search for your child&apos;s school</FieldLabel>
+      <View style={styles.searchRow}>
+        <Ionicons name="search-outline" size={18} color={colors.textMuted} />
+        <TextInput
+          style={styles.input}
+          placeholder="Type school name (e.g. The Gaudium School)"
+          placeholderTextColor={colors.textSubtle}
+          value={selected ? selected.name : query}
+          onChangeText={(text) => {
+            if (selected) onSelect(null);
+            setQuery(text);
+          }}
+          autoCorrect={false}
+          autoCapitalize="words"
+        />
+        {selected || query ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Clear school search"
+            onPress={() => {
+              setQuery("");
+              if (selected) onSelect(null);
+            }}
+            hitSlop={8}
+          >
+            <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+          </Pressable>
+        ) : null}
+      </View>
       <Text style={styles.hint}>
         Tap a school from the list, or type to search.
       </Text>
@@ -460,7 +482,21 @@ export function SchoolPicker({
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
       {selected ? (
-        <Text style={styles.selected}>Selected: {selected.displayLabel}</Text>
+        <View style={styles.selectedCard}>
+          <View style={styles.selectedIcon}>
+            <Ionicons name="school-outline" size={22} color={colors.primary} />
+          </View>
+          <View style={styles.selectedCopy}>
+            <Text style={styles.selectedBadge}>SELECTED</Text>
+            <Text style={styles.selectedTitle}>{selected.name}</Text>
+            {selectedMeta ? (
+              <Text style={styles.selectedMeta}>{selectedMeta}</Text>
+            ) : null}
+          </View>
+          <View style={styles.selectedCheck}>
+            <Ionicons name="checkmark" size={16} color="#fff" />
+          </View>
+        </View>
       ) : null}
     </View>
   );
@@ -468,15 +504,22 @@ export function SchoolPicker({
 
 const styles = StyleSheet.create({
   wrap: { marginBottom: 12 },
-  input: {
+  searchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 12,
     minHeight: 48,
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
+    backgroundColor: colors.card,
+  },
+  input: {
+    flex: 1,
+    minHeight: 48,
     paddingVertical: 10,
     fontSize: 16,
-    backgroundColor: colors.card,
     color: colors.text,
   },
   hint: {
@@ -484,6 +527,51 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     marginTop: 6,
     marginBottom: 8,
+  },
+  selectedCard: {
+    marginTop: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: colors.primarySoft,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.primaryLight,
+    padding: 12,
+  },
+  selectedIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: colors.card,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  selectedCopy: { flex: 1 },
+  selectedBadge: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.6,
+    color: colors.primaryDark,
+    marginBottom: 2,
+  },
+  selectedTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  selectedMeta: {
+    fontSize: 13,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  selectedCheck: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
   },
   loader: { marginVertical: 8 },
   dropdown: {
@@ -556,10 +644,4 @@ const styles = StyleSheet.create({
   },
   createBtnText: { color: "#fff", fontWeight: "700", fontSize: 15 },
   error: { color: colors.error, marginTop: 8 },
-  selected: {
-    marginTop: 8,
-    fontSize: 14,
-    color: colors.primaryDark,
-    fontWeight: "600",
-  },
 });

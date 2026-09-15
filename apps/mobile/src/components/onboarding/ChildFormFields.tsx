@@ -114,7 +114,7 @@ export function ChildFormFields({
         defaultCountry={defaultCountry}
       />
 
-      <FieldLabel>Gender</FieldLabel>
+      <FieldLabel>Gender *</FieldLabel>
       <View style={styles.chipWrapRow}>
         {GENDERS.map((g) => (
           <Chip
@@ -126,7 +126,7 @@ export function ChildFormFields({
         ))}
       </View>
 
-      <FieldLabel>Curriculum</FieldLabel>
+      <FieldLabel>Curriculum *</FieldLabel>
       <Text style={styles.curriculumHint}>
         For nursery through 12th, choose CBSE, SSC, or IGCSE.
       </Text>
@@ -160,7 +160,7 @@ export function ChildFormFields({
           ) : null}
 
           <FieldLabel>
-            Class / grade ({selectedCurriculum.name})
+            Class / grade ({selectedCurriculum.name}) *
           </FieldLabel>
           <Text style={styles.gradeHint}>
             {selectedCurriculum.grades.length} classes available — scroll to see

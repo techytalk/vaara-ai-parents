@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -50,6 +50,82 @@ function countryLabel(country: PostalCountry) {
   return country.code === "IN" ? "India" : country.name;
 }
 
+/** Trust-safe hooks: curiosity without claiming an active community. */
+function locationHook(opts: {
+  pinReady: boolean;
+  lookupLoading: boolean;
+  place: string;
+  hasAreaChoices: boolean;
+}): { title: ReactNode; body: string } {
+  const { pinReady, lookupLoading, place, hasAreaChoices } = opts;
+
+  if (!pinReady) {
+    return {
+      title: (
+        <>
+          Which schools are parents{" "}
+          <Text style={hookAccent}>around you</Text> choosing?
+        </>
+      ),
+      body: "Enter your PIN code to find parents from different schools in your area. Compare experiences, ask questions and discover what's happening nearby.",
+    };
+  }
+
+  if (lookupLoading) {
+    return {
+      title: (
+        <>
+          Which schools are parents{" "}
+          <Text style={hookAccent}>around you</Text> choosing?
+        </>
+      ),
+      body: "Finding your area…",
+    };
+  }
+
+  if (!place) {
+    return {
+      title: (
+        <>
+          Where do your parent{" "}
+          <Text style={hookAccent}>conversations</Text> happen?
+        </>
+      ),
+      body: hasAreaChoices
+        ? "Choose your area to find parents nearby."
+        : "Add your area to find parents from different schools nearby.",
+    };
+  }
+
+  if (hasAreaChoices) {
+    return {
+      title: (
+        <>
+          You&apos;re joining the{" "}
+          <Text style={hookAccent}>{place}</Text> parent community.
+        </>
+      ),
+      body: "Find parents from different schools in your area to share, ask and compare.",
+    };
+  }
+
+  return {
+    title: (
+      <>
+        What are parents in <Text style={hookAccent}>{place}</Text> talking
+        about?
+      </>
+    ),
+    body: "Find parents from different schools nearby. Compare experiences, ask questions and discover what's happening in your area.",
+  };
+}
+
+const hookAccent = {
+  color: colors.primary,
+  textDecorationLine: "underline" as const,
+  textDecorationColor: colors.primaryLight,
+};
+
 export default function LocationScreen() {
   const router = useRouter();
   const [countries, setCountries] = useState<PostalCountry[]>([]);
@@ -92,6 +168,22 @@ export default function LocationScreen() {
   const pinReady = isReadyForLookup(selectedCountry, pinCode);
   const showAreaFields = pinReady;
   const canContinue = pinReady && locality.trim().length > 0;
+  const place = locality.trim();
+  const hasAreaChoices = localityOptions.length > 1;
+  const hook = locationHook({
+    pinReady,
+    lookupLoading,
+    place,
+    hasAreaChoices,
+  });
+  const placeLine =
+    place && city
+      ? `${place}, ${city}`
+      : place
+        ? place
+        : city && state
+          ? `${city} · ${state}`
+          : "";
 
   useEffect(() => {
     Promise.all([
@@ -348,11 +440,7 @@ export default function LocationScreen() {
         <Text style={styles.step}>Step 1 of 3</Text>
       )}
 
-      <OnboardingPayoff
-        compact
-        title="Where do you live?"
-        body="We use your PIN to find nearby parents — never your street address."
-      />
+      <OnboardingPayoff compact title={hook.title} body={hook.body} />
 
       <FieldLabel>Country</FieldLabel>
       <Pressable
@@ -382,12 +470,20 @@ export default function LocationScreen() {
             resetArea();
           }
         }}
+        hint="We use your PIN to find nearby parents — never your street address."
       />
 
       {!pinReady && selectedCountry ? (
         <Text style={styles.pinHint}>
           Enter your {postalLabel.toLowerCase()} to see your area.
         </Text>
+      ) : null}
+
+      {placeLine && !lookupLoading && !lookupError ? (
+        <View style={styles.placeLine}>
+          <Ionicons name="location-outline" size={16} color={colors.primary} />
+          <Text style={styles.placeLineText}>{placeLine}</Text>
+        </View>
       ) : null}
 
       {showAreaFields ? (
@@ -402,9 +498,7 @@ export default function LocationScreen() {
           {lookupLoading ? (
             <View style={styles.lookupRow}>
               <ActivityIndicator size="small" color={colors.primary} />
-              <Text style={styles.lookupText}>
-                Looking up {postalLabel.toLowerCase()}…
-              </Text>
+              <Text style={styles.lookupText}>Finding your area…</Text>
             </View>
           ) : null}
 
@@ -412,10 +506,14 @@ export default function LocationScreen() {
 
           {localityOptions.length > 0 ? (
             <View style={styles.optionBlock}>
-              <FieldLabel>Locality / area *</FieldLabel>
+              <FieldLabel>
+                {localityOptions.length > 1
+                  ? "Where do your parent conversations happen?"
+                  : "Your area"}
+              </FieldLabel>
               <Text style={styles.optionHint}>
                 {localityOptions.length > 1
-                  ? "This pin covers more than one area — pick yours:"
+                  ? "Choose your area to find parents nearby:"
                   : "Suggested area for this pin:"}
               </Text>
               <View style={styles.chipRow}>
@@ -456,9 +554,11 @@ export default function LocationScreen() {
           ) : null}
 
           {city && state && !lookupError ? (
-            <Text style={styles.resolvedLine}>
-              {city} · {state}
-            </Text>
+            place ? null : (
+              <Text style={styles.resolvedLine}>
+                {city} · {state}
+              </Text>
+            )
           ) : (
             <>
               <FieldInput
@@ -594,6 +694,19 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     marginBottom: 10,
     marginTop: 2,
+  },
+  placeLine: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 12,
+    marginTop: 2,
+  },
+  placeLineText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: colors.primaryDark,
+    flexShrink: 1,
   },
   dropdown: {
     backgroundColor: colors.card,

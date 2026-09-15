@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { api, type School } from "@/lib/api";
 import { trackEvent } from "@/lib/analytics";
 import { getToken } from "@/lib/session";
@@ -22,6 +23,36 @@ import {
 } from "@/components/onboarding/ui";
 import { OnboardingAccountSwitch } from "@/components/SignOutButton";
 
+const hookAccent = {
+  color: colors.primary,
+  textDecorationLine: "underline" as const,
+  textDecorationColor: colors.primaryLight,
+};
+
+function schoolHook(school: School | null): { title: ReactNode; body: string } {
+  if (!school) {
+    return {
+      title: (
+        <>
+          Join the parent community at{" "}
+          <Text style={hookAccent}>your child&apos;s school</Text>
+        </>
+      ),
+      body: "Connect with parents from the same school to ask questions, share experiences and get real insights about school life.",
+    };
+  }
+
+  return {
+    title: (
+      <>
+        What&apos;s it really like at{" "}
+        <Text style={hookAccent}>{school.name}</Text>?
+      </>
+    ),
+    body: "Find parents from the same school to ask questions, share experiences and get real insights about school life.",
+  };
+}
+
 export default function OnboardingSchoolScreen() {
   const router = useRouter();
   const [token, setToken] = useState<string | null>(null);
@@ -35,6 +66,7 @@ export default function OnboardingSchoolScreen() {
   const [error, setError] = useState<string | null>(null);
   const [addingSchool, setAddingSchool] = useState(false);
   const contentStyle = useOnboardingContentStyle();
+  const hook = schoolHook(selectedSchool);
 
   useEffect(() => {
     setOnboardingStep("school");
@@ -99,11 +131,7 @@ export default function OnboardingSchoolScreen() {
       keyboardShouldPersistTaps="handled"
     >
       <Text style={styles.step}>Step 2 of 3</Text>
-      <OnboardingPayoff
-        compact
-        title="Pick your child's school"
-        body="We'll place you with parents at the same school."
-      />
+      <OnboardingPayoff compact title={hook.title} body={hook.body} />
 
       <SchoolPicker
         token={token}
@@ -131,6 +159,14 @@ export default function OnboardingSchoolScreen() {
         onPress={() => router.replace("/onboarding/location" as never)}
       />
       <OnboardingAccountSwitch step="school" />
+
+      <View style={styles.privacy}>
+        <Ionicons name="lock-closed-outline" size={14} color={colors.primary} />
+        <Text style={styles.privacyText}>
+          Your school is only used to connect you with parents from the same
+          school. It is never shared publicly.
+        </Text>
+      </View>
     </ScrollView>
   );
 }
@@ -146,4 +182,16 @@ const styles = StyleSheet.create({
   },
   centered: { flex: 1, justifyContent: "center", alignItems: "center" },
   error: { color: colors.error, marginBottom: 8 },
+  privacy: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    marginTop: 16,
+  },
+  privacyText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 17,
+    color: colors.textMuted,
+  },
 });

@@ -16,22 +16,22 @@ const slides = [
     key: "circles",
     icon: "people-outline" as const,
     tint: colors.teal,
-    title: "School and class circles",
-    body: "Meet parents from your child’s school, class and neighbourhood.",
+    title: "Your kids’ school and class circles",
+    body: "Meet parents from your child’s school, class and neighbourhood. Ask. Share. Learn. Together.",
   },
   {
     key: "curriculum",
     icon: "library-outline" as const,
     tint: colors.amber,
     title: "Advice from the same board",
-    body: "Hear from IB, CBSE, IGCSE and Cambridge parents facing the same choices.",
+    body: "Hear from CBSE, IB, IGCSE and Cambridge parents facing the same choices.",
   },
   {
     key: "community",
     icon: "shield-checkmark-outline" as const,
     tint: colors.coral,
     title: "Ask anything, stay private",
-    body: "Questions and local tips — without sharing your real name.",
+    body: "Real opinions and local tips — without sharing your real name.",
   },
 ] as const;
 
@@ -110,10 +110,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
-    backgroundColor: colors.card,
+    backgroundColor: colors.primarySoft,
     borderRadius: radii.lg,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.primaryLight,
     padding: spacing.md,
     minHeight: 96,
     ...shadows.card,
@@ -129,7 +129,7 @@ const styles = StyleSheet.create({
   title: {
     ...typography.supporting,
     fontFamily: typography.bold,
-    color: colors.text,
+    color: colors.primaryDark,
     fontSize: 15,
   },
   body: {

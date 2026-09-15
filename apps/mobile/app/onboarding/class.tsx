@@ -1,12 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   ActivityIndicator,
+  Alert,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { api, type Curriculum, type School } from "@/lib/api";
 import { trackEvent } from "@/lib/analytics";
 import { getToken, saveSession } from "@/lib/session";
@@ -38,6 +41,84 @@ import {
   useOnboardingContentStyle,
 } from "@/components/onboarding/ui";
 import { OnboardingAccountSwitch } from "@/components/SignOutButton";
+
+const hookAccent = {
+  color: colors.primary,
+  textDecorationLine: "underline" as const,
+  textDecorationColor: colors.primaryLight,
+};
+
+const BOARD_BLURBS: Record<string, string> = {
+  CBSE:
+    "Central Board of Secondary Education — India’s most common K–12 board, with a structured national curriculum.",
+  SSC: "State secondary curriculum — follows your state board pattern for school and exams.",
+  ICSE:
+    "ICSE — a detailed English-medium curriculum with strong emphasis on language and project work.",
+  IGCSE:
+    "Cambridge IGCSE — an international curriculum focused on subject depth and flexible subject choices.",
+  IB_PYP:
+    "IB Primary Years Programme (PYP) — inquiry-based learning for early years through about Grade 5.",
+  IB_MYP:
+    "IB Middle Years Programme (MYP) — a globally recognized curriculum for Grades 6–10, focused on inquiry, critical thinking and real-world learning.",
+  IBDP:
+    "IB Diploma Programme — a rigorous pre-university curriculum typically for Grades 11–12.",
+};
+
+function boardBlurb(curriculum: Curriculum): string {
+  return (
+    BOARD_BLURBS[curriculum.code] ??
+    `${curriculum.name} — connect with parents whose children follow this board.`
+  );
+}
+
+function classHook(opts: {
+  boardName: string | null;
+  gradeLabel: string | null;
+}): { title: ReactNode; body: string } {
+  const { boardName, gradeLabel } = opts;
+
+  if (boardName && gradeLabel) {
+    return {
+      title: (
+        <>
+          Is your child the only one dealing with{" "}
+          <Text style={hookAccent}>this</Text>?
+        </>
+      ),
+      body: `Find ${gradeLabel} parents on ${boardName} facing the same stage — ask questions, compare experiences and share what works.`,
+    };
+  }
+
+  if (boardName) {
+    return {
+      title: (
+        <>
+          Choosing <Text style={hookAccent}>{boardName}</Text>? Talk to parents
+          who&apos;ve lived it.
+        </>
+      ),
+      body: "Connect with parents whose children follow the same curriculum. Ask questions, compare experiences and share what works.",
+    };
+  }
+
+  return {
+    title: (
+      <>
+        Same Class. Same Board.{"\n"}
+        <Text style={hookAccent}>Real Parent Answers.</Text>
+      </>
+    ),
+    body: "Connect with parents whose children are in the same grade and follow the same curriculum. Ask questions, compare experiences and share what works.",
+  };
+}
+
+function showBoardHelp() {
+  Alert.alert(
+    "Not sure which board?",
+    "Pick the curriculum your child’s school follows — CBSE, SSC, ICSE, IGCSE, or IB. If you’re unsure, check the school website or ask the school office. You can change this later.",
+    [{ text: "Got it" }]
+  );
+}
 
 export default function OnboardingClassScreen() {
   const router = useRouter();
@@ -83,6 +164,11 @@ export default function OnboardingClassScreen() {
   }, [router]);
 
   const selectedCurriculum = curricula.find((c) => c.id === curriculumId);
+  const selectedGrade = selectedCurriculum?.grades.find((g) => g.id === gradeId);
+  const boardName = selectedCurriculum?.name ?? selectedCurriculum?.code ?? null;
+  const gradeLabel = selectedGrade?.label ?? null;
+  const hook = classHook({ boardName, gradeLabel });
+  const canContinue = Boolean(curriculumId && gradeId);
 
   async function onFinish() {
     if (!token || !school || !curriculumId || !gradeId) return;
@@ -121,9 +207,6 @@ export default function OnboardingClassScreen() {
     );
   }
 
-  const boardName = selectedCurriculum?.name ?? selectedCurriculum?.code;
-  const canContinue = Boolean(curriculumId && gradeId);
-
   return (
     <ScrollView
       style={styles.container}
@@ -131,13 +214,23 @@ export default function OnboardingClassScreen() {
       keyboardShouldPersistTaps="handled"
     >
       <Text style={styles.step}>Step 3 of 3</Text>
-      <OnboardingPayoff
-        compact
-        title="Board and class"
-        body="So we can put you with parents whose children study the same way."
-      />
+      <OnboardingPayoff compact title={hook.title} body={hook.body} />
 
-      <FieldLabel>Board</FieldLabel>
+      <View style={styles.sectionHead}>
+        <FieldLabel>Select Board</FieldLabel>
+        <Pressable
+          accessibilityRole="button"
+          onPress={showBoardHelp}
+          style={styles.helpLink}
+        >
+          <Ionicons
+            name="information-circle-outline"
+            size={16}
+            color={colors.primary}
+          />
+          <Text style={styles.helpText}>Not sure which board?</Text>
+        </Pressable>
+      </View>
       <View style={styles.chipRow}>
         {curricula.map((item) => (
           <Chip
@@ -155,10 +248,14 @@ export default function OnboardingClassScreen() {
           />
         ))}
       </View>
-      {boardName ? (
-        <Text style={styles.valueLine}>
-          Connect with {boardName} parents across India.
-        </Text>
+
+      {selectedCurriculum ? (
+        <View style={styles.boardCard}>
+          <Ionicons name="school-outline" size={18} color={colors.primary} />
+          <Text style={styles.boardCardText}>
+            {boardBlurb(selectedCurriculum)}
+          </Text>
+        </View>
       ) : (
         <Text style={styles.hint}>Pick a board first.</Text>
       )}
@@ -167,13 +264,13 @@ export default function OnboardingClassScreen() {
         <>
           {isLimitedCurriculum(selectedCurriculum) ? (
             <InfoCard>
-              {selectedCurriculum.name} only includes early years classes
-              (up to about grade 5). Select a K–12 board such as CBSE or SSC
-              for classes 6–12.
+              {selectedCurriculum.name} only includes early years classes (up to
+              about grade 5). Select a K–12 board such as CBSE or SSC for
+              classes 6–12.
             </InfoCard>
           ) : null}
 
-          <FieldLabel>Class</FieldLabel>
+          <FieldLabel>Select Class</FieldLabel>
           <View style={styles.gradeGrid}>
             {selectedCurriculum.grades.map((grade) => (
               <Chip
@@ -190,15 +287,25 @@ export default function OnboardingClassScreen() {
               />
             ))}
           </View>
-          {gradeId && school ? (
-            <Text style={styles.valueLine}>
-              Get into the circle of your child&apos;s class parents at{" "}
-              {school.displayLabel}.
-            </Text>
-          ) : null}
+
+          {gradeId && school && gradeLabel ? (
+            <View style={styles.joinCard}>
+              <Ionicons name="people-outline" size={18} color={colors.primary} />
+              <Text style={styles.joinText}>
+                You&apos;re joining the{" "}
+                <Text style={styles.joinAccent}>{gradeLabel}</Text> parent
+                circle at{" "}
+                <Text style={styles.joinAccent}>{school.displayLabel}</Text>.
+              </Text>
+            </View>
+          ) : (
+            <Text style={styles.hint}>Pick a class to continue.</Text>
+          )}
         </>
       ) : (
-        <Text style={styles.hint}>Class options appear after you pick a board.</Text>
+        <Text style={styles.hint}>
+          Class options appear after you pick a board.
+        </Text>
       )}
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -214,6 +321,14 @@ export default function OnboardingClassScreen() {
         onPress={() => router.replace("/onboarding/school" as never)}
       />
       <OnboardingAccountSwitch step="class" />
+
+      <View style={styles.privacy}>
+        <Ionicons name="lock-closed-outline" size={14} color={colors.primary} />
+        <Text style={styles.privacyText}>
+          Your child&apos;s academic information is only used to connect you
+          with relevant parent circles. It is never shared publicly.
+        </Text>
+      </View>
     </ScrollView>
   );
 }
@@ -227,13 +342,25 @@ const styles = StyleSheet.create({
     color: colors.primary,
     marginBottom: 8,
   },
-  formTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: colors.text,
-    marginBottom: 16,
-  },
   centered: { flex: 1, justifyContent: "center", alignItems: "center" },
+  sectionHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    marginBottom: 2,
+  },
+  helpLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginBottom: 6,
+  },
+  helpText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: colors.primary,
+  },
   chipRow: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -246,16 +373,60 @@ const styles = StyleSheet.create({
     gap: 6,
     marginBottom: 10,
   },
+  boardCard: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    backgroundColor: colors.primarySoft,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.primaryLight,
+    padding: 12,
+    marginBottom: 14,
+  },
+  boardCardText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 19,
+    color: colors.primaryDark,
+  },
+  joinCard: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    backgroundColor: colors.primarySoft,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.primaryLight,
+    padding: 12,
+    marginBottom: 14,
+  },
+  joinText: {
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.text,
+  },
+  joinAccent: {
+    color: colors.primaryDark,
+    fontWeight: "700",
+  },
   hint: {
     fontSize: 14,
     color: colors.textMuted,
     marginBottom: 16,
   },
-  valueLine: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: colors.primaryDark,
-    marginBottom: 16,
-  },
   error: { color: colors.error, marginBottom: 8 },
+  privacy: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    marginTop: 16,
+  },
+  privacyText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 17,
+    color: colors.textMuted,
+  },
 });

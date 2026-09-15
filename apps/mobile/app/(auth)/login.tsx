@@ -13,6 +13,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Link, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SocialAuthSection } from "@/components/SocialAuthSection";
+import { AuthHookHeadline } from "@/components/AuthHookHeadline";
 import { AuthPitchStrip } from "@/components/AuthPitchStrip";
 import { LegalFooter } from "@/components/LegalFooter";
 import { VaaraLogo } from "@/components/VaaraLogo";
@@ -82,13 +83,15 @@ export default function LoginScreen() {
         >
           <VaaraLogo compact />
 
-          <View style={styles.heading}>
-            <Text style={styles.kicker}>Welcome back</Text>
-            <Text style={styles.title}>Sign in</Text>
-            <Text style={styles.lead}>
-              Use the same method you used to create your account.
-            </Text>
-          </View>
+          <AuthHookHeadline
+            kicker="Welcome back"
+            headline={[
+              { text: "Your parent " },
+              { text: "conversations", accent: true },
+              { text: " are waiting." },
+            ]}
+            lead="Sign in to see what parents from your school, neighbourhood and class are talking about."
+          />
 
           <SocialAuthSection
             onSuccess={(result, method) => completeAuth(result, method)}
@@ -161,7 +164,7 @@ export default function LoginScreen() {
             <Link href="/(auth)/register" asChild>
               <Pressable accessibilityRole="link" style={styles.loginRow}>
                 <Text style={styles.loginMuted}>New to Vaara?</Text>
-                <Text style={styles.loginAction}> Create an account</Text>
+                <Text style={styles.loginAction}> Create an account →</Text>
               </Pressable>
             </Link>
           </View>
@@ -178,31 +181,6 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   container: {
     flexGrow: 1,
-  },
-  heading: {
-    marginTop: spacing.md,
-    marginBottom: spacing.md,
-  },
-  kicker: {
-    ...typography.caption,
-    fontFamily: typography.bold,
-    color: colors.primaryDark,
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-    marginBottom: 6,
-  },
-  title: {
-    ...typography.display,
-    fontFamily: typography.bold,
-    color: colors.text,
-    letterSpacing: -0.8,
-  },
-  lead: {
-    ...typography.body,
-    color: colors.textMuted,
-    fontFamily: typography.regular,
-    marginTop: spacing.xs,
-    lineHeight: 22,
   },
   emailForm: {
     marginTop: spacing.xs,
