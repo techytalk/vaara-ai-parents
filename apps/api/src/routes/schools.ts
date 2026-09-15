@@ -512,7 +512,7 @@ export function createSchoolsRoutes() {
             city,
             locality,
           });
-          if (!verified.ok) {
+          if (verified.ok === false) {
             return c.json({ error: verified.error }, 400);
           }
         }
