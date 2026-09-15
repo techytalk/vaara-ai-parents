@@ -31,6 +31,7 @@ import {
   FieldLabel,
   OnboardingPayoff,
   PrimaryButton,
+  useOnboardingContentStyle,
 } from "@/components/onboarding/ui";
 import { SignOutButton } from "@/components/SignOutButton";
 
@@ -70,6 +71,7 @@ export default function LocationScreen() {
   const beganRef = useRef(false);
   const lookupRequestRef = useRef(0);
   const skipNextLookupRef = useRef(false);
+  const contentStyle = useOnboardingContentStyle();
 
   const selectedCountry = useMemo(
     () => countries.find((country) => country.code === countryCode) ?? null,
@@ -339,7 +341,7 @@ export default function LocationScreen() {
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, contentStyle]}
       keyboardShouldPersistTaps="handled"
     >
       {alreadyComplete ? null : (
@@ -574,36 +576,37 @@ export default function LocationScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 20, paddingBottom: 40 },
+  content: {},
   step: {
     fontSize: 13,
     fontWeight: "700",
     color: colors.primary,
-    marginBottom: 12,
+    marginBottom: 8,
   },
   formTitle: {
     fontSize: 20,
     fontWeight: "700",
     color: colors.text,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   resolvedLine: {
     fontSize: 14,
     color: colors.textMuted,
-    marginBottom: 12,
-    marginTop: 4,
+    marginBottom: 10,
+    marginTop: 2,
   },
   dropdown: {
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    minHeight: 48,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 16,
+    marginBottom: 12,
   },
   dropdownText: {
     fontSize: 16,
@@ -615,7 +618,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     color: colors.textMuted,
-    marginTop: -8,
+    marginTop: -6,
     marginBottom: 8,
   },
   section: { marginBottom: 8 },
@@ -623,7 +626,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    marginBottom: 12,
+    marginBottom: 8,
   },
   sectionTitle: {
     fontSize: 16,
@@ -634,13 +637,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     color: colors.textMuted,
-    marginBottom: 12,
+    marginBottom: 8,
   },
   lookupRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    marginBottom: 12,
+    marginBottom: 8,
   },
   lookupText: {
     fontSize: 13,
@@ -649,21 +652,21 @@ const styles = StyleSheet.create({
   lookupError: {
     color: colors.error,
     fontSize: 13,
-    marginBottom: 12,
+    marginBottom: 8,
   },
   optionBlock: {
-    marginBottom: 14,
+    marginBottom: 10,
   },
   optionHint: {
     fontSize: 13,
     lineHeight: 18,
     color: colors.textMuted,
-    marginBottom: 10,
+    marginBottom: 8,
   },
   chipRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
+    gap: 6,
   },
   error: { color: colors.error, marginBottom: 8 },
   loading: {
@@ -699,7 +702,7 @@ const styles = StyleSheet.create({
   },
   countryRow: {
     paddingHorizontal: 20,
-    paddingVertical: 14,
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: colors.borderLight,
     flexDirection: "row",

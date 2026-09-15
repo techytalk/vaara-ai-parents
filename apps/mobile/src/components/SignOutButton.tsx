@@ -20,9 +20,11 @@ export function SignOutButton({ label = "Sign out" }: { label?: string }) {
 
 const styles = StyleSheet.create({
   button: {
-    marginTop: 16,
-    paddingVertical: 14,
+    marginTop: 12,
+    minHeight: 44,
+    paddingVertical: 10,
     alignItems: "center",
+    justifyContent: "center",
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.border,
@@ -30,7 +32,7 @@ const styles = StyleSheet.create({
   },
   text: {
     color: colors.error,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "600",
   },
 });

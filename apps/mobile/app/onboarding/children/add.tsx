@@ -15,7 +15,7 @@ import { getCurriculaCached } from "@/lib/reference-cache";
 import { ChildFormFields } from "@/components/onboarding/ChildFormFields";
 import { sortCurricula } from "@/constants/onboarding";
 import { toIsoDateOnly } from "@/lib/dates";
-import { colors, PrimaryButton } from "@/components/onboarding/ui";
+import { colors, PrimaryButton, useOnboardingContentStyle } from "@/components/onboarding/ui";
 
 export default function AddChildScreen() {
   const router = useRouter();
@@ -30,6 +30,7 @@ export default function AddChildScreen() {
   const [defaultCity, setDefaultCity] = useState("");
   const [defaultPin, setDefaultPin] = useState("");
   const [defaultState, setDefaultState] = useState("");
+  const contentStyle = useOnboardingContentStyle();
 
   const [nickname, setNickname] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState<Date | null>(null);
@@ -119,7 +120,7 @@ export default function AddChildScreen() {
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, contentStyle]}
       keyboardShouldPersistTaps="handled"
     >
       <Text style={styles.title}>Add a child</Text>
@@ -173,19 +174,19 @@ export default function AddChildScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 20, paddingBottom: 40 },
+  content: {},
   title: {
-    fontSize: 26,
+    fontSize: 24,
     fontWeight: "800",
     color: colors.text,
     letterSpacing: -0.4,
-    marginBottom: 6,
+    marginBottom: 4,
   },
   subtitle: {
     fontSize: 15,
     lineHeight: 22,
     color: colors.textMuted,
-    marginBottom: 20,
+    marginBottom: 14,
   },
   centered: { flex: 1, justifyContent: "center", alignItems: "center" },
   error: { color: colors.error, marginBottom: 8 },

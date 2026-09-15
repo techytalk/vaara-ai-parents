@@ -12,6 +12,7 @@ import { trackEvent } from "@/lib/analytics";
 import { completeAppTour, hasCompletedAppTour } from "@/lib/app-tour";
 import { pickPrimaryCircle } from "@/lib/home-feed";
 import { getToken } from "@/lib/session";
+import { layout } from "@/constants/theme";
 import {
   colors,
   PrimaryButton,
@@ -169,11 +170,14 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(15, 23, 42, 0.45)",
   },
   card: {
-    margin: 16,
-    marginBottom: 28,
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 20,
+    alignSelf: "center",
+    maxWidth: layout.formMaxWidth,
     backgroundColor: colors.card,
     borderRadius: 20,
-    padding: 18,
+    padding: 14,
     borderWidth: 1,
     borderColor: colors.border,
   },
@@ -181,7 +185,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 14,
+    marginBottom: 10,
   },
   dots: { flexDirection: "row", gap: 6 },
   dot: {
@@ -193,16 +197,16 @@ const styles = StyleSheet.create({
   dotActive: { backgroundColor: colors.primary },
   skip: { color: colors.textMuted, fontWeight: "600" },
   title: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: "800",
     color: colors.text,
-    marginBottom: 8,
+    marginBottom: 6,
   },
   subtitle: {
     fontSize: 14,
     lineHeight: 20,
     color: colors.textMuted,
-    marginBottom: 16,
+    marginBottom: 12,
   },
-  gap: { height: 10 },
+  gap: { height: 8 },
 });

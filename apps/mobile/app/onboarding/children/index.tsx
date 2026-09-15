@@ -16,7 +16,7 @@ import { api, type Child } from "@/lib/api";
 import { getToken } from "@/lib/session";
 import { GENDER_LABEL } from "@/constants/onboarding";
 import { formatChildDob } from "@/lib/dates";
-import { colors, PrimaryButton, SecondaryButton } from "@/components/onboarding/ui";
+import { colors, PrimaryButton, SecondaryButton, useOnboardingContentStyle } from "@/components/onboarding/ui";
 import { radii, shadows, spacing, typography } from "@/constants/theme";
 import { trackEvent } from "@/lib/analytics";
 
@@ -94,6 +94,8 @@ export default function ChildrenListScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const contentStyle = useOnboardingContentStyle();
+  const footerStyle = useOnboardingContentStyle({ includeVertical: false });
 
   const load = useCallback(async (silent = false) => {
     const token = await getToken();
@@ -160,7 +162,7 @@ export default function ChildrenListScreen() {
     // onboarding layout already applies the bottom one.
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[styles.scroll, contentStyle]}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -256,7 +258,7 @@ export default function ChildrenListScreen() {
         )}
       </ScrollView>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, footerStyle]}>
         {error ? (
           <View style={styles.errorBox}>
             <Ionicons name="alert-circle-outline" size={18} color={colors.error} />
@@ -296,7 +298,6 @@ export default function ChildrenListScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   scroll: {
-    paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
     paddingBottom: spacing.md,
   },
@@ -528,12 +529,13 @@ const styles = StyleSheet.create({
     fontFamily: typography.bold,
   },
   footer: {
-    paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
     paddingBottom: spacing.xs,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
     backgroundColor: colors.bg,
+    width: "100%",
+    alignSelf: "center",
   },
   primaryAction: { marginTop: spacing.xs },
   errorBox: {

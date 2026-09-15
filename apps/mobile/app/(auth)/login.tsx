@@ -18,6 +18,7 @@ import { LegalFooter } from "@/components/LegalFooter";
 import { VaaraLogo } from "@/components/VaaraLogo";
 import { Button, InlineError } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
+import { useOnboardingContentStyle } from "@/components/onboarding/ui";
 import { api } from "@/lib/api";
 import { trackAuthConversion } from "@/lib/analytics";
 import {
@@ -37,6 +38,7 @@ export default function LoginScreen() {
   const [error, setError] = useState<string | null>(null);
   const [googleError, setGoogleError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const contentStyle = useOnboardingContentStyle();
 
   const completeAuth = useCallback(
     async (
@@ -74,7 +76,7 @@ export default function LoginScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <ScrollView
-          contentContainerStyle={styles.container}
+          contentContainerStyle={[styles.container, contentStyle]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -176,13 +178,10 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   container: {
     flexGrow: 1,
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.lg,
   },
   heading: {
-    marginTop: spacing.lg,
-    marginBottom: spacing.lg,
+    marginTop: spacing.md,
+    marginBottom: spacing.md,
   },
   kicker: {
     ...typography.caption,
@@ -215,7 +214,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   input: {
-    minHeight: 50,
+    minHeight: 48,
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
@@ -231,7 +230,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   emailButton: {
-    minHeight: 50,
+    minHeight: 48,
     marginTop: 10,
     flexDirection: "row",
     alignItems: "center",

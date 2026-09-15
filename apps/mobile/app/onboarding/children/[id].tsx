@@ -16,7 +16,7 @@ import { getToken } from "@/lib/session";
 import { getCurriculaCached } from "@/lib/reference-cache";
 import { GENDER_LABEL } from "@/constants/onboarding";
 import { formatChildDob } from "@/lib/dates";
-import { colors, DetailRow, PrimaryButton, SecondaryButton } from "@/components/onboarding/ui";
+import { colors, DetailRow, PrimaryButton, SecondaryButton, useOnboardingContentStyle } from "@/components/onboarding/ui";
 
 export default function ChildDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -26,6 +26,7 @@ export default function ChildDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [removing, setRemoving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const contentStyle = useOnboardingContentStyle();
 
   const load = useCallback(async () => {
     const token = await getToken();
@@ -122,7 +123,7 @@ export default function ChildDetailScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView style={styles.container} contentContainerStyle={[styles.content, contentStyle]}>
       <Text style={styles.title}>
         {child.nickname?.trim() || boardGrade}
       </Text>
@@ -196,13 +197,13 @@ export default function ChildDetailScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 20, paddingBottom: 40 },
+  content: {},
   title: {
-    fontSize: 26,
+    fontSize: 24,
     fontWeight: "800",
     color: colors.text,
     letterSpacing: -0.4,
-    marginBottom: 6,
+    marginBottom: 4,
   },
   subtitle: {
     fontSize: 15,

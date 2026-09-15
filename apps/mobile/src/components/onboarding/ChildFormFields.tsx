@@ -115,7 +115,7 @@ export function ChildFormFields({
       />
 
       <FieldLabel>Gender</FieldLabel>
-      <View style={styles.chipRow}>
+      <View style={styles.chipWrapRow}>
         {GENDERS.map((g) => (
           <Chip
             key={g.value}
@@ -138,7 +138,7 @@ export function ChildFormFields({
         data={curricula}
         keyExtractor={(item) => item.id}
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.chipRow}
+        contentContainerStyle={styles.chipScrollRow}
         renderItem={({ item }) => (
           <View style={styles.chipWrap}>
             <Chip
@@ -205,9 +205,15 @@ export function ChildFormFields({
 }
 
 const styles = StyleSheet.create({
-  dobField: { marginBottom: 16 },
-  chipRow: { flexDirection: "row", marginBottom: 16 },
-  chipWrap: { marginRight: 8 },
+  dobField: { marginBottom: 12 },
+  chipWrapRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginBottom: 12,
+  },
+  chipScrollRow: { flexDirection: "row", marginBottom: 12 },
+  chipWrap: { marginRight: 6 },
   curriculumHint: {
     fontSize: 13,
     color: colors.textMuted,
@@ -225,7 +231,7 @@ const styles = StyleSheet.create({
   gradeGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
+    gap: 6,
     paddingBottom: 8,
   },
   gradeCell: { minWidth: "30%" },

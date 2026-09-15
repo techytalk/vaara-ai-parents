@@ -35,6 +35,7 @@ import {
   OnboardingPayoff,
   PrimaryButton,
   SecondaryButton,
+  useOnboardingContentStyle,
 } from "@/components/onboarding/ui";
 import { SignOutButton } from "@/components/SignOutButton";
 
@@ -48,6 +49,7 @@ export default function OnboardingClassScreen() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const contentStyle = useOnboardingContentStyle();
 
   useEffect(() => {
     setOnboardingStep("class");
@@ -125,7 +127,7 @@ export default function OnboardingClassScreen() {
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, contentStyle]}
       keyboardShouldPersistTaps="handled"
     >
       <Text style={styles.step}>Step 3 of 3</Text>
@@ -218,12 +220,12 @@ export default function OnboardingClassScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 20, paddingBottom: 40 },
+  content: {},
   step: {
     fontSize: 13,
     fontWeight: "700",
     color: colors.primary,
-    marginBottom: 12,
+    marginBottom: 8,
   },
   formTitle: {
     fontSize: 20,
@@ -235,14 +237,14 @@ const styles = StyleSheet.create({
   chipRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 12,
+    gap: 6,
+    marginBottom: 10,
   },
   gradeGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 12,
+    gap: 6,
+    marginBottom: 10,
   },
   hint: {
     fontSize: 14,

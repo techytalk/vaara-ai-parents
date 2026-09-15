@@ -19,7 +19,7 @@ import {
 } from "@/constants/onboarding";
 import { isPlaceholderSchool } from "@/constants/circles";
 import { parseIsoDateOnly, toIsoDateOnly } from "@/lib/dates";
-import { colors, PrimaryButton } from "@/components/onboarding/ui";
+import { colors, PrimaryButton, useOnboardingContentStyle } from "@/components/onboarding/ui";
 
 export default function EditChildScreen() {
   const { id, focus } = useLocalSearchParams<{ id: string; focus?: string }>();
@@ -29,6 +29,7 @@ export default function EditChildScreen() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const contentStyle = useOnboardingContentStyle();
   const [defaultCity, setDefaultCity] = useState("");
   const [defaultPin, setDefaultPin] = useState("");
   const [defaultState, setDefaultState] = useState("");
@@ -152,7 +153,7 @@ export default function EditChildScreen() {
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, contentStyle]}
       keyboardShouldPersistTaps="handled"
     >
       <Text style={styles.title}>Edit child</Text>
@@ -202,19 +203,19 @@ export default function EditChildScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 20, paddingBottom: 40 },
+  content: {},
   title: {
-    fontSize: 26,
+    fontSize: 24,
     fontWeight: "800",
     color: colors.text,
     letterSpacing: -0.4,
-    marginBottom: 6,
+    marginBottom: 4,
   },
   subtitle: {
     fontSize: 15,
     lineHeight: 22,
     color: colors.textMuted,
-    marginBottom: 20,
+    marginBottom: 14,
   },
   centered: { flex: 1, justifyContent: "center", alignItems: "center" },
   error: { color: colors.error, marginBottom: 8 },

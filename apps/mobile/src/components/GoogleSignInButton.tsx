@@ -54,7 +54,7 @@ export function AuthDivider() {
 
 const styles = StyleSheet.create({
   button: {
-    minHeight: 50,
+    minHeight: 48,
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,

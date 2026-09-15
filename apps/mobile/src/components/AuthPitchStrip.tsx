@@ -39,7 +39,9 @@ export function AuthPitchStrip() {
   const { width } = useWindowDimensions();
   const listRef = useRef<FlatList<(typeof slides)[number]>>(null);
   const [page, setPage] = useState(0);
-  const slideWidth = Math.max(width - spacing.xl * 2, 240);
+  const [slideWidth, setSlideWidth] = useState(() =>
+    Math.max(width - spacing.md * 2, 240)
+  );
   const onViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: ViewToken<(typeof slides)[number]>[] }) => {
       const index = viewableItems[0]?.index;
@@ -48,7 +50,13 @@ export function AuthPitchStrip() {
   ).current;
 
   return (
-    <View style={styles.wrap}>
+    <View
+      style={styles.wrap}
+      onLayout={(event) => {
+        const next = Math.round(event.nativeEvent.layout.width);
+        if (next > 0 && next !== slideWidth) setSlideWidth(next);
+      }}
+    >
       <FlatList
         ref={listRef}
         horizontal

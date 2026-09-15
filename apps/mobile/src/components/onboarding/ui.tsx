@@ -5,16 +5,31 @@ import {
   Text,
   TextInput,
   TextInputProps,
+  useWindowDimensions,
   View,
   type ViewStyle,
 } from "react-native";
 import type { ComponentProps, ReactNode } from "react";
 import { Ionicons } from "@expo/vector-icons";
-import { colors, radii, typography } from "@/constants/theme";
+import { colors, layout, radii, typography } from "@/constants/theme";
 
 export { colors };
 
 type IoniconName = ComponentProps<typeof Ionicons>["name"];
+
+/** Phone: 16px side padding. Tablet: 20px padding, centered 560px column. */
+export function useOnboardingContentStyle(opts?: { includeVertical?: boolean }) {
+  const { width } = useWindowDimensions();
+  const isTablet = width >= layout.tabletMinWidth;
+  const includeVertical = opts?.includeVertical !== false;
+  return {
+    paddingHorizontal: isTablet ? 20 : 16,
+    ...(includeVertical ? { paddingTop: 16, paddingBottom: 28 } : null),
+    maxWidth: layout.formMaxWidth,
+    width: "100%" as const,
+    alignSelf: "center" as const,
+  };
+}
 
 export function OnboardingHeader({
   title,
@@ -217,7 +232,7 @@ export function DetailRow({
 }
 
 const headerStyles = StyleSheet.create({
-  wrap: { marginBottom: 20 },
+  wrap: { marginBottom: 16 },
   step: {
     fontSize: 13,
     fontFamily: typography.semibold,
@@ -225,7 +240,7 @@ const headerStyles = StyleSheet.create({
     marginBottom: 6,
   },
   title: {
-    fontSize: 26,
+    fontSize: 24,
     fontFamily: typography.bold,
     color: colors.text,
     letterSpacing: -0.5,
@@ -235,7 +250,7 @@ const headerStyles = StyleSheet.create({
     lineHeight: 22,
     color: colors.textMuted,
     fontFamily: typography.regular,
-    marginTop: 8,
+    marginTop: 6,
   },
 });
 
@@ -243,17 +258,17 @@ const payoffStyles = StyleSheet.create({
   hero: {
     backgroundColor: colors.primarySoft,
     borderRadius: 20,
-    padding: 20,
-    marginBottom: 24,
+    padding: 16,
+    marginBottom: 20,
     borderWidth: 1,
     borderColor: colors.primaryLight,
   },
   compact: {
-    marginBottom: 16,
+    marginBottom: 12,
   },
   compactTitle: {
-    fontSize: 22,
-    lineHeight: 28,
+    fontSize: 20,
+    lineHeight: 26,
     fontWeight: "800",
     color: colors.text,
     letterSpacing: -0.3,
@@ -262,7 +277,7 @@ const payoffStyles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     color: colors.textMuted,
-    marginTop: 6,
+    marginTop: 4,
   },
   heroIcons: {
     flexDirection: "row",
@@ -306,8 +321,8 @@ const infoStyles = StyleSheet.create({
   card: {
     backgroundColor: colors.primaryLight,
     borderRadius: radii.md,
-    padding: 16,
-    marginBottom: 20,
+    padding: 12,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: colors.primaryLight,
   },
@@ -320,20 +335,21 @@ const infoStyles = StyleSheet.create({
 });
 
 const fieldStyles = StyleSheet.create({
-  wrap: { marginBottom: 16 },
+  wrap: { marginBottom: 12 },
   label: {
-    fontSize: 14,
+    fontSize: 13,
     fontFamily: typography.semibold,
     color: colors.text,
-    marginBottom: 8,
+    marginBottom: 6,
   },
   input: {
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radii.md,
-    paddingHorizontal: 16,
-    paddingVertical: 11,
+    minHeight: 48,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     fontSize: 16,
     color: colors.text,
     fontFamily: typography.regular,
@@ -341,7 +357,7 @@ const fieldStyles = StyleSheet.create({
   hint: {
     fontSize: 12,
     color: colors.textMuted,
-    marginTop: 6,
+    marginTop: 4,
   },
 });
 
@@ -349,8 +365,10 @@ const btnStyles = StyleSheet.create({
   primary: {
     backgroundColor: colors.primary,
     borderRadius: radii.md,
-    paddingVertical: 16,
+    minHeight: 48,
+    paddingVertical: 12,
     alignItems: "center",
+    justifyContent: "center",
     marginTop: 8,
   },
   primaryText: {
@@ -362,8 +380,10 @@ const btnStyles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: colors.primary,
     borderRadius: radii.md,
-    paddingVertical: 11,
+    minHeight: 44,
+    paddingVertical: 10,
     alignItems: "center",
+    justifyContent: "center",
     marginTop: 8,
   },
   secondaryText: {
@@ -376,18 +396,20 @@ const btnStyles = StyleSheet.create({
 
 const chipStyles = StyleSheet.create({
   chip: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 24,
+    minHeight: 36,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: radii.pill,
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
+    justifyContent: "center",
   },
   chipActive: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
-  text: { fontSize: 14, color: colors.text, fontFamily: typography.medium },
+  text: { fontSize: 13, color: colors.text, fontFamily: typography.medium },
   textActive: {
     color: colors.textInverse,
     fontFamily: typography.semibold,

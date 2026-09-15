@@ -11,7 +11,7 @@ import {
   getOnboardingCircles,
   getOnboardingUser,
 } from "@/lib/onboarding-draft";
-import { colors, PrimaryButton } from "@/components/onboarding/ui";
+import { colors, PrimaryButton, useOnboardingContentStyle } from "@/components/onboarding/ui";
 import { circleTypeIcon } from "@/lib/circle-icons";
 
 export default function OnboardingReadyScreen() {
@@ -19,6 +19,7 @@ export default function OnboardingReadyScreen() {
   const [circles, setCircles] = useState<Circle[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const contentStyle = useOnboardingContentStyle();
 
   useEffect(() => {
     trackEvent("onboarding_ready_view");
@@ -87,7 +88,7 @@ export default function OnboardingReadyScreen() {
   return (
     <ScrollView
       style={styles.scroll}
-      contentContainerStyle={styles.container}
+      contentContainerStyle={[styles.container, contentStyle]}
     >
       <View style={styles.hero}>
         <View style={styles.iconLg}>
@@ -139,8 +140,6 @@ const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
     backgroundColor: colors.bg,
-    padding: 24,
-    paddingBottom: 40,
     justifyContent: "center",
   },
   centered: {

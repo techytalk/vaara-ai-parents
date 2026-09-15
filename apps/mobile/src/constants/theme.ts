@@ -75,6 +75,12 @@ export const spacing = {
   xxxl: 40,
 } as const;
 
+/** Form column on tablets; phones stay full-width inside their padding. */
+export const layout = {
+  formMaxWidth: 560,
+  tabletMinWidth: 768,
+} as const;
+
 export const radii = {
   sm: 10,
   md: 14,
