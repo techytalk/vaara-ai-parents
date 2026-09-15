@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -483,9 +484,12 @@ export function SchoolPicker({
       {error ? <Text style={styles.error}>{error}</Text> : null}
       {selected ? (
         <View style={styles.selectedCard}>
-          <View style={styles.selectedIcon}>
-            <Ionicons name="school-outline" size={22} color={colors.primary} />
-          </View>
+          <Image
+            source={require("../../../assets/illustrations/school-selected-badge.jpg")}
+            style={styles.selectedArt}
+            resizeMode="contain"
+            accessibilityIgnoresInvertColors
+          />
           <View style={styles.selectedCopy}>
             <Text style={styles.selectedBadge}>SELECTED</Text>
             <Text style={styles.selectedTitle}>{selected.name}</Text>
@@ -539,13 +543,11 @@ const styles = StyleSheet.create({
     borderColor: colors.primaryLight,
     padding: 12,
   },
-  selectedIcon: {
-    width: 40,
-    height: 40,
+  selectedArt: {
+    width: 44,
+    height: 44,
     borderRadius: 12,
     backgroundColor: colors.card,
-    alignItems: "center",
-    justifyContent: "center",
   },
   selectedCopy: { flex: 1 },
   selectedBadge: {

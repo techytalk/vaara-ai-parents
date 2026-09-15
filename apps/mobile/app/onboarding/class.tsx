@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -169,6 +170,9 @@ export default function OnboardingClassScreen() {
   const gradeLabel = selectedGrade?.label ?? null;
   const hook = classHook({ boardName, gradeLabel });
   const canContinue = Boolean(curriculumId && gradeId);
+  const heroArt = boardName
+    ? require("../../assets/illustrations/onboarding-class-parents-who-get-it.jpg")
+    : require("../../assets/illustrations/onboarding-class-same-questions.jpg");
 
   async function onFinish() {
     if (!token || !school || !curriculumId || !gradeId) return;
@@ -214,7 +218,12 @@ export default function OnboardingClassScreen() {
       keyboardShouldPersistTaps="handled"
     >
       <Text style={styles.step}>Step 3 of 3</Text>
-      <OnboardingPayoff compact title={hook.title} body={hook.body} />
+      <OnboardingPayoff
+        compact
+        title={hook.title}
+        body={hook.body}
+        illustration={heroArt}
+      />
 
       <View style={styles.sectionHead}>
         <FieldLabel>Select Board</FieldLabel>
@@ -251,7 +260,12 @@ export default function OnboardingClassScreen() {
 
       {selectedCurriculum ? (
         <View style={styles.boardCard}>
-          <Ionicons name="school-outline" size={18} color={colors.primary} />
+          <Image
+            source={require("../../assets/illustrations/board-grad-cap-badge.jpg")}
+            style={styles.boardCardArt}
+            resizeMode="contain"
+            accessibilityIgnoresInvertColors
+          />
           <Text style={styles.boardCardText}>
             {boardBlurb(selectedCurriculum)}
           </Text>
@@ -383,6 +397,12 @@ const styles = StyleSheet.create({
     borderColor: colors.primaryLight,
     padding: 12,
     marginBottom: 14,
+  },
+  boardCardArt: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: colors.card,
   },
   boardCardText: {
     flex: 1,

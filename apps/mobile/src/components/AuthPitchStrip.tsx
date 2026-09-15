@@ -1,39 +1,42 @@
 import { useRef, useState } from "react";
 import {
   FlatList,
+  Image,
   Pressable,
   StyleSheet,
   Text,
   useWindowDimensions,
   View,
+  type ImageSourcePropType,
   type ViewToken,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
 import { colors, radii, shadows, spacing, typography } from "@/constants/theme";
 
-const slides = [
+const slides: Array<{
+  key: string;
+  image: ImageSourcePropType;
+  title: string;
+  body: string;
+}> = [
   {
     key: "circles",
-    icon: "people-outline" as const,
-    tint: colors.teal,
+    image: require("../../assets/illustrations/auth-school-circles.jpg"),
     title: "Your kids’ school and class circles",
     body: "Meet parents from your child’s school, class and neighbourhood. Ask. Share. Learn. Together.",
   },
   {
     key: "curriculum",
-    icon: "library-outline" as const,
-    tint: colors.amber,
+    image: require("../../assets/illustrations/auth-same-board.jpg"),
     title: "Advice from the same board",
     body: "Hear from CBSE, IB, IGCSE and Cambridge parents facing the same choices.",
   },
   {
     key: "community",
-    icon: "shield-checkmark-outline" as const,
-    tint: colors.coral,
+    image: require("../../assets/illustrations/auth-ask-private.jpg"),
     title: "Ask anything, stay private",
     body: "Real opinions and local tips — without sharing your real name.",
   },
-] as const;
+];
 
 export function AuthPitchStrip() {
   const { width } = useWindowDimensions();
@@ -73,9 +76,12 @@ export function AuthPitchStrip() {
         })}
         renderItem={({ item }) => (
           <View style={[styles.slide, { width: slideWidth }]}>
-            <View style={[styles.iconWrap, { backgroundColor: `${item.tint}18` }]}>
-              <Ionicons name={item.icon} size={22} color={item.tint} />
-            </View>
+            <Image
+              source={item.image}
+              style={styles.art}
+              resizeMode="contain"
+              accessibilityIgnoresInvertColors
+            />
             <View style={styles.copy}>
               <Text style={styles.title}>{item.title}</Text>
               <Text style={styles.body}>{item.body}</Text>
@@ -115,15 +121,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.primaryLight,
     padding: spacing.md,
-    minHeight: 96,
+    minHeight: 104,
     ...shadows.card,
   },
-  iconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
+  art: {
+    width: 72,
+    height: 72,
+    borderRadius: 16,
+    backgroundColor: colors.card,
   },
   copy: { flex: 1 },
   title: {

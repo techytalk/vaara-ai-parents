@@ -440,7 +440,12 @@ export default function LocationScreen() {
         <Text style={styles.step}>Step 1 of 3</Text>
       )}
 
-      <OnboardingPayoff compact title={hook.title} body={hook.body} />
+      <OnboardingPayoff
+        compact
+        title={hook.title}
+        body={hook.body}
+        illustration={require("../../assets/illustrations/onboarding-location-near-you.jpg")}
+      />
 
       <FieldLabel>Country</FieldLabel>
       <Pressable

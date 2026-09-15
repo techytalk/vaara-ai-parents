@@ -1,5 +1,6 @@
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -7,6 +8,7 @@ import {
   TextInputProps,
   useWindowDimensions,
   View,
+  type ImageSourcePropType,
   type ViewStyle,
 } from "react-native";
 import type { ComponentProps, ReactNode } from "react";
@@ -60,20 +62,35 @@ export function OnboardingPayoff({
   body,
   primaryIcon,
   secondaryIcon,
+  illustration,
   compact = false,
 }: {
   title: ReactNode;
   body?: ReactNode;
   primaryIcon?: IoniconName;
   secondaryIcon?: IoniconName;
+  /** Optional hero art shown beside compact title/body (phone + tablet). */
+  illustration?: ImageSourcePropType;
   /** Compact chrome: no icon hero, tighter spacing (Steps 1–3). */
   compact?: boolean;
 }) {
   if (compact) {
     return (
       <View style={payoffStyles.compact}>
-        <Text style={payoffStyles.compactTitle}>{title}</Text>
-        {body ? <Text style={payoffStyles.compactBody}>{body}</Text> : null}
+        <View style={payoffStyles.compactRow}>
+          <View style={payoffStyles.compactCopy}>
+            <Text style={payoffStyles.compactTitle}>{title}</Text>
+            {body ? <Text style={payoffStyles.compactBody}>{body}</Text> : null}
+          </View>
+          {illustration ? (
+            <Image
+              source={illustration}
+              style={payoffStyles.compactArt}
+              resizeMode="contain"
+              accessibilityIgnoresInvertColors
+            />
+          ) : null}
+        </View>
       </View>
     );
   }
@@ -270,6 +287,20 @@ const payoffStyles = StyleSheet.create({
   },
   compact: {
     marginBottom: 12,
+  },
+  compactRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+  },
+  compactCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  compactArt: {
+    width: 112,
+    height: 112,
+    marginTop: -4,
   },
   compactTitle: {
     fontSize: 20,
