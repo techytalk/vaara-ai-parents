@@ -96,8 +96,41 @@ export type PinCodeLookup = {
     officeType: string | null;
     deliveryStatus: string | null;
   }>;
-  communities: string[];
+  /** @deprecated Removed from public postal responses; may be empty. */
+  communities?: string[];
+  source?: "db" | "external" | "bundled";
 };
+
+export type SchoolCatalogRow = {
+  id: string;
+  name: string;
+  branch: string | null;
+  locality: string | null;
+  region: string | null;
+  aliases: string[];
+  boards: string[];
+  verified?: boolean;
+};
+
+export type SchoolCatalogManifest = {
+  schemaVersion: number;
+  generation: number;
+  checksum: string;
+  compressedSize: number | null;
+  rowCount: number;
+  createdAt: string;
+  url: string;
+};
+
+export class ApiError extends Error {
+  status: number;
+  data: unknown;
+  constructor(message: string, status: number, data?: unknown) {
+    super(message);
+    this.status = status;
+    this.data = data;
+  }
+}
 
 export type Circle = {
   id: string;
@@ -664,9 +697,7 @@ async function requestOnce<T>(
         (typeof data.error === "string" && data.error) ||
         (typeof data.message === "string" && data.message) ||
         `Request failed (${res.status})`;
-      const error = new Error(message) as Error & { status?: number };
-      error.status = res.status;
-      throw error;
+      throw new ApiError(message, res.status, data);
     }
     return data as T;
   } catch (error) {
@@ -775,6 +806,75 @@ export const api = {
       `/v1/reference/postal-codes/${encodeURIComponent(countryCode)}/${encodeURIComponent(postalCode)}`
     ),
 
+  getCommunitySuggestions: (
+    token: string,
+    params: { country?: string; pin: string }
+  ) => {
+    const search = new URLSearchParams({ pin: params.pin });
+    if (params.country) search.set("country", params.country);
+    return request<{ communities: string[] }>(
+      `/v1/reference/communities?${search}`,
+      {},
+      token
+    );
+  },
+
+  getSchoolManifest: () =>
+    request<SchoolCatalogManifest>("/v1/reference/schools/manifest"),
+
+  getSchoolCatalog: async (generation: number) => {
+    const path = `/v1/reference/schools/catalog/v${generation}`;
+    const headers: Record<string, string> = {
+      Accept: "application/json",
+    };
+    const res = await fetch(`${API_URL}${path}`, { headers });
+    const text = await res.text();
+    if (!res.ok) {
+      let data: unknown = {};
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = { error: text };
+      }
+      const message =
+        typeof data === "object" &&
+        data &&
+        "error" in data &&
+        typeof (data as { error: unknown }).error === "string"
+          ? (data as { error: string }).error
+          : `Request failed (${res.status})`;
+      throw new ApiError(message, res.status, data);
+    }
+    return { text, etag: res.headers.get("etag") };
+  },
+
+  getSchoolShortlist: (params: {
+    country?: string;
+    pin: string;
+    locality?: string;
+    region?: string;
+  }) => {
+    const search = new URLSearchParams({ pin: params.pin });
+    if (params.country) search.set("country", params.country);
+    if (params.locality) search.set("locality", params.locality);
+    if (params.region) search.set("region", params.region);
+    return request<SchoolListItem[]>(
+      `/v1/reference/schools/shortlist?${search}`
+    );
+  },
+
+  searchSchoolsPublic: (
+    params: { q: string; limit?: number },
+    options?: { signal?: AbortSignal }
+  ) => {
+    const search = new URLSearchParams({ q: params.q });
+    if (params.limit) search.set("limit", String(params.limit));
+    return request<SchoolListItem[]>(
+      `/v1/reference/schools/search?${search}`,
+      { signal: options?.signal }
+    );
+  },
+
   getChildren: (token: string) =>
     request<Child[]>("/v1/me/children", {}, token),
 
@@ -789,7 +889,8 @@ export const api = {
       pin?: string;
       sort?: "relevance" | "rating";
       limit?: number;
-    }
+    },
+    options?: { signal?: AbortSignal }
   ) => {
     const search = new URLSearchParams({ q: params.q });
     if (params.city) search.set("city", params.city);
@@ -798,7 +899,7 @@ export const api = {
     if (params.limit) search.set("limit", String(params.limit));
     return request<SchoolListItem[]>(
       `/v1/schools/search?${search}`,
-      {},
+      { signal: options?.signal },
       token
     );
   },
@@ -833,12 +934,25 @@ export const api = {
       city: string;
       state?: string;
       pinCode?: string;
-    }
+      locality?: string;
+      confirmCreateToken?: string;
+    },
+    options?: { idempotencyKey?: string }
   ) =>
-    request<School>("/v1/schools", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }, token),
+    request<School>(
+      "/v1/schools",
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+        headers: {
+          "X-Vaara-School-Dedupe": "candidates-v1",
+          ...(options?.idempotencyKey
+            ? { "Idempotency-Key": options.idempotencyKey }
+            : {}),
+        },
+      },
+      token
+    ),
 
   addChild: (
     token: string,
@@ -849,12 +963,21 @@ export const api = {
       curriculumId: string;
       gradeId: string;
       schoolId: string;
-    }
+      onboardingAttemptId?: string;
+    },
+    options?: { idempotencyKey?: string }
   ) =>
-    request<AddChildResult>("/v1/me/children", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }, token),
+    request<AddChildResult>(
+      "/v1/me/children",
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+        headers: options?.idempotencyKey
+          ? { "Idempotency-Key": options.idempotencyKey }
+          : undefined,
+      },
+      token
+    ),
 
   deleteChild: (token: string, childId: string) =>
     request<{ ok: boolean }>(`/v1/me/children/${childId}`, {
@@ -865,9 +988,9 @@ export const api = {
     token: string,
     childId: string,
     body: {
-      nickname?: string;
+      nickname?: string | null;
       gender?: string;
-      dateOfBirth?: string;
+      dateOfBirth?: string | null;
       curriculumId?: string;
       gradeId?: string;
       schoolId?: string;

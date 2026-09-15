@@ -81,7 +81,8 @@ export default function RootLayout() {
             <Stack.Screen name="index" />
             <Stack.Screen name="(auth)" />
             <Stack.Screen name="onboarding" />
-            <Stack.Screen name="tour" options={{ headerShown: false }} />
+            {/* Orphaned /tour/* screens were removed; keep deep links from crashing. */}
+            {/* <Stack.Screen name="tour" options={{ headerShown: false }} /> */}
             <Stack.Screen name="(app)" />
             <Stack.Screen name="(provider)" />
             <Stack.Screen name="circles" options={{ headerShown: false }} />

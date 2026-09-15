@@ -12,7 +12,6 @@ const BACKOFF_MS = [
 
 export type CompletionPromptKind =
   | "missing_school"
-  | "missing_nickname"
   | "missing_area"
   | "missing_community"
   | "add_another_child";
@@ -34,11 +33,14 @@ type DismissalMap = Record<string, DismissalEntry>;
 
 const KIND_PRIORITY: CompletionPromptKind[] = [
   "missing_school",
-  "missing_nickname",
   "missing_area",
   "missing_community",
   "add_another_child",
 ];
+
+function boardGradeLabel(child: Child): string {
+  return `${child.curriculum.name} · ${child.grade.label}`;
+}
 
 /**
  * All profile gaps currently true for this parent (no dismissal filtering).
@@ -57,20 +59,7 @@ export function evaluateCompletionGaps(input: {
         kind: "missing_school",
         key: `missing_school:${child.id}`,
         childId: child.id,
-        cta: `Add school for ${child.nickname?.trim() || "your child"}`,
-      });
-    }
-  }
-
-  for (const child of children) {
-    if (!child.nickname?.trim()) {
-      candidates.push({
-        kind: "missing_nickname",
-        key: `missing_nickname:${child.id}`,
-        childId: child.id,
-        cta: child.grade?.label
-          ? `Add a private nickname for your ${child.grade.label} child`
-          : "Add a private nickname for your child",
+        cta: `Add school for ${boardGradeLabel(child)}`,
       });
     }
   }
@@ -199,17 +188,10 @@ export function hrefForCompletionPrompt(
         params: { from: "prompt" },
       };
     case "missing_school":
-    case "missing_nickname":
       if (prompt.childId) {
         return {
           pathname: "/onboarding/children/edit/[id]",
-          params: {
-            id: prompt.childId,
-            // Open on the field the prompt asked for.
-            ...(prompt.kind === "missing_nickname"
-              ? { focus: "identity" as const }
-              : {}),
-          },
+          params: { id: prompt.childId },
         };
       }
       return { pathname: "/onboarding/children" };

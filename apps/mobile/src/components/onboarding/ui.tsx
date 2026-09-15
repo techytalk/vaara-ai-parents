@@ -45,24 +45,40 @@ export function OnboardingPayoff({
   body,
   primaryIcon,
   secondaryIcon,
+  compact = false,
 }: {
   title: string;
-  body: string;
-  primaryIcon: IoniconName;
-  secondaryIcon: IoniconName;
+  body?: string;
+  primaryIcon?: IoniconName;
+  secondaryIcon?: IoniconName;
+  /** Compact chrome: no icon hero, tighter spacing (Steps 1–3). */
+  compact?: boolean;
 }) {
+  if (compact) {
+    return (
+      <View style={payoffStyles.compact}>
+        <Text style={payoffStyles.compactTitle}>{title}</Text>
+        {body ? <Text style={payoffStyles.compactBody}>{body}</Text> : null}
+      </View>
+    );
+  }
+
   return (
     <View style={payoffStyles.hero}>
-      <View style={payoffStyles.heroIcons}>
-        <View style={payoffStyles.heroIconLg}>
-          <Ionicons name={primaryIcon} size={28} color={colors.primary} />
+      {primaryIcon ? (
+        <View style={payoffStyles.heroIcons}>
+          <View style={payoffStyles.heroIconLg}>
+            <Ionicons name={primaryIcon} size={28} color={colors.primary} />
+          </View>
+          {secondaryIcon ? (
+            <View style={payoffStyles.heroIconSm}>
+              <Ionicons name={secondaryIcon} size={16} color={colors.accent} />
+            </View>
+          ) : null}
         </View>
-        <View style={payoffStyles.heroIconSm}>
-          <Ionicons name={secondaryIcon} size={16} color={colors.accent} />
-        </View>
-      </View>
+      ) : null}
       <Text style={payoffStyles.heroTitle}>{title}</Text>
-      <Text style={payoffStyles.heroBody}>{body}</Text>
+      {body ? <Text style={payoffStyles.heroBody}>{body}</Text> : null}
     </View>
   );
 }
@@ -167,13 +183,37 @@ export function Chip({
   );
 }
 
-export function DetailRow({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={detailStyles.row}>
+export function DetailRow({
+  label,
+  value,
+  onPress,
+}: {
+  label: string;
+  value: string;
+  onPress?: () => void;
+}) {
+  const content = (
+    <>
       <Text style={detailStyles.label}>{label}</Text>
-      <Text style={detailStyles.value}>{value}</Text>
-    </View>
+      <Text
+        style={[detailStyles.value, onPress ? detailStyles.valueAction : null]}
+      >
+        {value}
+      </Text>
+    </>
   );
+  if (onPress) {
+    return (
+      <Pressable
+        accessibilityRole="button"
+        onPress={onPress}
+        style={detailStyles.row}
+      >
+        {content}
+      </Pressable>
+    );
+  }
+  return <View style={detailStyles.row}>{content}</View>;
 }
 
 const headerStyles = StyleSheet.create({
@@ -207,6 +247,22 @@ const payoffStyles = StyleSheet.create({
     marginBottom: 24,
     borderWidth: 1,
     borderColor: colors.primaryLight,
+  },
+  compact: {
+    marginBottom: 16,
+  },
+  compactTitle: {
+    fontSize: 22,
+    lineHeight: 28,
+    fontWeight: "800",
+    color: colors.text,
+    letterSpacing: -0.3,
+  },
+  compactBody: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.textMuted,
+    marginTop: 6,
   },
   heroIcons: {
     flexDirection: "row",
@@ -277,7 +333,7 @@ const fieldStyles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radii.md,
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingVertical: 11,
     fontSize: 16,
     color: colors.text,
     fontFamily: typography.regular,
@@ -306,7 +362,7 @@ const btnStyles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: colors.primary,
     borderRadius: radii.md,
-    paddingVertical: 14,
+    paddingVertical: 11,
     alignItems: "center",
     marginTop: 8,
   },
@@ -340,7 +396,7 @@ const chipStyles = StyleSheet.create({
 
 const detailStyles = StyleSheet.create({
   row: {
-    paddingVertical: 14,
+    paddingVertical: 11,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
@@ -353,5 +409,9 @@ const detailStyles = StyleSheet.create({
     fontSize: 16,
     color: colors.text,
     fontWeight: "500",
+  },
+  valueAction: {
+    color: colors.primary,
+    fontWeight: "600",
   },
 });

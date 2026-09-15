@@ -20,30 +20,63 @@ import { colors, PrimaryButton, SecondaryButton } from "@/components/onboarding/
 import { radii, shadows, spacing, typography } from "@/constants/theme";
 import { trackEvent } from "@/lib/analytics";
 
+function childBoardGrade(child: Child): string {
+  return `${child.curriculum.name} · ${child.grade.label}`;
+}
+
 function ChildCard({
   child,
+  promoteNickname,
   onPress,
+  onAddNickname,
 }: {
   child: Child;
+  promoteNickname: boolean;
   onPress: () => void;
+  onAddNickname: () => void;
 }) {
+  const title = child.nickname?.trim() || childBoardGrade(child);
+  const schoolInitial =
+    child.school?.name?.trim()?.[0] ??
+    child.school?.displayLabel?.trim()?.[0] ??
+    "S";
+
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Edit ${child.nickname || "child"} profile`}
+      accessibilityLabel={title}
       onPress={onPress}
       style={({ pressed }) => [styles.childCard, pressed && styles.pressed]}
     >
       <View style={styles.childAvatar}>
         <Text style={styles.childAvatarText}>
-          {(child.nickname?.trim()?.[0] ?? "C").toUpperCase()}
+          {(child.nickname?.trim()?.[0] ?? schoolInitial).toUpperCase()}
         </Text>
       </View>
       <View style={styles.childBody}>
-        <Text style={styles.childName}>{child.nickname?.trim() || "Child"}</Text>
-        <Text style={styles.childMeta}>
-          {child.curriculum.name} · {child.grade.label}
-        </Text>
+        <Text style={styles.childName}>{title}</Text>
+        {child.nickname?.trim() ? (
+          <Text style={styles.childMeta}>{childBoardGrade(child)}</Text>
+        ) : null}
+        {!child.nickname?.trim() ? (
+          <Pressable
+            onPress={(e) => {
+              e.stopPropagation?.();
+              onAddNickname();
+            }}
+            hitSlop={8}
+          >
+            <Text
+              style={
+                promoteNickname
+                  ? styles.addNicknamePrimary
+                  : styles.addNickname
+              }
+            >
+              + Add nickname
+            </Text>
+          </Pressable>
+        ) : null}
         <Text style={styles.childSub} numberOfLines={1}>
           {GENDER_LABEL[child.gender] ?? child.gender}
           {child.dateOfBirth ? ` · Born ${formatChildDob(child.dateOfBirth)}` : ""}
@@ -115,6 +148,13 @@ export default function ChildrenListScreen() {
 
   const hasChildren = children.length > 0;
 
+  const labelCounts = new Map<string, number>();
+  for (const child of children) {
+    if (child.nickname?.trim()) continue;
+    const key = `${child.school?.id ?? ""}:${childBoardGrade(child)}`;
+    labelCounts.set(key, (labelCounts.get(key) ?? 0) + 1);
+  }
+
   return (
     // This screen hides the stack header, so it owns the top inset. The
     // onboarding layout already applies the bottom one.
@@ -164,18 +204,31 @@ export default function ChildrenListScreen() {
             <Text style={styles.listTitle}>
               {children.length} child{children.length === 1 ? "" : "ren"} added
             </Text>
-            {children.map((child) => (
-              <ChildCard
-                key={child.id}
-                child={child}
-                onPress={() =>
-                  router.push({
-                    pathname: "/onboarding/children/[id]",
-                    params: { id: child.id },
-                  })
-                }
-              />
-            ))}
+            {children.map((child) => {
+              const collideKey = `${child.school?.id ?? ""}:${childBoardGrade(child)}`;
+              const promoteNickname =
+                !child.nickname?.trim() &&
+                (labelCounts.get(collideKey) ?? 0) > 1;
+              return (
+                <ChildCard
+                  key={child.id}
+                  child={child}
+                  promoteNickname={promoteNickname}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/onboarding/children/[id]",
+                      params: { id: child.id },
+                    })
+                  }
+                  onAddNickname={() =>
+                    router.push({
+                      pathname: "/onboarding/children/edit/[id]",
+                      params: { id: child.id, focus: "identity" },
+                    })
+                  }
+                />
+              );
+            })}
           </View>
         ) : (
           <Pressable
@@ -416,6 +469,18 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontFamily: typography.regular,
     marginTop: 3,
+  },
+  addNickname: {
+    ...typography.caption,
+    color: colors.primary,
+    fontFamily: typography.semibold,
+    marginTop: 4,
+  },
+  addNicknamePrimary: {
+    ...typography.supporting,
+    color: colors.primary,
+    fontFamily: typography.bold,
+    marginTop: 4,
   },
   emptyCard: {
     alignItems: "center",

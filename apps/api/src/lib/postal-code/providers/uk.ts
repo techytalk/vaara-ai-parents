@@ -126,7 +126,7 @@ export async function lookupUkPostalCode(
   const cachedUk = cached ? finalizeUkLookup({ ...cached, countryName: "United Kingdom" }) : null;
 
   if (cachedUk && isUkCacheComplete(cachedUk)) {
-    return cachedUk;
+    return { ...cachedUk, source: "db" };
   }
 
   const [postcodesIo, zippopotam] = await Promise.all([
@@ -146,5 +146,8 @@ export async function lookupUkPostalCode(
     result.district,
     result.localities
   );
-  return result;
+  return {
+    ...result,
+    source: postcodesIo || zippopotam ? "external" : "db",
+  };
 }

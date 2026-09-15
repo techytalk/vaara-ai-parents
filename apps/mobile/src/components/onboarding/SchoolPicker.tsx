@@ -7,8 +7,19 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { api, type School, type SchoolListItem } from "@/lib/api";
+import {
+  ApiError,
+  api,
+  type School,
+  type SchoolListItem,
+} from "@/lib/api";
 import { trackEvent } from "@/lib/analytics";
+import { ensureOnboardingAttemptId } from "@/lib/onboarding-draft";
+import {
+  ensureSchoolCatalog,
+  filterLocalCatalog,
+  getSchoolShortlistCached,
+} from "@/lib/reference-cache";
 import { colors, FieldInput, FieldLabel } from "@/components/onboarding/ui";
 
 type Props = {
@@ -18,8 +29,24 @@ type Props = {
   defaultCity?: string;
   defaultPin?: string;
   defaultState?: string;
+  defaultLocality?: string;
+  defaultCountry?: string;
   onCreateModeChange?: (open: boolean) => void;
 };
+
+function toSchool(item: SchoolListItem): School {
+  return {
+    id: item.id,
+    name: item.name,
+    branch: item.branch,
+    city: item.city,
+    state: item.state,
+    pinCode: item.pinCode,
+    verified: item.verified,
+    displayLabel: item.displayLabel,
+    boardCodes: item.boardCodes,
+  };
+}
 
 export function SchoolPicker({
   token,
@@ -28,14 +55,21 @@ export function SchoolPicker({
   defaultCity = "",
   defaultPin = "",
   defaultState = "",
+  defaultLocality = "",
+  defaultCountry = "IN",
   onCreateModeChange,
 }: Props) {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<School[]>([]);
-  const [suggestions, setSuggestions] = useState<SchoolListItem[]>([]);
+  const [results, setResults] = useState<SchoolListItem[]>([]);
+  const [shortlist, setShortlist] = useState<SchoolListItem[]>([]);
   const [searching, setSearching] = useState(false);
-  const [loadingNearby, setLoadingNearby] = useState(false);
+  const [shortlistReady, setShortlistReady] = useState(false);
+  const [searchSettled, setSearchSettled] = useState(false);
   const [showAddNew, setShowAddNew] = useState(false);
+  const [candidates, setCandidates] = useState<School[]>([]);
+  const [confirmationToken, setConfirmationToken] = useState<string | null>(
+    null
+  );
   const [addName, setAddName] = useState("");
   const [addBranch, setAddBranch] = useState("");
   const [addCity, setAddCity] = useState(defaultCity);
@@ -44,6 +78,8 @@ export function SchoolPicker({
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
     setAddCity(defaultCity);
@@ -62,114 +98,122 @@ export function SchoolPicker({
     }
   }, [selected?.id]);
 
-  // Nearby suggestions when the field is empty (browse, not search).
+  // Prefetch shortlist + catalogue
   useEffect(() => {
-    if (selected) {
-      setSuggestions([]);
-      return;
-    }
-    const q = query.trim();
-    if (q.length > 0) {
-      setSuggestions([]);
-      return;
-    }
-
     let cancelled = false;
-    setLoadingNearby(true);
-    api
-      .getNearbySchools(token, {
-        city: defaultCity || undefined,
-        pin: defaultPin || undefined,
-        limit: 5,
-      })
-      .then((list) => {
-        if (!cancelled) setSuggestions(list);
-      })
-      .catch(() => {
-        if (!cancelled) setSuggestions([]);
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingNearby(false);
-      });
-
+    setShortlistReady(false);
+    Promise.all([
+      getSchoolShortlistCached({
+        country: defaultCountry,
+        pin: defaultPin,
+        locality: defaultLocality || undefined,
+      }).catch(() => [] as SchoolListItem[]),
+      ensureSchoolCatalog().catch(() => null),
+    ]).then(([list]) => {
+      if (cancelled) return;
+      setShortlist(list);
+      setShortlistReady(true);
+      // Re-run local filter if the user already typed while catalogue loaded.
+      const q = query.trim();
+      if (q.length > 0 && q.length < 3) {
+        setResults(filterLocalCatalog(q, 20));
+        setSearchSettled(true);
+      }
+    });
     return () => {
       cancelled = true;
     };
-  }, [selected, query, token, defaultCity, defaultPin]);
+  }, [defaultCountry, defaultPin, defaultLocality]);
 
+  // Typed search: local first, remote after 3 chars with abort
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    abortRef.current?.abort();
 
     const q = query.trim();
     if (selected && q === selected.displayLabel) {
+      setResults([]);
+      setSearchSettled(false);
       return;
     }
-    if (q.length < 2) {
+    if (q.length === 0) {
       setResults([]);
+      setSearching(false);
+      setSearchSettled(false);
+      return;
+    }
+
+    setSearchSettled(false);
+    const local = filterLocalCatalog(q, 20);
+    setResults(local);
+    trackEvent("school_query", {
+      ms: 0,
+      source: "local",
+      results: local.length,
+    });
+
+    if (q.length < 3) {
+      setSearching(false);
+      setSearchSettled(true);
       return;
     }
 
     debounceRef.current = setTimeout(async () => {
+      const requestId = ++requestIdRef.current;
+      const controller = new AbortController();
+      abortRef.current = controller;
       setSearching(true);
+      setSearchSettled(false);
       setError(null);
+      const started = Date.now();
       try {
-        const list = await api.searchSchools(token, {
-          q,
-          city: defaultCity || undefined,
-          pin: defaultPin || undefined,
+        const remote = await api.searchSchoolsPublic(
+          { q, limit: 20 },
+          { signal: controller.signal }
+        );
+        if (requestId !== requestIdRef.current) return;
+        const byId = new Map<string, SchoolListItem>();
+        for (const item of filterLocalCatalog(q, 20)) byId.set(item.id, item);
+        for (const item of remote) byId.set(item.id, item);
+        const merged = Array.from(byId.values());
+        setResults(merged);
+        trackEvent("school_query", {
+          ms: Date.now() - started,
+          source: "remote",
+          results: merged.length,
         });
-        setResults(list);
-        if (q.length >= 3 && list.length === 0) {
-          trackEvent("school_search_no_results", { query_length: q.length });
+        if (merged.length === 0) {
+          trackEvent("school_search_no_results");
         }
       } catch (e) {
+        if (controller.signal.aborted) return;
+        if (requestId !== requestIdRef.current) return;
+        // Keep local results visible on remote failure.
         setError(e instanceof Error ? e.message : "Search failed");
       } finally {
-        setSearching(false);
+        if (requestId === requestIdRef.current) {
+          setSearching(false);
+          setSearchSettled(true);
+        }
       }
-    }, 300);
+    }, 280);
 
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [query, token, defaultCity, defaultPin, selected]);
-
-  function onChangeQuery(text: string) {
-    setQuery(text);
-    if (selected && text !== selected.displayLabel) {
-      onSelect(null);
-    }
-    setShowAddNew(false);
-  }
-
-  function selectSchool(school: School, fromSuggestion: boolean) {
-    if (fromSuggestion) {
-      trackEvent("school_suggestion_tapped");
-    }
-    onSelect(school);
-    setQuery(school.displayLabel);
-    setResults([]);
-    setSuggestions([]);
-  }
+  }, [query, selected?.id, selected?.displayLabel]);
 
   function openCreateForm() {
     trackEvent("school_create_opened");
     setShowAddNew(true);
-    setError(null);
     setAddName(query.trim());
-    setAddCity(defaultCity);
-    setAddState(defaultState);
-    setAddPin(defaultPin);
+    setCandidates([]);
+    setConfirmationToken(null);
   }
 
-  function closeCreateForm() {
-    setShowAddNew(false);
-    setError(null);
-  }
-
-  async function onCreateSchool() {
-    const name = addName.trim() || query.trim();
-    const city = addCity.trim();
+  async function createSchool(confirmToken?: string | null) {
+    const name = addName.trim();
+    const city = addCity.trim() || defaultCity;
     if (!name || !city) {
       setError("School name and city are required");
       return;
@@ -177,107 +221,144 @@ export function SchoolPicker({
     setCreating(true);
     setError(null);
     try {
-      const school = await api.createSchool(token, {
-        name,
-        branch: addBranch.trim() || undefined,
-        city,
-        state: addState.trim() || undefined,
-        pinCode: addPin.trim() || undefined,
-      });
+      const school = await api.createSchool(
+        token,
+        {
+          name,
+          branch: addBranch.trim() || undefined,
+          city,
+          state: addState.trim() || defaultState || undefined,
+          pinCode: addPin.trim() || defaultPin || undefined,
+          locality: defaultLocality || addBranch.trim() || undefined,
+          ...(confirmToken ? { confirmCreateToken: confirmToken } : {}),
+        },
+        {
+          // Only send idempotency on the final confirmed create path.
+          idempotencyKey: confirmToken
+            ? `${ensureOnboardingAttemptId()}:school:${name}:${city}`
+            : undefined,
+        }
+      );
       trackEvent("school_created");
+      trackEvent("school_selected", { source: "created" });
       onSelect(school);
-      setQuery(school.displayLabel);
       setShowAddNew(false);
+      setCandidates([]);
+      setConfirmationToken(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to add school");
+      if (
+        e instanceof ApiError &&
+        e.status === 409 &&
+        e.data &&
+        typeof e.data === "object" &&
+        Array.isArray((e.data as { candidates?: unknown }).candidates)
+      ) {
+        const payload = e.data as {
+          candidates: School[];
+          confirmationToken?: string;
+        };
+        setCandidates(payload.candidates);
+        setConfirmationToken(payload.confirmationToken ?? null);
+        trackEvent("school_create_shown_candidates", {
+          size: payload.candidates.length,
+        });
+        setError("Did you mean one of these schools?");
+      } else {
+        setError(e instanceof Error ? e.message : "Could not create school");
+      }
     } finally {
       setCreating(false);
     }
   }
 
-  const canShowResults = query.trim().length >= 2 && !selected;
-  const canOfferCreate = canShowResults && !searching;
-  const showNearbyPanel =
-    !selected && query.trim().length === 0 && !loadingNearby;
-  const showSuggestions = showNearbyPanel && suggestions.length > 0;
+  const showShortlist =
+    !selected && query.trim().length === 0 && !showAddNew;
+  const showSearchResults =
+    !selected && query.trim().length > 0 && !showAddNew;
+  const showOther =
+    showSearchResults && searchSettled && !searching;
 
   return (
     <View style={styles.wrap}>
-      <FieldLabel>School *</FieldLabel>
       <TextInput
         style={styles.input}
-        placeholder="Search by school name…"
-        placeholderTextColor="#94a3b8"
+        placeholder="Search school name"
+        placeholderTextColor={colors.textSubtle}
         value={query}
-        onChangeText={onChangeQuery}
+        onChangeText={(text) => {
+          if (selected) onSelect(null);
+          setQuery(text);
+        }}
         autoCorrect={false}
+        autoCapitalize="words"
       />
       <Text style={styles.hint}>
-        Search by name anywhere, or pick a school near you below.
+        Tap a school from the list, or type to search.
       </Text>
 
-      {searching || loadingNearby ? (
+      {searching ? (
         <ActivityIndicator style={styles.loader} color={colors.primary} />
       ) : null}
 
-      {showNearbyPanel && !showAddNew ? (
+      {showShortlist ? (
         <View style={styles.dropdown}>
-          {showSuggestions ? (
+          {shortlistReady ? (
             <>
-              <Text style={styles.suggestHeader}>Schools near you</Text>
-              {suggestions.map((school) => (
+              <Text style={styles.suggestHeader}>Suggested schools</Text>
+              {shortlist.map((school, index) => (
                 <Pressable
                   key={school.id}
                   style={styles.resultRow}
-                  onPress={() => selectSchool(school, true)}
+                  onPress={() => {
+                    trackEvent("shortlist_tapped", { rank: index + 1 });
+                    trackEvent("school_selected", { source: "shortlist" });
+                    onSelect(toSchool(school));
+                  }}
                 >
                   <Text style={styles.resultTitle}>{school.name}</Text>
                   <Text style={styles.resultMeta}>
                     {[school.branch, school.city].filter(Boolean).join(" · ")}
+                    {!school.verified ? " · Pending review" : ""}
                   </Text>
                 </Pressable>
               ))}
+              {shortlist.length === 0 ? (
+                <Text style={styles.suggestEmpty}>
+                  No suggestions yet — type your school name.
+                </Text>
+              ) : null}
             </>
           ) : (
-            <Text style={styles.suggestEmpty}>
-              No schools listed near you yet — add yours below.
-            </Text>
+            <Text style={styles.suggestEmpty}>Loading suggestions…</Text>
           )}
-          <Pressable
-            style={styles.otherRow}
-            onPress={openCreateForm}
-            accessibilityRole="button"
-            accessibilityLabel="School not listed — enter details"
-          >
-            <Text style={styles.otherTitle}>Not here / Other</Text>
-            <Text style={styles.otherMeta}>
-              Enter your school name and details
-            </Text>
-          </Pressable>
         </View>
       ) : null}
 
-      {canShowResults && results.length > 0 ? (
+      {showSearchResults ? (
         <View style={styles.dropdown}>
           {results.map((school) => (
             <Pressable
               key={school.id}
               style={styles.resultRow}
-              onPress={() => selectSchool(school, false)}
+              onPress={() => {
+                trackEvent("school_selected", { source: "search" });
+                onSelect(toSchool(school));
+              }}
             >
               <Text style={styles.resultTitle}>{school.name}</Text>
               <Text style={styles.resultMeta}>
                 {[school.branch, school.city].filter(Boolean).join(" · ")}
+                {!school.verified ? " · Pending review" : ""}
               </Text>
             </Pressable>
           ))}
+          {showOther ? (
+            <Pressable style={styles.otherRow} onPress={openCreateForm}>
+              <Text style={styles.otherTitle}>Not here / Other</Text>
+              <Text style={styles.otherMeta}>Add your school</Text>
+            </Pressable>
+          ) : null}
         </View>
-      ) : null}
-
-      {canOfferCreate ? (
-        <Pressable style={styles.addNewRow} onPress={openCreateForm}>
-          <Text style={styles.addNewText}>Can&apos;t find your school?</Text>
-        </Pressable>
       ) : null}
 
       {showAddNew ? (
@@ -285,81 +366,116 @@ export function SchoolPicker({
           <View style={styles.addFormHeader}>
             <Text style={styles.addFormTitle}>New school details</Text>
             <Pressable
-              onPress={closeCreateForm}
-              accessibilityRole="button"
-              accessibilityLabel="Back to school list"
+              onPress={() => {
+                setShowAddNew(false);
+                setCandidates([]);
+              }}
             >
               <Text style={styles.backToList}>Back to list</Text>
             </Pressable>
           </View>
           <Text style={styles.addFormHint}>
-            School name is required. City is filled from your PIN — you can
-            change it. Branch, state, and pin are optional.
+            We&apos;ll check for a close match before creating a new entry.
           </Text>
-          <FieldInput
-            label="School name *"
-            value={addName}
-            onChangeText={setAddName}
-          />
-          <FieldInput
-            label="Branch / area (optional)"
-            placeholder="e.g. Koramangala, Whitefield"
-            value={addBranch}
-            onChangeText={setAddBranch}
-          />
-          <FieldInput
-            label="City *"
-            value={addCity}
-            onChangeText={setAddCity}
-          />
-          <FieldInput
-            label="State (optional)"
-            value={addState}
-            onChangeText={setAddState}
-          />
-          <FieldInput
-            label="Pin code (optional)"
-            keyboardType="number-pad"
-            value={addPin}
-            onChangeText={setAddPin}
-          />
-          <Pressable
-            style={styles.createBtn}
-            onPress={onCreateSchool}
-            disabled={creating}
-          >
-            {creating ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.createBtnText}>Save school & select</Text>
-            )}
-          </Pressable>
-          <Pressable
-            style={styles.backFormBtn}
-            onPress={closeCreateForm}
-            disabled={creating}
-            accessibilityRole="button"
-          >
-            <Text style={styles.backFormBtnText}>Back to school list</Text>
-          </Pressable>
+
+          {candidates.length > 0 ? (
+            <View style={styles.candidateBlock}>
+              <Text style={styles.suggestHeader}>Did you mean?</Text>
+              {candidates.map((school) => (
+                <Pressable
+                  key={school.id}
+                  style={styles.resultRow}
+                  onPress={() => {
+                    trackEvent("school_selected", { source: "candidate" });
+                    onSelect(school);
+                    setShowAddNew(false);
+                    setCandidates([]);
+                  }}
+                >
+                  <Text style={styles.resultTitle}>{school.name}</Text>
+                  <Text style={styles.resultMeta}>
+                    {school.displayLabel}
+                    {!school.verified ? " · Pending review" : ""}
+                  </Text>
+                </Pressable>
+              ))}
+              <Pressable
+                style={styles.createBtn}
+                onPress={() => createSchool(confirmationToken)}
+                disabled={creating || !confirmationToken}
+              >
+                {creating ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.createBtnText}>
+                    None of these — create new
+                  </Text>
+                )}
+              </Pressable>
+            </View>
+          ) : (
+            <>
+              <FieldInput
+                label="School name *"
+                value={addName}
+                onChangeText={setAddName}
+              />
+              <FieldInput
+                label="Branch / campus"
+                value={addBranch}
+                onChangeText={setAddBranch}
+                placeholder="e.g. Kollur"
+              />
+              <FieldInput
+                label="City *"
+                value={addCity}
+                onChangeText={setAddCity}
+              />
+              <FieldInput
+                label="State"
+                value={addState}
+                onChangeText={setAddState}
+              />
+              <FieldInput
+                label="PIN"
+                value={addPin}
+                onChangeText={setAddPin}
+                keyboardType="number-pad"
+              />
+              <Pressable
+                style={styles.createBtn}
+                onPress={() => createSchool(null)}
+                disabled={creating}
+              >
+                {creating ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.createBtnText}>Save school & select</Text>
+                )}
+              </Pressable>
+            </>
+          )}
         </View>
       ) : null}
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
+      {selected ? (
+        <Text style={styles.selected}>Selected: {selected.displayLabel}</Text>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { marginBottom: 8 },
+  wrap: { marginBottom: 12 },
   input: {
-    backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     fontSize: 16,
+    backgroundColor: colors.card,
     color: colors.text,
   },
   hint: {
@@ -370,10 +486,10 @@ const styles = StyleSheet.create({
   },
   loader: { marginVertical: 8 },
   dropdown: {
-    backgroundColor: colors.card,
-    borderRadius: 14,
     borderWidth: 1,
     borderColor: colors.border,
+    borderRadius: 12,
+    backgroundColor: colors.card,
     marginBottom: 8,
     overflow: "hidden",
   },
@@ -381,114 +497,68 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
     color: colors.textMuted,
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
-    paddingHorizontal: 16,
-    paddingTop: 12,
+    paddingHorizontal: 14,
+    paddingTop: 10,
     paddingBottom: 4,
+    textTransform: "uppercase",
   },
   suggestEmpty: {
     fontSize: 13,
     color: colors.textMuted,
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 8,
-    lineHeight: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
   },
   resultRow: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
   },
+  resultTitle: { fontSize: 15, fontWeight: "600", color: colors.text },
+  resultMeta: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
   otherRow: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
     backgroundColor: colors.primarySoft,
   },
-  otherTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: colors.primaryDark,
-  },
-  otherMeta: {
-    fontSize: 13,
-    color: colors.textMuted,
-    marginTop: 2,
-  },
-  resultTitle: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: colors.text,
-  },
-  resultMeta: {
-    fontSize: 13,
-    color: colors.textMuted,
-    marginTop: 2,
-  },
-  addNewRow: {
-    padding: 14,
-    backgroundColor: colors.primaryLight,
-    borderRadius: 12,
-    marginBottom: 8,
-  },
-  addNewText: {
-    color: colors.primary,
-    fontWeight: "600",
-    fontSize: 14,
-  },
+  otherTitle: { fontSize: 15, fontWeight: "700", color: colors.primary },
+  otherMeta: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
   addForm: {
-    backgroundColor: colors.card,
-    borderRadius: 14,
-    padding: 16,
     borderWidth: 1,
     borderColor: colors.border,
-    marginBottom: 8,
+    borderRadius: 12,
+    padding: 12,
+    backgroundColor: colors.card,
   },
   addFormHeader: {
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
-    gap: 12,
-    marginBottom: 8,
+    alignItems: "center",
+    marginBottom: 6,
   },
-  addFormTitle: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: "600",
-    color: colors.text,
-  },
-  backToList: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: colors.primary,
-  },
+  addFormTitle: { fontSize: 16, fontWeight: "700", color: colors.text },
+  backToList: { fontSize: 13, color: colors.primary, fontWeight: "600" },
   addFormHint: {
     fontSize: 13,
-    lineHeight: 18,
     color: colors.textMuted,
-    marginBottom: 12,
+    marginBottom: 10,
   },
-  backFormBtn: {
-    borderWidth: 1.5,
-    borderColor: colors.primary,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: "center",
-    marginTop: 8,
-  },
-  backFormBtnText: {
-    color: colors.primary,
-    fontWeight: "600",
-    fontSize: 15,
-  },
+  candidateBlock: { marginBottom: 8 },
   createBtn: {
     backgroundColor: colors.primary,
     borderRadius: 12,
-    paddingVertical: 14,
+    paddingVertical: 12,
     alignItems: "center",
-    marginTop: 4,
+    marginTop: 8,
   },
-  createBtnText: { color: "#fff", fontWeight: "600", fontSize: 15 },
-  error: { color: colors.error, fontSize: 13, marginTop: 4 },
+  createBtnText: { color: "#fff", fontWeight: "700", fontSize: 15 },
+  error: { color: colors.error, marginTop: 8 },
+  selected: {
+    marginTop: 8,
+    fontSize: 14,
+    color: colors.primaryDark,
+    fontWeight: "600",
+  },
 });

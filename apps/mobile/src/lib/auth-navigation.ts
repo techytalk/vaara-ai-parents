@@ -3,6 +3,11 @@ import type { Router } from "expo-router";
 import { api, type AuthResponse, type AuthUser } from "@/lib/api";
 import { getToken } from "@/lib/session";
 import {
+  getOnboardingClassSelection,
+  getOnboardingLocation,
+  getOnboardingSchool,
+  getOnboardingStep,
+  hydrateOnboardingDraft,
   setOnboardingChildren,
   setOnboardingLocation,
   setOnboardingUser,
@@ -11,20 +16,41 @@ import {
 export type ParentOnboardingHref =
   | "/onboarding/location"
   | "/onboarding/school"
+  | "/onboarding/class"
   | "/onboarding/ready";
 
 export async function resolveParentOnboardingHref(
   token: string
 ): Promise<ParentOnboardingHref> {
+  await hydrateOnboardingDraft();
+
   const [loc, kids] = await Promise.all([
     api.getLocation(token).catch(() => null),
     api.getChildren(token).catch(() => [] as Awaited<ReturnType<typeof api.getChildren>>),
   ]);
-  setOnboardingLocation(loc, { loaded: true });
+
+  const drafted = getOnboardingLocation();
+  const location = loc ?? drafted.location;
+  setOnboardingLocation(location, { loaded: true });
   setOnboardingChildren(kids);
-  if (!loc) return "/onboarding/location";
-  if (kids.length === 0) return "/onboarding/school";
-  return "/onboarding/ready";
+
+  if (kids.length > 0) return "/onboarding/ready";
+  if (!location) return "/onboarding/location";
+
+  const school = getOnboardingSchool();
+  const klass = getOnboardingClassSelection();
+  const step = getOnboardingStep();
+
+  if (school?.id && klass.curriculumId && klass.gradeId) {
+    return "/onboarding/class";
+  }
+  if (school?.id || step === "class") {
+    return "/onboarding/class";
+  }
+  if (step === "school" || location) {
+    return "/onboarding/school";
+  }
+  return "/onboarding/location";
 }
 
 /** Brand-new parents have no location or children yet — skip the probe round trips. */

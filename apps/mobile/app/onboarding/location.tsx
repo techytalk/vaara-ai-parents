@@ -17,8 +17,12 @@ import { invalidateFamilyMeta } from "@/lib/authenticated-state";
 import { getToken, getStoredUser, saveSession } from "@/lib/session";
 import {
   getOnboardingLocation,
+  hydrateOnboardingDraft,
   setOnboardingLocation,
+  setOnboardingStep,
+  ensureOnboardingAttemptId,
 } from "@/lib/onboarding-draft";
+import { prefetchSchoolsForLocation } from "@/lib/reference-cache";
 import { getPostalCountriesCached } from "@/lib/reference-cache";
 import {
   Chip,
@@ -92,7 +96,11 @@ export default function LocationScreen() {
       getPostalCountriesCached().catch(() => [] as PostalCountry[]),
       getToken(),
       getStoredUser(),
+      hydrateOnboardingDraft(),
     ]).then(async ([countryList, token, stored]) => {
+      ensureOnboardingAttemptId();
+      setOnboardingStep("location");
+      trackEvent("location_screen_view");
       setCountries(countryList);
       setAlreadyComplete(Boolean(stored?.onboardingComplete));
       if (!token) {
@@ -147,14 +155,19 @@ export default function LocationScreen() {
     const timer = setTimeout(async () => {
       setLookupLoading(true);
       setLookupError(null);
+      const started = Date.now();
       try {
         const lookup = await api.lookupPostalCode(countryCode, postal);
         if (requestId !== lookupRequestRef.current) return;
 
+        trackEvent("pin_lookup", {
+          ms: Date.now() - started,
+          source: lookup.source ?? "ok",
+        });
         setCity(lookup.city);
         setState(lookup.state);
         setLocalityOptions(lookup.localities.map((item) => item.name));
-        setCommunitySuggestions(lookup.communities);
+        setCommunitySuggestions(lookup.communities ?? []);
         setLocality((current) => {
           if (lookup.localities.length === 1) {
             return lookup.localities[0].name;
@@ -165,10 +178,31 @@ export default function LocationScreen() {
           ) {
             return current;
           }
-          return "";
+          return current;
         });
+
+        if (alreadyComplete) {
+          const token = await getToken();
+          if (token) {
+            api
+              .getCommunitySuggestions(token, {
+                country: countryCode,
+                pin: postal,
+              })
+              .then((res) => {
+                if (requestId === lookupRequestRef.current) {
+                  setCommunitySuggestions(res.communities);
+                }
+              })
+              .catch(() => undefined);
+          }
+        }
       } catch (e) {
         if (requestId !== lookupRequestRef.current) return;
+        trackEvent("pin_lookup", {
+          ms: Date.now() - started,
+          error: "1",
+        });
         setLocalityOptions([]);
         setCommunitySuggestions([]);
         setLookupError(
@@ -273,6 +307,11 @@ export default function LocationScreen() {
       }
 
       trackEvent("onboarding_location_complete");
+      void prefetchSchoolsForLocation({
+        country: countryCode,
+        pin: postal,
+        locality: locality.trim() || undefined,
+      });
       router.replace("/onboarding/school" as never);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save location");
@@ -308,13 +347,10 @@ export default function LocationScreen() {
       )}
 
       <OnboardingPayoff
-        primaryIcon="people"
-        secondaryIcon="home"
-        title="Connect with parents in your neighbourhood"
+        compact
+        title="Where do you live?"
         body="We use your PIN to find nearby parents — never your street address."
       />
-
-      <Text style={styles.formTitle}>Where do you live?</Text>
 
       <FieldLabel>Country</FieldLabel>
       <Pressable
@@ -386,7 +422,10 @@ export default function LocationScreen() {
                     key={option}
                     label={option}
                     selected={locality === option}
-                    onPress={() => setLocality(option)}
+                    onPress={() => {
+                      setLocality(option);
+                      trackEvent("area_selected", { source: "chip" });
+                    }}
                   />
                 ))}
               </View>
@@ -407,22 +446,33 @@ export default function LocationScreen() {
               value={
                 localityOptions.includes(locality) ? "" : locality
               }
-              onChangeText={setLocality}
+              onChangeText={(v) => {
+                setLocality(v);
+                if (v.trim()) trackEvent("area_selected", { source: "typed" });
+              }}
             />
           ) : null}
 
-          <FieldInput
-            label="City"
-            placeholder="e.g. Bengaluru"
-            value={city}
-            onChangeText={setCity}
-          />
-          <FieldInput
-            label={countryCode === "US" ? "State" : "State / region"}
-            placeholder={countryCode === "US" ? "e.g. California" : "e.g. Karnataka"}
-            value={state}
-            onChangeText={setState}
-          />
+          {city && state && !lookupError ? (
+            <Text style={styles.resolvedLine}>
+              {city} · {state}
+            </Text>
+          ) : (
+            <>
+              <FieldInput
+                label="City"
+                placeholder="e.g. Bengaluru"
+                value={city}
+                onChangeText={setCity}
+              />
+              <FieldInput
+                label={countryCode === "US" ? "State" : "State / region"}
+                placeholder={countryCode === "US" ? "e.g. California" : "e.g. Karnataka"}
+                value={state}
+                onChangeText={setState}
+              />
+            </>
+          )}
         </View>
       ) : null}
 
@@ -460,14 +510,20 @@ export default function LocationScreen() {
       ) : null}
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
-
-      {canContinue ? (
-        <PrimaryButton
-          label={alreadyComplete ? "Save location" : "Continue"}
-          onPress={onFinish}
-          loading={loading}
-        />
+      {!canContinue ? (
+        <Text style={styles.pinHint}>
+          {!pinReady
+            ? `Enter your ${(selectedCountry?.postalLabel ?? "postal code").toLowerCase()} and area to continue.`
+            : "Select or type your locality / area to continue."}
+        </Text>
       ) : null}
+
+      <PrimaryButton
+        label={alreadyComplete ? "Save location" : "Continue"}
+        onPress={onFinish}
+        loading={loading}
+        disabled={!canContinue}
+      />
 
       {alreadyComplete ? null : <SignOutButton />}
 
@@ -530,6 +586,12 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: colors.text,
     marginBottom: 16,
+  },
+  resolvedLine: {
+    fontSize: 14,
+    color: colors.textMuted,
+    marginBottom: 12,
+    marginTop: 4,
   },
   dropdown: {
     backgroundColor: colors.card,

@@ -13,7 +13,18 @@ import {
   mapSchoolListRow,
   mapSchoolRow,
 } from "../lib/school.js";
+import {
+  getIdempotentResponse,
+  reserveIdempotencyKey,
+  storeIdempotentResponse,
+} from "../lib/idempotency.js";
+import {
+  issueSchoolCreateConfirmToken,
+  verifySchoolCreateConfirmToken,
+} from "../lib/school-create-confirm.js";
+import { schoolVisiblePredicate, schoolNotRedirected } from "../lib/school-visibility.js";
 import { authMiddleware, type AuthVariables } from "../middleware/auth.js";
+import { rateLimitMiddleware } from "../middleware/rate-limit.js";
 import {
   createCrossPosts,
   dispatchCrossPostsCreated,
@@ -22,6 +33,8 @@ import {
 import { syncCircleMembership } from "../services/circle-sync.js";
 
 const PLACEHOLDER_SCHOOL_KEY = "school_not_specified||unknown";
+const SCHOOL_DEDUPE_HEADER = "x-vaara-school-dedupe";
+const SCHOOL_DEDUPE_CAPABILITY = "candidates-v1";
 
 async function refreshSchoolRating(client: PoolClient, schoolId: string) {
   const { rows } = await client.query(
@@ -84,6 +97,7 @@ export function createSchoolsRoutes() {
   app.use("*", authMiddleware);
 
   app.get("/search", async (c) => {
+    const userId = c.get("user").sub;
     const q = c.req.query("q")?.trim() ?? "";
     const city = c.req.query("city")?.trim();
     const pin = c.req.query("pin")?.trim();
@@ -94,45 +108,59 @@ export function createSchoolsRoutes() {
       return c.json([]);
     }
 
+    const started = Date.now();
     const client = await pool.connect();
     try {
       const pattern = `%${q}%`;
       const prefix = `${q}%`;
+      const visible = schoolVisiblePredicate(7);
+      const notRedirected = schoolNotRedirected("s");
 
       const locationRank = `CASE
-             WHEN $5::text IS NOT NULL AND pin_code = $5 THEN 0
-             WHEN $4::text IS NOT NULL AND city ILIKE $4 THEN 1
+             WHEN $5::text IS NOT NULL AND s.pin_code = $5 THEN 0
+             WHEN $4::text IS NOT NULL AND s.city ILIKE $4 THEN 1
              ELSE 2
            END`;
       const orderBy =
         sort === "rating"
           ? `${locationRank},
-             verified DESC,
-             CASE WHEN rating_count >= 3 THEN rating_avg END DESC NULLS LAST,
-             rating_count DESC, rank_bucket, sm DESC, name`
+             s.verified DESC,
+             CASE WHEN s.rating_count >= 3 THEN s.rating_avg END DESC NULLS LAST,
+             s.rating_count DESC, rank_bucket, sm DESC, s.name`
           : `rank_bucket, sm DESC,
-             ${locationRank}, verified DESC, name`;
+             ${locationRank}, s.verified DESC, s.name`;
       const { rows } = await client.query(
-        `SELECT id, name, branch, city, state, pin_code, verified,
-                rating_avg, rating_count, board_codes,
+        `SELECT s.id, s.name, s.branch, s.city, s.state, s.pin_code, s.verified,
+                s.rating_avg, s.rating_count, s.board_codes, s.locality, s.region, s.aliases,
                 CASE
-                  WHEN name ILIKE $2 THEN 0
-                  WHEN branch ILIKE $2 THEN 1
-                  WHEN name ILIKE $1 THEN 2
+                  WHEN s.name ILIKE $2 THEN 0
+                  WHEN s.search_text ILIKE $2 THEN 1
+                  WHEN s.search_text ILIKE $1 THEN 2
                   ELSE 3
                 END AS rank_bucket,
-                similarity(coalesce(name, '') || ' ' || coalesce(branch, ''), $3) AS sm
-         FROM schools
-         WHERE normalized_key <> 'school_not_specified||unknown'
+                similarity(s.search_text, $3) AS sm
+         FROM schools s
+         WHERE s.normalized_key <> 'school_not_specified||unknown'
+           AND ${notRedirected}
+           AND ${visible}
            AND (
-             name ILIKE $1 OR branch ILIKE $1 OR city ILIKE $1
-             OR name % $3 OR branch % $3
+             s.search_text ILIKE $1
+             OR s.search_text % $3
            )
          ORDER BY ${orderBy}
          LIMIT $6`,
-        [pattern, prefix, q, city ?? null, pin ?? null, limit]
+        [pattern, prefix, q.toLowerCase(), city ?? null, pin ?? null, limit, userId]
       );
 
+      console.log(
+        JSON.stringify({
+          event: "school_search",
+          source: "authenticated",
+          ms: Date.now() - started,
+          results: rows.length,
+          qLen: q.length,
+        })
+      );
       return c.json(rows.map(mapSchoolListRow));
     } finally {
       client.release();
@@ -188,25 +216,27 @@ export function createSchoolsRoutes() {
 
       const ratingOrder =
         sort === "rating"
-          ? `CASE WHEN rating_count >= 3 THEN rating_avg END DESC NULLS LAST,
-             rating_count DESC, verified DESC, name`
-          : `verified DESC,
-             CASE WHEN rating_count >= 3 THEN rating_avg END DESC NULLS LAST,
-             name`;
+          ? `CASE WHEN s.rating_count >= 3 THEN s.rating_avg END DESC NULLS LAST,
+             s.rating_count DESC, s.verified DESC, s.name`
+          : `s.verified DESC,
+             CASE WHEN s.rating_count >= 3 THEN s.rating_avg END DESC NULLS LAST,
+             s.name`;
       const { rows } = await client.query(
-        `SELECT id, name, branch, city, state, pin_code, verified,
-                rating_avg, rating_count, board_codes
-         FROM schools
-         WHERE normalized_key <> $1
+        `SELECT s.id, s.name, s.branch, s.city, s.state, s.pin_code, s.verified,
+                s.rating_avg, s.rating_count, s.board_codes, s.locality, s.region, s.aliases
+         FROM schools s
+         WHERE s.normalized_key <> $1
+           AND s.redirect_to_school_id IS NULL
+           AND (s.verified = true OR s.created_by_user_id = $5)
            AND (
-             ($2::text IS NOT NULL AND pin_code = $2)
-             OR ($3::text IS NOT NULL AND city ILIKE $3)
+             ($2::text IS NOT NULL AND s.pin_code = $2)
+             OR ($3::text IS NOT NULL AND s.city ILIKE $3)
            )
          ORDER BY
-           CASE WHEN pin_code = $2 THEN 0 ELSE 1 END,
+           CASE WHEN s.pin_code = $2 THEN 0 ELSE 1 END,
            ${ratingOrder}
          LIMIT $4`,
-        [PLACEHOLDER_SCHOOL_KEY, pin ?? null, city ?? null, limit]
+        [PLACEHOLDER_SCHOOL_KEY, pin ?? null, city ?? null, limit, userId]
       );
 
       return c.json(rows.map(mapSchoolListRow));
@@ -311,50 +341,236 @@ export function createSchoolsRoutes() {
     }
   });
 
-  app.post("/", async (c) => {
-    const userId = c.get("user").sub;
-    const body = await c.req.json<{
-      name?: string;
-      branch?: string;
-      city?: string;
-      state?: string;
-      pinCode?: string;
-    }>();
+  app.post(
+    "/",
+    rateLimitMiddleware({
+      prefix: "school-create",
+      limit: 10,
+      windowSeconds: 3600,
+    }),
+    async (c) => {
+      const userId = c.get("user").sub;
+      const capability = c.req.header(SCHOOL_DEDUPE_HEADER)?.trim();
+      const wantsCandidates = capability === SCHOOL_DEDUPE_CAPABILITY;
+      const idempotencyKey =
+        c.req.header("Idempotency-Key")?.trim() ||
+        c.req.header("idempotency-key")?.trim() ||
+        null;
 
-    const name = body.name?.trim();
-    const branch = body.branch?.trim() || null;
-    const city = body.city?.trim();
-    const state = body.state?.trim() || null;
-    const pinCode = body.pinCode?.trim() || null;
+      const body = await c.req.json<{
+        name?: string;
+        branch?: string;
+        city?: string;
+        state?: string;
+        pinCode?: string;
+        locality?: string;
+        confirmCreateToken?: string;
+      }>();
 
-    if (!name || !city) {
-      return c.json({ error: "name and city are required" }, 400);
-    }
+      const name = body.name?.trim();
+      const branch = body.branch?.trim() || null;
+      const city = body.city?.trim();
+      const state = body.state?.trim() || null;
+      const pinCode = body.pinCode?.trim() || null;
+      const locality = body.locality?.trim() || branch;
+      const confirmCreateToken = body.confirmCreateToken?.trim() || null;
 
-    const normalizedKey = buildSchoolNormalizedKey(name, branch, city);
-    const client = await pool.connect();
-    try {
-      const existing = await client.query(
-        `SELECT id, name, branch, city, state, pin_code, verified
-         FROM schools WHERE normalized_key = $1`,
-        [normalizedKey]
-      );
-      if (existing.rows.length > 0) {
-        return c.json(mapSchoolRow(existing.rows[0]));
+      if (!name || !city) {
+        return c.json({ error: "name and city are required" }, 400);
       }
 
-      const { rows } = await client.query(
-        `INSERT INTO schools (name, branch, city, state, pin_code, normalized_key, created_by_user_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
-         RETURNING id, name, branch, city, state, pin_code, verified`,
-        [name, branch, city, state, pinCode, normalizedKey, userId]
-      );
+      const normalizedKey = buildSchoolNormalizedKey(name, branch, city);
+      const client = await pool.connect();
+      try {
+        // Replay completed responses only — do not reserve until final create.
+        if (idempotencyKey) {
+          const existingIdem = await getIdempotentResponse(
+            client,
+            userId,
+            "POST /v1/schools",
+            idempotencyKey
+          );
+          if (existingIdem && existingIdem.statusCode !== 409) {
+            return c.json(
+              existingIdem.response,
+              existingIdem.statusCode as 200
+            );
+          }
+          // Ignore incomplete reservations from the old buggy flow.
+          if (
+            existingIdem &&
+            existingIdem.statusCode === 409 &&
+            (existingIdem.response as { error?: string })?.error ===
+              "Request in progress"
+          ) {
+            await client.query(
+              `DELETE FROM api_idempotency_keys
+               WHERE user_id = $1 AND route = $2 AND idempotency_key = $3
+                 AND status_code IS NULL`,
+              [userId, "POST /v1/schools", idempotencyKey]
+            );
+          }
+        }
 
-      return c.json(mapSchoolRow(rows[0]), 201);
-    } finally {
-      client.release();
+        const existing = await client.query(
+          `SELECT id, name, branch, city, state, pin_code, verified, locality, region, aliases
+           FROM schools
+           WHERE normalized_key = $1 AND redirect_to_school_id IS NULL
+           ORDER BY verified DESC, created_at ASC
+           LIMIT 1`,
+          [normalizedKey]
+        );
+        if (existing.rows.length > 0) {
+          const mapped = mapSchoolRow(existing.rows[0]);
+          if (idempotencyKey) {
+            await storeIdempotentResponse(
+              client,
+              userId,
+              "POST /v1/schools",
+              idempotencyKey,
+              200,
+              mapped
+            );
+          }
+          return c.json(mapped);
+        }
+
+        const searchNeedle = [name, branch, locality, city]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        const { rows: fuzzy } = await client.query(
+          `SELECT id, name, branch, city, state, pin_code, verified, locality, region, aliases,
+                  similarity(search_text, $1) AS sm
+           FROM schools
+           WHERE redirect_to_school_id IS NULL
+             AND normalized_key <> $2
+             AND search_text % $1
+           ORDER BY verified DESC, sm DESC
+           LIMIT 8`,
+          [searchNeedle, PLACEHOLDER_SCHOOL_KEY]
+        );
+
+        const strong = fuzzy.find((row) => Number(row.sm) >= 0.72);
+        if (strong) {
+          // Strong matches always bind to existing school — no bypass.
+          const mapped = mapSchoolRow(strong);
+          if (idempotencyKey) {
+            await storeIdempotentResponse(
+              client,
+              userId,
+              "POST /v1/schools",
+              idempotencyKey,
+              200,
+              mapped
+            );
+          }
+          return c.json(mapped);
+        }
+
+        const weak = fuzzy.filter(
+          (row) => Number(row.sm) >= 0.4 && Number(row.sm) < 0.72
+        );
+
+        if (weak.length > 0 && !confirmCreateToken) {
+          const candidates = weak.map(mapSchoolRow);
+          if (wantsCandidates) {
+            const confirmationToken = issueSchoolCreateConfirmToken({
+              userId,
+              name,
+              branch,
+              city,
+              locality,
+              candidateIds: candidates.map((x) => String(x.id)),
+            });
+            return c.json(
+              {
+                error: "Possible existing schools",
+                code: "SCHOOL_CANDIDATES",
+                candidates,
+                confirmationToken,
+              },
+              409
+            );
+          }
+          console.log(
+            JSON.stringify({
+              event: "school_create_weak_match_legacy",
+              userId,
+              name,
+              candidateIds: candidates.map((x) => x.id),
+            })
+          );
+          // Legacy clients without capability continue to create.
+        }
+
+        if (weak.length > 0 && confirmCreateToken) {
+          const verified = verifySchoolCreateConfirmToken(confirmCreateToken, {
+            userId,
+            name,
+            branch,
+            city,
+            locality,
+          });
+          if (!verified.ok) {
+            return c.json({ error: verified.error }, 400);
+          }
+        }
+
+        await client.query("BEGIN");
+        try {
+          if (idempotencyKey) {
+            const reserved = await reserveIdempotencyKey(
+              client,
+              userId,
+              "POST /v1/schools",
+              idempotencyKey
+            );
+            if (reserved === "exists") {
+              const again = await getIdempotentResponse(
+                client,
+                userId,
+                "POST /v1/schools",
+                idempotencyKey
+              );
+              await client.query("COMMIT");
+              if (again && again.statusCode !== 409) {
+                return c.json(again.response, again.statusCode as 200);
+              }
+              return c.json({ error: "Request in progress" }, 409);
+            }
+          }
+
+          const { rows } = await client.query(
+            `INSERT INTO schools
+               (name, branch, city, state, pin_code, locality, normalized_key, created_by_user_id, verified)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, false)
+             RETURNING id, name, branch, city, state, pin_code, verified, locality, region, aliases`,
+            [name, branch, city, state, pinCode, locality, normalizedKey, userId]
+          );
+
+          const mapped = mapSchoolRow(rows[0]);
+          if (idempotencyKey) {
+            await storeIdempotentResponse(
+              client,
+              userId,
+              "POST /v1/schools",
+              idempotencyKey,
+              201,
+              mapped
+            );
+          }
+          await client.query("COMMIT");
+          return c.json(mapped, 201);
+        } catch (err) {
+          await client.query("ROLLBACK");
+          throw err;
+        }
+      } finally {
+        client.release();
+      }
     }
-  });
+  );
 
   app.get("/:id/profile", async (c) => {
     const schoolId = c.req.param("id");

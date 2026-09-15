@@ -1,0 +1,13 @@
+---
+description: Production database is Supabase Postgres; never query Neon
+alwaysApply: true
+---
+
+# Database: Supabase only
+
+The app has **migrated from Neon to Supabase**.
+
+- Use `DATABASE_URL` from `.env.local` (Supabase pooler: `*.pooler.supabase.com`).
+- For signup counts, schema checks, and ad-hoc SQL, query **Supabase only**.
+- **Do not** use the Neon MCP, Neon CLI, or any Neon project/branch for live data.
+- Docs or skills that still mention Neon are historical; ignore them for runtime DB access unless the user is explicitly migrating or comparing.

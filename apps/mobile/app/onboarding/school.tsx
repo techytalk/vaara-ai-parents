@@ -6,8 +6,11 @@ import { trackEvent } from "@/lib/analytics";
 import { getToken } from "@/lib/session";
 import {
   getOnboardingLocation,
+  getOnboardingSchool,
+  hydrateOnboardingDraft,
   setOnboardingLocation,
-  setOnboardingSchool,
+  setOnboardingSchoolAsync,
+  setOnboardingStep,
 } from "@/lib/onboarding-draft";
 import { SchoolPicker } from "@/components/onboarding/SchoolPicker";
 import {
@@ -25,11 +28,14 @@ export default function OnboardingSchoolScreen() {
   const [defaultCity, setDefaultCity] = useState("");
   const [defaultPin, setDefaultPin] = useState("");
   const [defaultState, setDefaultState] = useState("");
+  const [defaultLocality, setDefaultLocality] = useState("");
+  const [defaultCountry, setDefaultCountry] = useState("IN");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [addingSchool, setAddingSchool] = useState(false);
 
   useEffect(() => {
+    setOnboardingStep("school");
     getToken().then(async (t) => {
       if (!t) {
         router.replace("/(auth)/login");
@@ -37,6 +43,7 @@ export default function OnboardingSchoolScreen() {
       }
       setToken(t);
       try {
+        await hydrateOnboardingDraft();
         const drafted = getOnboardingLocation();
         const loc = drafted.locationLoaded
           ? drafted.location
@@ -51,6 +58,12 @@ export default function OnboardingSchoolScreen() {
         setDefaultCity(loc.city ?? "");
         setDefaultPin(loc.pinCode ?? "");
         setDefaultState(loc.state ?? "");
+        setDefaultLocality(loc.locality ?? "");
+        setDefaultCountry(loc.countryCode ?? "IN");
+        const existingSchool = getOnboardingSchool();
+        if (existingSchool?.id && existingSchool.name) {
+          setSelectedSchool(existingSchool);
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load location");
       } finally {
@@ -59,12 +72,12 @@ export default function OnboardingSchoolScreen() {
     });
   }, [router]);
 
-  function onContinue() {
+  async function onContinue() {
     if (!selectedSchool) {
       setError("Select your child's school to continue");
       return;
     }
-    setOnboardingSchool(selectedSchool);
+    await setOnboardingSchoolAsync(selectedSchool);
     trackEvent("onboarding_school_complete");
     router.push("/onboarding/class" as never);
   }
@@ -85,12 +98,10 @@ export default function OnboardingSchoolScreen() {
     >
       <Text style={styles.step}>Step 2 of 3</Text>
       <OnboardingPayoff
-        primaryIcon="school"
-        secondaryIcon="people"
-        title="Connect with every parent at your child's school and branch"
-        body="Pick the school so we can place you in the right parent circle — not a public directory."
+        compact
+        title="Pick your child's school"
+        body="We'll place you with parents at the same school."
       />
-      <Text style={styles.formTitle}>Where does your child go to school?</Text>
 
       <SchoolPicker
         token={token}
@@ -99,6 +110,8 @@ export default function OnboardingSchoolScreen() {
         defaultCity={defaultCity}
         defaultPin={defaultPin}
         defaultState={defaultState}
+        defaultLocality={defaultLocality}
+        defaultCountry={defaultCountry}
         onCreateModeChange={setAddingSchool}
       />
 
@@ -128,12 +141,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: colors.primary,
     marginBottom: 12,
-  },
-  formTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: colors.text,
-    marginBottom: 16,
   },
   centered: { flex: 1, justifyContent: "center", alignItems: "center" },
   error: { color: colors.error, marginBottom: 8 },

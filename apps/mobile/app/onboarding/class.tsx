@@ -11,10 +11,15 @@ import { api, type Curriculum, type School } from "@/lib/api";
 import { trackEvent } from "@/lib/analytics";
 import { getToken, saveSession } from "@/lib/session";
 import {
+  getOnboardingClassSelection,
   getOnboardingSchool,
+  hydrateOnboardingDraft,
   setOnboardingChildren,
   setOnboardingCircles,
+  setOnboardingClassSelection,
   setOnboardingUser,
+  setOnboardingStep,
+  ensureOnboardingAttemptId,
 } from "@/lib/onboarding-draft";
 import { getCurriculaCached } from "@/lib/reference-cache";
 import {
@@ -45,27 +50,33 @@ export default function OnboardingClassScreen() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const drafted = getOnboardingSchool();
-    if (!drafted) {
-      router.replace("/onboarding/school" as never);
-      return;
-    }
-    setSchool(drafted);
-
-    getToken().then(async (t) => {
-      if (!t) {
-        router.replace("/(auth)/login");
+    setOnboardingStep("class");
+    hydrateOnboardingDraft().then(() => {
+      const drafted = getOnboardingSchool();
+      if (!drafted?.id) {
+        router.replace("/onboarding/school" as never);
         return;
       }
-      setToken(t);
-      try {
-        const list = sortCurricula(await getCurriculaCached());
-        setCurricula(list);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to load boards");
-      } finally {
-        setLoading(false);
-      }
+      setSchool(drafted);
+      const saved = getOnboardingClassSelection();
+      if (saved.curriculumId) setCurriculumId(saved.curriculumId);
+      if (saved.gradeId) setGradeId(saved.gradeId);
+
+      getToken().then(async (t) => {
+        if (!t) {
+          router.replace("/(auth)/login");
+          return;
+        }
+        setToken(t);
+        try {
+          const list = sortCurricula(await getCurriculaCached());
+          setCurricula(list);
+        } catch (e) {
+          setError(e instanceof Error ? e.message : "Failed to load boards");
+        } finally {
+          setLoading(false);
+        }
+      });
     });
   }, [router]);
 
@@ -76,12 +87,17 @@ export default function OnboardingClassScreen() {
     setError(null);
     setSubmitting(true);
     try {
-      const result = await api.addChild(token, {
-        schoolId: school.id,
-        curriculumId,
-        gradeId,
-        gender: "unspecified",
-      });
+      const result = await api.addChild(
+        token,
+        {
+          schoolId: school.id,
+          curriculumId,
+          gradeId,
+          gender: "unspecified",
+          onboardingAttemptId: ensureOnboardingAttemptId(),
+        },
+        { idempotencyKey: ensureOnboardingAttemptId() }
+      );
       await saveSession(token, result.user);
       setOnboardingUser(result.user);
       setOnboardingCircles(result.circles);
@@ -114,12 +130,10 @@ export default function OnboardingClassScreen() {
     >
       <Text style={styles.step}>Step 3 of 3</Text>
       <OnboardingPayoff
-        primaryIcon="library"
-        secondaryIcon="people"
-        title="Place you with the right parents"
-        body="Pick the board and class so we can put you in the same circle as parents whose children study the same way."
+        compact
+        title="Board and class"
+        body="So we can put you with parents whose children study the same way."
       />
-      <Text style={styles.formTitle}>Board and class</Text>
 
       <FieldLabel>Board</FieldLabel>
       <View style={styles.chipRow}>
@@ -131,6 +145,10 @@ export default function OnboardingClassScreen() {
             onPress={() => {
               setCurriculumId(item.id);
               setGradeId(null);
+              setOnboardingClassSelection({
+                curriculumId: item.id,
+                gradeId: null,
+              });
             }}
           />
         ))}
@@ -160,7 +178,13 @@ export default function OnboardingClassScreen() {
                 key={grade.id}
                 label={grade.label}
                 selected={gradeId === grade.id}
-                onPress={() => setGradeId(grade.id)}
+                onPress={() => {
+                  setGradeId(grade.id);
+                  setOnboardingClassSelection({
+                    curriculumId,
+                    gradeId: grade.id,
+                  });
+                }}
               />
             ))}
           </View>

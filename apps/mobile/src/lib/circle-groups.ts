@@ -95,7 +95,9 @@ export function groupCirclesForDisplay(
     });
     for (const item of items) assigned.add(item.id);
     if (items.length > 0) {
-      const label = child.nickname?.trim() || "Your child";
+      const label =
+        child.nickname?.trim() ||
+        `${child.curriculum.name} · ${child.grade.label}`;
       groups.push({
         key: `child-${child.id}`,
         title: label,

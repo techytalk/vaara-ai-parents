@@ -12,6 +12,8 @@ export type PostalCodeLookup = {
   city: string;
   district: string;
   localities: PostalCodeLocality[];
+  /** Where the row was resolved from for ops logging. */
+  source?: "db" | "external" | "bundled";
 };
 
 export type PostalCountryProvider = "india" | "uk" | "zippopotam" | "manual";

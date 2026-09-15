@@ -33,7 +33,11 @@ export function mapSchoolRow(row: Record<string, unknown>) {
     city: row.city,
     state: row.state,
     pinCode: row.pin_code,
+    locality: row.locality ?? null,
+    region: row.region ?? null,
+    aliases: Array.isArray(row.aliases) ? row.aliases : [],
     verified: row.verified,
+    redirectToSchoolId: row.redirect_to_school_id ?? null,
     displayLabel: formatSchoolLabel(
       String(row.name),
       row.branch as string | null,

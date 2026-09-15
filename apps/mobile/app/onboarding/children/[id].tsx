@@ -113,10 +113,18 @@ export default function ChildDetailScreen() {
     );
   }
 
+  const boardGrade = `${child.curriculum.name} · ${child.grade.label}`;
+  const openIdentity = (focus: "identity" = "identity") => {
+    router.push({
+      pathname: "/onboarding/children/edit/[id]",
+      params: { id: child.id, focus },
+    });
+  };
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.title}>
-        {child.nickname?.trim() || "Child details"}
+        {child.nickname?.trim() || boardGrade}
       </Text>
       <Text style={styles.subtitle}>
         This information helps match you with the right parent circles.
@@ -125,7 +133,12 @@ export default function ChildDetailScreen() {
       <View style={styles.card}>
         <DetailRow
           label="Nickname"
-          value={child.nickname?.trim() || "Not set"}
+          value={child.nickname?.trim() || "Add a nickname"}
+          onPress={
+            child.nickname?.trim()
+              ? undefined
+              : () => openIdentity("identity")
+          }
         />
         <DetailRow
           label="Gender"
@@ -134,7 +147,12 @@ export default function ChildDetailScreen() {
         <DetailRow
           label="Date of birth"
           value={
-            child.dateOfBirth ? formatChildDob(child.dateOfBirth) : "Not set"
+            child.dateOfBirth
+              ? formatChildDob(child.dateOfBirth)
+              : "Add date of birth"
+          }
+          onPress={
+            child.dateOfBirth ? undefined : () => openIdentity("identity")
           }
         />
         <DetailRow label="Curriculum" value={curriculumFullName} />

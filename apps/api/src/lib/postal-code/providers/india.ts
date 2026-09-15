@@ -140,7 +140,7 @@ export async function lookupIndiaPostalCode(
   const cached = await loadIndiaPostalCodeFromDb(client, postalCode);
 
   if (cached && !isIndiaCacheStale(cached)) {
-    return cached;
+    return { ...cached, source: "db" };
   }
 
   const remote = await loadIndiaPostalCodeFromPostalApi(postalCode);
@@ -160,5 +160,8 @@ export async function lookupIndiaPostalCode(
     result.district,
     result.localities
   );
-  return result;
+  return {
+    ...result,
+    source: remote ? "external" : bundled ? "bundled" : "db",
+  };
 }

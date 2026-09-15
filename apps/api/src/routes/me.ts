@@ -24,6 +24,12 @@ import {
   parseChildDateOfBirth,
 } from "../lib/child-dob.js";
 import { deleteUserAccount } from "../lib/account-deletion.js";
+import {
+  getIdempotentResponse,
+  reserveIdempotencyKey,
+  storeIdempotentResponse,
+} from "../lib/idempotency.js";
+import { lookupPostalCode } from "../lib/postal-code/index.js";
 
 const CHILD_SELECT = `
   ch.id, ch.nickname, ch.gender, ch.date_of_birth, ch.curriculum_id, ch.grade_id, ch.school_id,
@@ -246,6 +252,11 @@ export function createMeRoutes() {
 
   app.post("/children", async (c) => {
     const userId = c.get("user").sub;
+    const idempotencyKey =
+      c.req.header("Idempotency-Key")?.trim() ||
+      c.req.header("idempotency-key")?.trim() ||
+      null;
+
     const body = await c.req.json<{
       nickname?: string;
       gender?: string;
@@ -253,7 +264,10 @@ export function createMeRoutes() {
       curriculumId?: string;
       gradeId?: string;
       schoolId?: string;
+      onboardingAttemptId?: string;
     }>();
+
+    const effectiveKey = idempotencyKey || body.onboardingAttemptId?.trim() || null;
 
     const nickname = body.nickname?.trim() || null;
     let dateOfBirth: string | null = null;
@@ -283,9 +297,40 @@ export function createMeRoutes() {
     try {
       await client.query("BEGIN");
 
+      if (effectiveKey) {
+        const existing = await getIdempotentResponse(
+          client,
+          userId,
+          "POST /v1/me/children",
+          effectiveKey
+        );
+        if (existing) {
+          await client.query("COMMIT");
+          return c.json(existing.response, existing.statusCode as 200);
+        }
+        const reserved = await reserveIdempotencyKey(
+          client,
+          userId,
+          "POST /v1/me/children",
+          effectiveKey
+        );
+        if (reserved === "exists") {
+          const again = await getIdempotentResponse(
+            client,
+            userId,
+            "POST /v1/me/children",
+            effectiveKey
+          );
+          await client.query("COMMIT");
+          if (again) return c.json(again.response, again.statusCode as 200);
+          return c.json({ error: "Request in progress" }, 409);
+        }
+      }
+
       const schoolCheck = await client.query(
         `SELECT id FROM schools
-         WHERE id = $1 AND normalized_key <> 'school_not_specified||unknown'`,
+         WHERE id = $1 AND normalized_key <> 'school_not_specified||unknown'
+           AND redirect_to_school_id IS NULL`,
         [body.schoolId]
       );
       if (schoolCheck.rows.length === 0) {
@@ -327,12 +372,24 @@ export function createMeRoutes() {
         );
       }
 
-      await client.query("COMMIT");
-
       const child = await fetchChildById(client, rows[0].id);
       const user = await fetchAuthUserById(client, userId);
       const circles = await fetchUserCircles(client, userId);
-      return c.json({ child, user, circles }, 201);
+      const payload = { child, user, circles };
+
+      if (effectiveKey) {
+        await storeIdempotentResponse(
+          client,
+          userId,
+          "POST /v1/me/children",
+          effectiveKey,
+          201,
+          payload
+        );
+      }
+
+      await client.query("COMMIT");
+      return c.json(payload, 201);
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;
@@ -369,7 +426,9 @@ export function createMeRoutes() {
       if (body.schoolId) {
         const schoolCheck = await client.query(
           `SELECT id FROM schools
-           WHERE id = $1 AND normalized_key <> 'school_not_specified||unknown'`,
+           WHERE id = $1
+             AND normalized_key <> 'school_not_specified||unknown'
+             AND redirect_to_school_id IS NULL`,
           [body.schoolId]
         );
         if (schoolCheck.rows.length === 0) {
@@ -395,26 +454,30 @@ export function createMeRoutes() {
       let i = 1;
 
       if (body.nickname !== undefined) {
-        const nick = body.nickname.trim();
-        if (!nick) {
-          await client.query("ROLLBACK");
-          return c.json({ error: "nickname cannot be empty" }, 400);
-        }
+        const nick =
+          body.nickname == null ? "" : String(body.nickname).trim();
         fields.push(`nickname = $${i++}`);
-        values.push(nick);
+        values.push(nick || null);
       }
       if (body.gender !== undefined) {
         fields.push(`gender = $${i++}`);
         values.push(body.gender);
       }
       if (body.dateOfBirth !== undefined) {
-        const dateOfBirth = parseChildDateOfBirth(body.dateOfBirth);
-        if (!dateOfBirth) {
-          await client.query("ROLLBACK");
-          return c.json({ error: "Invalid dateOfBirth (YYYY-MM-DD)" }, 400);
+        const raw =
+          body.dateOfBirth == null ? "" : String(body.dateOfBirth).trim();
+        if (!raw) {
+          fields.push(`date_of_birth = $${i++}`);
+          values.push(null);
+        } else {
+          const dateOfBirth = parseChildDateOfBirth(raw);
+          if (!dateOfBirth) {
+            await client.query("ROLLBACK");
+            return c.json({ error: "Invalid dateOfBirth (YYYY-MM-DD)" }, 400);
+          }
+          fields.push(`date_of_birth = $${i++}`);
+          values.push(dateOfBirth);
         }
-        fields.push(`date_of_birth = $${i++}`);
-        values.push(dateOfBirth);
       }
       if (body.curriculumId !== undefined) {
         fields.push(`curriculum_id = $${i++}`);
@@ -534,6 +597,11 @@ export function createMeRoutes() {
       return c.json({ error: "pinCode is required" }, 400);
     }
 
+    const locality = body.locality?.trim();
+    if (!locality) {
+      return c.json({ error: "locality is required" }, 400);
+    }
+
     const communityName = body.communityName?.trim() || null;
     const communityKey = communityName
       ? normalizeCommunityKey(communityName)
@@ -542,6 +610,31 @@ export function createMeRoutes() {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+
+      const lookup = await lookupPostalCode(client, countryCode, pinCode);
+      const city = lookup?.city?.trim() || body.city?.trim() || null;
+      const state = lookup?.state?.trim() || body.state?.trim() || null;
+
+      console.log(
+        JSON.stringify({
+          event: "postal_lookup",
+          route: "PATCH /v1/me/location",
+          country: countryCode,
+          source: lookup?.source ?? (city && state ? "client" : "miss"),
+        })
+      );
+
+      if (!city || !state) {
+        await client.query("ROLLBACK");
+        return c.json(
+          {
+            error:
+              "Could not resolve city/state for this postal code. Provide city and state.",
+            code: "POSTAL_LOOKUP_FAILED",
+          },
+          400
+        );
+      }
 
       await client.query(
         `INSERT INTO user_locations (user_id, country_code, pin_code, locality, city, state, community_name, community_key, updated_at)
@@ -559,9 +652,9 @@ export function createMeRoutes() {
           userId,
           countryCode,
           pinCode,
-          body.locality?.trim() || null,
-          body.city?.trim() || null,
-          body.state?.trim() || null,
+          locality,
+          city,
+          state,
           communityName,
           communityKey,
         ]
@@ -580,9 +673,9 @@ export function createMeRoutes() {
         countryCode,
         pinCode,
         postalCode: pinCode,
-        locality: body.locality?.trim() || null,
-        city: body.city?.trim() || null,
-        state: body.state?.trim() || null,
+        locality,
+        city,
+        state,
         communityName,
         communityKey,
         onboardingComplete: complete,

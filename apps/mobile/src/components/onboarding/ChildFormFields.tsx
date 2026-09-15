@@ -34,6 +34,8 @@ type Props = {
   defaultCity?: string;
   defaultPin?: string;
   defaultState?: string;
+  defaultLocality?: string;
+  defaultCountry?: string;
   /** When true, nickname and date of birth are labeled optional. */
   identityOptional?: boolean;
   /** School → board → class first; identity fields last. */
@@ -58,7 +60,9 @@ export function ChildFormFields({
   defaultCity = "",
   defaultPin = "",
   defaultState = "",
-  identityOptional = false,
+  defaultLocality = "",
+  defaultCountry = "IN",
+  identityOptional = true,
   schoolFirst = false,
 }: Props) {
   const selectedCurriculum = curricula.find((c) => c.id === curriculumId);
@@ -106,6 +110,8 @@ export function ChildFormFields({
         defaultCity={defaultCity}
         defaultPin={defaultPin}
         defaultState={defaultState}
+        defaultLocality={defaultLocality}
+        defaultCountry={defaultCountry}
       />
 
       <FieldLabel>Gender</FieldLabel>

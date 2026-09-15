@@ -92,7 +92,7 @@ export async function lookupZippopotamPostalCode(
   postalCode: string
 ): Promise<PostalCodeLookup | null> {
   const cached = await loadPostalCodeFromDb(client, countryCode, postalCode);
-  if (cached) return cached;
+  if (cached) return { ...cached, source: "db" };
 
   const remote = await fetchZippopotamPostalCode(countryCode, postalCode);
   if (!remote) return null;
@@ -105,5 +105,5 @@ export async function lookupZippopotamPostalCode(
     remote.district,
     remote.localities
   );
-  return remote;
+  return { ...remote, source: "external" };
 }

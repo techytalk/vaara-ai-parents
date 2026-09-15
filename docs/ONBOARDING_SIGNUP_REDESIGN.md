@@ -5,6 +5,27 @@ onboarding flow. It supplements `UI_UX_REDESIGN.md` and
 `BUSINESS_FUNCTIONALITY.md`. It does not change Vaara's privacy rules, its
 membership model, or the way circles are derived.
 
+Related:
+
+- **Consolidated build plan** for Steps 1–2 and child identity —
+  [`ONBOARDING_DISCOVERY_PLAN.md`](./ONBOARDING_DISCOVERY_PLAN.md)
+- Location Step 1 locality UX (hide city/state; server-fill from PIN) —
+  [`ONBOARDING_LOCATION_LOCALITY.md`](./ONBOARDING_LOCATION_LOCALITY.md)
+- School Step 2 search speed (Redis / client cache; CDN only if public) —
+  [`ONBOARDING_SCHOOL_SEARCH.md`](./ONBOARDING_SCHOOL_SEARCH.md)
+
+> **Partly shipped; two sections are now stale.** As of 15 Sep 2026 the flow is
+> `location → school → class → ready`, not the children-first sequence described
+> under "Current flow (as-is)" below. Nickname and date of birth are already
+> optional in `POST /v1/me/children`, so the code quoted in "Backend" no longer
+> matches `apps/api/src/routes/me.ts`.
+>
+> This document also proposes **deferring** nickname and date of birth to an
+> in-app prompt. That was superseded: they are now never asked for, only offered
+> on the post-signup Add/Edit child screens. See
+> [`ONBOARDING_DISCOVERY_PLAN.md` §8](./ONBOARDING_DISCOVERY_PLAN.md#8-child-identity),
+> which is authoritative for child identity.
+
 ## Why this change
 
 Marketing traffic reaches the app and drops off during onboarding. A new parent

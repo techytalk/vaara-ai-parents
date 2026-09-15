@@ -8,16 +8,12 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { api, type Child } from "@/lib/api";
 import { trackEvent } from "@/lib/analytics";
 import { completeAppTour, hasCompletedAppTour } from "@/lib/app-tour";
-import { childDobBounds, toIsoDateOnly } from "@/lib/dates";
 import { pickPrimaryCircle } from "@/lib/home-feed";
 import { getToken } from "@/lib/session";
-import { DateField } from "@/components/DateTimeField";
 import {
   colors,
-  FieldInput,
   PrimaryButton,
   SecondaryButton,
 } from "@/components/onboarding/ui";
@@ -32,34 +28,20 @@ type Props = {
 export function HomeTourOverlay({ visible, circles, onFinished }: Props) {
   const router = useRouter();
   const [step, setStep] = useState(1);
-  const [child, setChild] = useState<Child | null>(null);
   const [token, setToken] = useState<string | null>(null);
-  const [nickname, setNickname] = useState("");
-  const [dateOfBirth, setDateOfBirth] = useState<Date | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const completedRef = useRef(false);
 
   useEffect(() => {
     if (!visible) return;
     trackEvent("tour_started");
     trackEvent("tour_step_view", { step: "circles" });
-    getToken().then(async (t) => {
-      if (!t) return;
-      setToken(t);
-      const kids = await api.getChildren(t).catch(() => [] as Child[]);
-      const first = kids[0] ?? null;
-      setChild(first);
-      if (first?.nickname) setNickname(first.nickname);
-      if (first?.dateOfBirth) {
-        const [y, m, d] = first.dateOfBirth.split("-").map(Number);
-        setDateOfBirth(new Date(y, (m ?? 1) - 1, d ?? 1));
-      }
+    getToken().then((t) => {
+      if (t) setToken(t);
     });
   }, [visible]);
 
   async function finish(completed: boolean, skippedFrom: string) {
-    if (completed && !completedRef.current) {
+    if (!completedRef.current) {
       completedRef.current = true;
       trackEvent("tour_completed");
     }
@@ -72,8 +54,12 @@ export function HomeTourOverlay({ visible, circles, onFinished }: Props) {
 
   async function onAsk() {
     trackEvent("tour_first_post_started");
+    if (!completedRef.current) {
+      completedRef.current = true;
+      trackEvent("tour_completed");
+    }
     const t = token ?? (await getToken());
-    const list = t ? await api.getCircles(t).catch(() => []) : circles;
+    const list = t ? circles : circles;
     const primary = pickPrimaryCircle(list);
     await completeAppTour();
     onFinished();
@@ -88,33 +74,9 @@ export function HomeTourOverlay({ visible, circles, onFinished }: Props) {
     }
   }
 
-  async function onSaveNickname() {
-    if (!token || !child) {
-      await finish(true, "child");
-      return;
-    }
-    const nick = nickname.trim();
-    setError(null);
-    setSubmitting(true);
-    try {
-      const body: { nickname?: string; dateOfBirth?: string } = {};
-      if (nick) body.nickname = nick;
-      if (dateOfBirth) body.dateOfBirth = toIsoDateOnly(dateOfBirth);
-      if (Object.keys(body).length > 0) {
-        await api.updateChild(token, child.id, body);
-        trackEvent("child_identity_saved", { source: "tour" });
-      }
-      await finish(true, "child");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not save");
-      setSubmitting(false);
-    }
-  }
-
   if (!visible) return null;
 
-  const dobBounds = childDobBounds();
-  const stepKey = step === 1 ? "circles" : step === 2 ? "ask" : "child";
+  const stepKey = step === 1 ? "circles" : "ask";
 
   return (
     <View style={styles.scrim}>
@@ -126,7 +88,7 @@ export function HomeTourOverlay({ visible, circles, onFinished }: Props) {
         <View style={styles.card}>
           <View style={styles.top}>
             <View style={styles.dots}>
-              {[1, 2, 3].map((n) => (
+              {[1, 2].map((n) => (
                 <View
                   key={n}
                   style={[styles.dot, n === step && styles.dotActive]}
@@ -170,55 +132,7 @@ export function HomeTourOverlay({ visible, circles, onFinished }: Props) {
               <View style={styles.gap} />
               <SecondaryButton
                 label="Later"
-                onPress={() => {
-                  setStep(3);
-                  trackEvent("tour_step_view", { step: "child" });
-                }}
-              />
-            </>
-          ) : null}
-
-          {step === 3 ? (
-            <>
-              <Text style={styles.title}>A private nickname</Text>
-              <Text style={styles.subtitle}>
-                Only you see it. Other parents never do.
-              </Text>
-              {child ? (
-                <>
-                  <FieldInput
-                    label="Nickname"
-                    placeholder="e.g. Aarav"
-                    value={nickname}
-                    onChangeText={setNickname}
-                  />
-                  <DateField
-                    label="Date of birth (optional)"
-                    value={dateOfBirth}
-                    onChange={setDateOfBirth}
-                    minimumDate={dobBounds.minimumDate}
-                    maximumDate={dobBounds.maximumDate}
-                  />
-                </>
-              ) : null}
-              {error ? <Text style={styles.error}>{error}</Text> : null}
-              {child ? (
-                <PrimaryButton
-                  label="Save"
-                  onPress={onSaveNickname}
-                  loading={submitting}
-                  disabled={!nickname.trim() && !dateOfBirth}
-                />
-              ) : (
-                <PrimaryButton
-                  label="Done"
-                  onPress={() => finish(true, "child")}
-                />
-              )}
-              <View style={styles.gap} />
-              <SecondaryButton
-                label="Later"
-                onPress={() => finish(true, "child")}
+                onPress={() => finish(true, "ask")}
               />
             </>
           ) : null}
@@ -228,21 +142,14 @@ export function HomeTourOverlay({ visible, circles, onFinished }: Props) {
   );
 }
 
-export function useHomeTour(ready: boolean) {
+export function useHomeTour(ready = true) {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
     if (!ready) return;
-    let cancelled = false;
-    const timer = setTimeout(() => {
-      void hasCompletedAppTour().then((done) => {
-        if (!cancelled && !done) setVisible(true);
-      });
-    }, 700);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
+    hasCompletedAppTour().then((done) => {
+      if (!done) setVisible(true);
+    });
   }, [ready]);
 
   return {
@@ -254,59 +161,48 @@ export function useHomeTour(ready: boolean) {
 const styles = StyleSheet.create({
   scrim: {
     ...StyleSheet.absoluteFillObject,
+    zIndex: 50,
     justifyContent: "flex-end",
   },
   dim: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(13, 27, 42, 0.35)",
+    backgroundColor: "rgba(15, 23, 42, 0.45)",
   },
   card: {
-    backgroundColor: colors.bg,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 16,
+    margin: 16,
+    marginBottom: 28,
+    backgroundColor: colors.card,
+    borderRadius: 20,
+    padding: 18,
     borderWidth: 1,
     borderColor: colors.border,
-    borderBottomWidth: 0,
   },
   top: {
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 12,
+    alignItems: "center",
+    marginBottom: 14,
   },
-  dots: { flexDirection: "row", alignItems: "center", gap: 6 },
+  dots: { flexDirection: "row", gap: 6 },
   dot: {
     width: 8,
     height: 8,
     borderRadius: 4,
     backgroundColor: colors.border,
   },
-  dotActive: {
-    width: 22,
-    backgroundColor: colors.primary,
-  },
-  skip: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: colors.textMuted,
-  },
+  dotActive: { backgroundColor: colors.primary },
+  skip: { color: colors.textMuted, fontWeight: "600" },
   title: {
-    fontSize: 22,
-    lineHeight: 28,
+    fontSize: 20,
     fontWeight: "800",
     color: colors.text,
-    letterSpacing: -0.3,
+    marginBottom: 8,
   },
   subtitle: {
-    fontSize: 15,
-    lineHeight: 21,
+    fontSize: 14,
+    lineHeight: 20,
     color: colors.textMuted,
-    marginTop: 6,
     marginBottom: 16,
   },
   gap: { height: 10 },
-  error: { color: colors.error, marginBottom: 8 },
 });

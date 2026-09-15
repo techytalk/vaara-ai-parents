@@ -12,7 +12,7 @@ import {
   getOnboardingUser,
 } from "@/lib/onboarding-draft";
 import { colors, PrimaryButton } from "@/components/onboarding/ui";
-import { circleTypeIcon } from "@/components/tour/TourFrame";
+import { circleTypeIcon } from "@/lib/circle-icons";
 
 export default function OnboardingReadyScreen() {
   const router = useRouter();
