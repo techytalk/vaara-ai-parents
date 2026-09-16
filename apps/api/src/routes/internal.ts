@@ -309,11 +309,9 @@ export function createInternalRoutes() {
     }
   });
 
-  // ---- Admin parent signups (secret-gated) ----
+  // ---- Admin parent signups (open for now; re-gate later) ----
 
   app.get("/admin/parents", async (c) => {
-    if (!requireAdminSecret(c)) return c.json({ error: "Unauthorized" }, 401);
-
     const dateParam = (c.req.query("date") ?? "").trim();
     const status = (c.req.query("status") ?? "all").trim().toLowerCase();
     const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 200), 1), 500);

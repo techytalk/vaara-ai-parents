@@ -140,20 +140,9 @@
       <a href="/internal/admin/schools.html">School tools</a>
     </div>
     <h1>Parent signups</h1>
-    <p class="muted">
-      Date-wise parent accounts (Asia/Kolkata). Requires
-      <code>X-Admin-Secret</code>. Secret stays in this browser only.
-    </p>
+    <p class="muted">Date-wise parent accounts (Asia/Kolkata).</p>
 
     <div class="toolbar">
-      <div>
-        <label>API base</label>
-        <input id="apiBase" size="36" value="https://api.vaara.ai" />
-      </div>
-      <div>
-        <label>X-Admin-Secret</label>
-        <input id="secret" type="password" size="28" autocomplete="off" />
-      </div>
       <div>
         <label>Date</label>
         <input id="date" type="date" />
@@ -182,16 +171,14 @@
     <div class="days" id="days"></div>
 
     <h2>Parents</h2>
-    <div id="list"><p class="empty">Enter secret and refresh.</p></div>
+    <div id="list"><p class="empty">Loading…</p></div>
 
     <script>
-      const SECRET_KEY = "vaara_admin_secret";
-      const API_KEY = "vaara_admin_api_base";
+      const API_BASE = "https://api.vaara.ai";
 
       function $(id) { return document.getElementById(id); }
 
       function todayIst() {
-        // Approximate IST date string from local offset-aware formatting
         const fmt = new Intl.DateTimeFormat("en-CA", {
           timeZone: "Asia/Kolkata",
           year: "numeric",
@@ -199,10 +186,6 @@
           day: "2-digit",
         });
         return fmt.format(new Date());
-      }
-
-      function apiBase() {
-        return $("apiBase").value.replace(/\/$/, "");
       }
 
       function showError(msg) {
@@ -214,22 +197,6 @@
         }
         box.style.display = "block";
         box.textContent = msg;
-      }
-
-      function saveCreds() {
-        try {
-          sessionStorage.setItem(SECRET_KEY, $("secret").value);
-          sessionStorage.setItem(API_KEY, $("apiBase").value);
-        } catch (_) {}
-      }
-
-      function loadCreds() {
-        try {
-          const s = sessionStorage.getItem(SECRET_KEY);
-          const a = sessionStorage.getItem(API_KEY);
-          if (s) $("secret").value = s;
-          if (a) $("apiBase").value = a;
-        } catch (_) {}
       }
 
       function locationLine(p) {
@@ -314,12 +281,6 @@
 
       async function loadParents() {
         showError("");
-        const secret = $("secret").value.trim();
-        if (!secret) {
-          showError("Enter X-Admin-Secret first.");
-          return;
-        }
-        saveCreds();
         const btn = $("refresh");
         btn.disabled = true;
         try {
@@ -327,12 +288,10 @@
           $("date").value = date;
           const status = $("status").value;
           const url =
-            `${apiBase()}/internal/admin/parents` +
+            `${API_BASE}/internal/admin/parents` +
             `?date=${encodeURIComponent(date)}` +
             `&status=${encodeURIComponent(status)}`;
-          const res = await fetch(url, {
-            headers: { "X-Admin-Secret": secret },
-          });
+          const res = await fetch(url);
           const data = await res.json().catch(() => ({}));
           if (!res.ok) {
             throw new Error(data.error || `HTTP ${res.status}`);
@@ -355,15 +314,11 @@
         $("date").value = todayIst();
         loadParents();
       });
-      $("status").addEventListener("change", () => {
-        if ($("secret").value.trim()) loadParents();
-      });
-      $("date").addEventListener("change", () => {
-        if ($("secret").value.trim()) loadParents();
-      });
+      $("status").addEventListener("change", loadParents);
+      $("date").addEventListener("change", loadParents);
 
-      loadCreds();
       $("date").value = todayIst();
+      loadParents();
     </script>
   </body>
 </html>
