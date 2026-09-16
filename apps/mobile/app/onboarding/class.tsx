@@ -135,6 +135,7 @@ export default function OnboardingClassScreen() {
 
   useEffect(() => {
     setOnboardingStep("class");
+    trackEvent("onboarding_class_view");
     hydrateOnboardingDraft().then(() => {
       const drafted = getOnboardingSchool();
       if (!drafted?.id) {

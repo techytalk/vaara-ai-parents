@@ -34,7 +34,7 @@ import {
   pickActiveCompletionPrompt,
   type CompletionPromptCandidate,
 } from "@/lib/completion-prompts";
-import { trackEvent } from "@/lib/analytics";
+import { trackEvent, trackHomeFirstOpen } from "@/lib/analytics";
 import {
   endAuthenticatedSession,
   isUnauthorized,
@@ -81,6 +81,7 @@ export default function HomeScreen() {
   const [activePrompt, setActivePrompt] =
     useState<CompletionPromptCandidate | null>(null);
   const authExitStartedRef = useRef(false);
+  const homeFirstOpenFiredRef = useRef(false);
   const { onViewableItemsChanged } = useHomeFeedImpressions();
   const viewabilityConfigRef = useRef(HOME_FEED_VIEWABILITY_CONFIG);
 
@@ -273,6 +274,22 @@ export default function HomeScreen() {
   const tour = useHomeTour(
     !feedQuery.isLoading && Boolean(user) && circlesQuery.isSuccess
   );
+
+  useEffect(() => {
+    if (homeFirstOpenFiredRef.current) return;
+    if (!feedQuery.isSuccess || !circlesQuery.isSuccess || !user) return;
+    homeFirstOpenFiredRef.current = true;
+    void trackHomeFirstOpen(user.id, {
+      circle_count: circles.length,
+      post_count: posts.length,
+    });
+  }, [
+    feedQuery.isSuccess,
+    circlesQuery.isSuccess,
+    user,
+    circles.length,
+    posts.length,
+  ]);
 
   async function onDismissPrompt() {
     if (!activePrompt) return;

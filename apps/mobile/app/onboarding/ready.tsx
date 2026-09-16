@@ -1,18 +1,23 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, type Circle } from "@/lib/api";
-import { trackEvent, trackOnboardingComplete } from "@/lib/analytics";
+import { trackEvent, trackOnboardingCompleted } from "@/lib/analytics";
 import { seedHomeMeta } from "@/lib/authenticated-state";
 import { getToken, getStoredUser, saveSession } from "@/lib/session";
 import {
+  ensureOnboardingAttemptId,
   getOnboardingChildren,
   getOnboardingCircles,
   getOnboardingUser,
+  hydrateOnboardingDraft,
 } from "@/lib/onboarding-draft";
 import { colors, PrimaryButton, useOnboardingContentStyle } from "@/components/onboarding/ui";
 import { circleTypeIcon } from "@/lib/circle-icons";
+import * as SecureStore from "expo-secure-store";
+
+const COMPLETED_ATTEMPT_KEY = "vaara_onboarding_completed_attempt";
 
 export default function OnboardingReadyScreen() {
   const router = useRouter();
@@ -20,6 +25,7 @@ export default function OnboardingReadyScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const contentStyle = useOnboardingContentStyle();
+  const conversionFiredRef = useRef(false);
 
   useEffect(() => {
     trackEvent("onboarding_ready_view");
@@ -29,10 +35,13 @@ export default function OnboardingReadyScreen() {
         return;
       }
       try {
+        await hydrateOnboardingDraft();
         const draftedCircles = getOnboardingCircles();
         const draftedUser = getOnboardingUser();
         const draftedChildren = getOnboardingChildren();
+        let nextCircles: Circle[] = [];
         if (draftedCircles) {
+          nextCircles = draftedCircles;
           setCircles(draftedCircles);
           const stored = draftedUser ? await getStoredUser() : null;
           const nextUser = stored && draftedUser ? { ...stored, ...draftedUser } : null;
@@ -49,6 +58,7 @@ export default function OnboardingReadyScreen() {
             api.getCircles(token),
             api.me(token),
           ]);
+          nextCircles = list;
           setCircles(list);
           const stored = await getStoredUser();
           const nextUser = stored ? { ...stored, ...me } : me;
@@ -61,6 +71,29 @@ export default function OnboardingReadyScreen() {
             children: draftedChildren,
           });
         }
+
+        // Final circles page = onboarding_completed (once per attempt).
+        if (!conversionFiredRef.current) {
+          const attemptId = ensureOnboardingAttemptId();
+          let alreadyLogged = false;
+          try {
+            alreadyLogged =
+              (await SecureStore.getItemAsync(COMPLETED_ATTEMPT_KEY)) === attemptId;
+          } catch {
+            alreadyLogged = false;
+          }
+          if (!alreadyLogged) {
+            conversionFiredRef.current = true;
+            trackOnboardingCompleted({
+              circle_count: nextCircles.length,
+            });
+            try {
+              await SecureStore.setItemAsync(COMPLETED_ATTEMPT_KEY, attemptId);
+            } catch {
+              // Best-effort dedupe only.
+            }
+          }
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : "Could not load your circles");
       } finally {
@@ -71,7 +104,6 @@ export default function OnboardingReadyScreen() {
 
   function onStart() {
     // Keep draft seed for home meta; home clears it after first load.
-    trackOnboardingComplete();
     router.replace("/(app)" as never);
   }
 

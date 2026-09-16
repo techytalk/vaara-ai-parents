@@ -7,6 +7,7 @@
 
 export type AnalyticsEvent =
   | "home_circle_opened"
+  | "home_first_open"
   | "circles_view_all"
   | "circle_post_started"
   | "circle_post_opened"
@@ -24,10 +25,15 @@ export type AnalyticsEvent =
   | "signup_method_selected"
   | "tutorial_begin"
   | "tutorial_complete"
+  | "onboarding_completed"
+  | "onboarding_location_view"
   | "onboarding_location_complete"
+  | "onboarding_school_view"
   | "onboarding_school_complete"
+  | "onboarding_class_view"
   | "onboarding_class_complete"
   | "onboarding_ready_view"
+  | "location_updated"
   | "onboarding_children_complete"
   | "onboarding_account_switch"
   | "location_screen_view"
@@ -57,10 +63,12 @@ export type AnalyticsEvent =
 
 type AnalyticsProperties = Record<string, string | number | boolean>;
 
+/** Events intended as Google Ads / GA4 key conversions. */
 const CONVERSION_EVENTS = new Set<AnalyticsEvent>([
   "sign_up",
   "login",
   "tutorial_complete",
+  "onboarding_completed",
   "share",
 ]);
 
@@ -120,8 +128,57 @@ export function trackOnboardingChildrenComplete(): void {
   trackEvent("onboarding_children_complete");
 }
 
+/**
+ * Conversion: final circles / "You're in" page after school + board + class.
+ * Call once when that page successfully loads — not on every remount/revisit.
+ * Params must stay non-PII (no email/name/phone).
+ */
+export function trackOnboardingCompleted(params?: {
+  circle_count?: number;
+}): void {
+  const properties: AnalyticsProperties = {};
+  if (typeof params?.circle_count === "number") {
+    properties.circle_count = params.circle_count;
+  }
+
+  trackEvent("onboarding_completed", properties);
+  // GA4 recommended event — also importable as an Ads conversion.
+  trackEvent("tutorial_complete");
+}
+
+/** @deprecated Prefer trackOnboardingCompleted on the final circles page. */
 export function trackOnboardingComplete(): void {
   trackEvent("tutorial_complete");
+}
+
+/**
+ * Once per account/device: first time the home feed successfully opens.
+ * Activation signal after onboarding_completed → See your feed.
+ */
+export async function trackHomeFirstOpen(
+  userId: string,
+  params?: {
+  circle_count?: number;
+  post_count?: number;
+  }
+): Promise<void> {
+  try {
+    const SecureStore = await import("expo-secure-store");
+    const KEY = `vaara_home_first_open_${userId}`;
+    if ((await SecureStore.getItemAsync(KEY)) === "true") return;
+    await SecureStore.setItemAsync(KEY, "true");
+  } catch {
+    // If store fails, still attempt once via caller ref.
+  }
+
+  const properties: AnalyticsProperties = {};
+  if (typeof params?.circle_count === "number") {
+    properties.circle_count = params.circle_count;
+  }
+  if (typeof params?.post_count === "number") {
+    properties.post_count = params.post_count;
+  }
+  trackEvent("home_first_open", properties);
 }
 
 export function trackShareConversion(contentType = "post"): void {

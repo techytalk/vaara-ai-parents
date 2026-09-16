@@ -70,6 +70,7 @@ export default function OnboardingSchoolScreen() {
 
   useEffect(() => {
     setOnboardingStep("school");
+    trackEvent("onboarding_school_view");
     getToken().then(async (t) => {
       if (!t) {
         router.replace("/(auth)/login");
@@ -112,7 +113,9 @@ export default function OnboardingSchoolScreen() {
       return;
     }
     await setOnboardingSchoolAsync(selectedSchool);
-    trackEvent("onboarding_school_complete");
+    trackEvent("onboarding_school_complete", {
+      school_verified: selectedSchool.verified,
+    });
     router.push("/onboarding/class" as never);
   }
 

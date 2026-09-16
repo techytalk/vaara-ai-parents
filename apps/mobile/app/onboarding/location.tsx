@@ -195,6 +195,9 @@ export default function LocationScreen() {
       ensureOnboardingAttemptId();
       setOnboardingStep("location");
       trackEvent("location_screen_view");
+      if (!stored?.onboardingComplete) {
+        trackEvent("onboarding_location_view");
+      }
       setCountries(countryList);
       setAlreadyComplete(Boolean(stored?.onboardingComplete));
       if (!token) {
@@ -392,6 +395,9 @@ export default function LocationScreen() {
       }
 
       if (alreadyComplete) {
+        trackEvent("location_updated", {
+          country: countryCode,
+        });
         if (router.canGoBack()) {
           router.back();
         } else {
@@ -400,7 +406,9 @@ export default function LocationScreen() {
         return;
       }
 
-      trackEvent("onboarding_location_complete");
+      trackEvent("onboarding_location_complete", {
+        country: countryCode,
+      });
       void prefetchSchoolsForLocation({
         country: countryCode,
         pin: postal,
