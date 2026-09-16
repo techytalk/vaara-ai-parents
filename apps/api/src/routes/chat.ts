@@ -895,7 +895,7 @@ export function createThreadRoutes() {
     const userId = c.get("user").sub;
     const threadId = String(c.req.param("threadId"));
     const parsed = parseReportReason(await c.req.json());
-    if (!parsed.ok) return c.json({ error: parsed.error }, 400);
+    if (parsed.ok === false) return c.json({ error: parsed.error }, 400);
     const client = await pool.connect();
     try {
       const thread = await client.query(
