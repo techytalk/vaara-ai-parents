@@ -1,0 +1,278 @@
+# West Hyd Excel vs DB
+
+- Excel rows: **303**
+- DB schools: **226**
+- Already in DB: **101** (formal 66, preschool 35)
+- Same brand, other campus in DB: **21** (formal 7, preschool 14)
+- Missing: **181** (formal private **25**, formal gov **25**, preschool **131**)
+
+Matching is name+locality fuzzy. Review `other campus` before treating as covered.
+
+## Missing formal — private / unaided (insert priority)
+
+- [Banjara Hills] Delhi School of Excellence, Banjara Hills — CBSE
+- [Banjara Hills] Roots Montessori School — CBSE / Montessori background
+- [Jubilee Hills] Iqbalia School — CBSE
+- [Jubilee Hills] Little Star High School — State / General
+- [Jubilee Hills] New York Academy — American / International Curriculum
+- [Jubilee Hills] Roots Montessori School — Montessori / School Curriculum
+- [Jubilee Hills] Shivaji Vidya Peeth High School — CBSE
+- [Jubilee Hills] Sreshta The School — General School Curriculum
+- [Khajaguda] Sreenidhi Global School, Khajaguda — School Curriculum
+- [Kondapur] Sreenidhi Global School, Kondapur — School Curriculum
+- [Kondapur] Westfield International School — International-oriented
+- [Madhapur / HITEC City] Dev Guru The Concept School — School / Concept Curriculum
+- [Madhapur / HITEC City] Marsh Techno School — Techno / Integrated
+- [Madhapur / HITEC City] Narayana CO School — CBSE / Integrated
+- [Madhapur / HITEC City] Swathi High School — State / General
+- [Manikonda] Bhashyam Blooms The Global School — CBSE
+- [Manikonda] Mount Litera Zee School (MLZS) - Rajendra Nagar — CBSE
+- [Manikonda] My School — General Education
+- [Manikonda] Sri Gayatri e-Techno School — CBSE
+- [Narsingi] Gowtham Model School Narsingi — State / Integrated Curriculum
+- [Narsingi] V B H SCHOOL,NARSINGI — General / State Curriculum
+- [Narsingi] WINRIDGE INTERNATIONAL SCHOOL — International / School Curriculum
+- [Puppalaguda] Gowtham Model School Alkapur Township — Integrated School Curriculum
+- [Puppalaguda] Sanskriti School Manikonda — General School Curriculum
+- [Shaikpet] Learnatorium Primary School & Child Care — Primary / Early Years
+
+## Missing formal — government
+
+- [Banjara Hills] GHS Banjara Hills
+- [Banjara Hills] Government High School, NBT Nagar
+- [Banjara Hills] Government Primary School, NBT Nagar
+- [Banjara Hills] Govt Primary School
+- [Banjara Hills] Govt Primary School NB Nagar
+- [Gachibowli] MP primary & ZP high school
+- [Gachibowli] ZPHS Gachibowli
+- [Jubilee Hills] Govt Primary School, Jubilee Hills-Masthan Nagar
+- [Khajaguda] Z P School
+- [Kokapet] Govt School Kokapet
+- [Kokapet] Mandal Parishad Upper Primary School, Kokapet
+- [Kondapur] 8th Battalion Govt Primary School
+- [Kondapur] MPP Government School,Kothaguda
+- [Kondapur] Zilla Parishad High School KONDAPUR
+- [Kondapur] Zilla Parishad High School Kothaguda
+- [Manikonda] Govt Primary School
+- [Manikonda] Mandal Parishad Primary School
+- [Narsingi] Govt Upper Primary School Narsingi U/M
+- [Narsingi] Narsingi Government School Harijanawada H . W
+- [Neknampur] Government Primary School
+- [Puppalaguda] MPPS Puppalguda
+- [Shaikpet] Government Primary School
+- [Shaikpet] Government Primary School (Shaikpet)
+- [Tellapur] Primary School IndiraNagar
+- [Tellapur] ZPHS Tellapur
+
+## Formal — already in DB
+
+- [Banjara Hills] Kaushalya Global The Complete School ↔ `Kaushalya Global The Complete School` / Banjara Hills
+- [Banjara Hills] Lovedale International School ↔ `Lovedale International School` / Banjara Hills
+- [Banjara Hills] Meridian School ↔ `Meridian School` / Banjara Hills
+- [Banjara Hills] St. Alphonsus High School, Banjara Hills ↔ `St. Alphonsus High School` / Banjara Hills
+- [Banjara Hills] Sultan-Ul-Uloom Public School ↔ `Sultan-ul-Uloom Public School` / Banjara Hills
+- [Financial District] Keystone International School ↔ `Keystone School` / Puppalaguda
+- [Financial District] Mandal Parishad Upper Primary Nanakramguda Government School ↔ `Nanakramguda Government School` / Nanakramguda
+- [Financial District] Sagebrook International School ↔ `Sagebrook International School` / Nanakramguda
+- [Financial District] The Future Kid's School ↔ `The Future Kid's School` / Puppalaguda
+- [Financial District] The Shri Ram Universal School ↔ `The Shri Ram Universal School` / Nanakramguda
+- [Gachibowli] EuroSchool Hyderabad - CBSE School ↔ `EuroSchool Hyderabad` / Gachibowli
+- [Gachibowli] Goldcrest School ↔ `Goldcrest School` / Gachibowli
+- [Gachibowli] PM SHRI Kendriya Vidyalaya Gachibowli ↔ `Kendriya Vidyalaya` / Gachibowli
+- [Gachibowli] Prerana Waldorf School ↔ `Prerana Waldorf School` / Gachibowli
+- [Jubilee Hills] AMS P. Obul Reddy Public School ↔ `P. Obul Reddy Public School` / Jubilee Hills
+- [Jubilee Hills] Alpha School ↔ `Kalpa School` / Banjara Hills
+- [Jubilee Hills] Bharatiya Vidya Bhavan's Atmakuri Rama Rao School ↔ `Bhavan's Atmakuri Rama Rao School` / Jubilee Hills
+- [Jubilee Hills] Bharatiya Vidya Bhavan's Public School ↔ `Bharatiya Vidya Bhavan's Public School` / Jubilee Hills
+- [Jubilee Hills] Dreamtime Learning Hub Hyderabad ↔ `Dreamtime Learning Hub Hyderabad` / Jubilee Hills
+- [Jubilee Hills] Jubilee Hills Public School ↔ `Jubilee Hills Public School` / Jubilee Hills
+- [Khajaguda] Delhi Public School ↔ `Delhi Public School` / Khajaguda
+- [Khajaguda] Kairos Global School ↔ `Kairos Global School` / Khajaguda
+- [Khajaguda] Oakridge International School, Gachibowli ↔ `Oakridge International School, Gachibowli` / Khajaguda
+- [Kokapet] MPPS Kokapet Govt school ↔ `MPPS` / Kokapet
+- [Kokapet] Phoenix Greens School of Learning ↔ `Phoenix Greens School of Learning` / Kokapet
+- [Kokapet] Rockwell International School ↔ `Rockwell International School` / Kokapet
+- [Kokapet] The Global Edge School - Kokapet ↔ `The Global Edge School` / Kokapet
+- [Kollur] Birla Open Minds International School ↔ `Birla Open Minds International School` / Kollur
+- [Kollur] Delhi Public School, Kollur ↔ `Delhi Public School` / Kollur
+- [Kollur] Government School ↔ `Government School` / Kollur
+- [Kollur] Samashti International School ↔ `Samashti International School` / Kollur
+- [Kollur] Sri Gayatri School ↔ `Sri Gayatri School` / Kollur
+- [Kollur] The Arthah School ↔ `The Arthah School` / Kollur
+- [Kollur] The Gaudium School ↔ `The Gaudium School` / Kollur
+- [Kollur] Vashistha The School Kollur ↔ `Vashistha The School` / Kollur
+- [Kollur] Zilla Parishad High School Kollur ↔ `Zilla Parishad High School` / Kollur
+- [Kondapur] Arbor International School ↔ `Arbor International School` / Kondapur
+- [Kondapur] Branwalton International School ↔ `Branwalton International School` / Kondapur
+- [Kondapur] CHIREC International School - Kondapur (CBSE) Campus ↔ `CHIREC International School` / Kondapur
+- [Kondapur] Samskruthi High School ↔ `Samskruthi High School` / Kondapur
+- [Kondapur] World One School Kondapur ↔ `World One School` / Kondapur
+- [Madhapur / HITEC City] Academic Heights Public School, Madhapur ↔ `Academic Heights Public School - Madhapur` / Madhapur / HITEC City
+- [Madhapur / HITEC City] CGR International School ↔ `CGR International School - Madhapur` / Madhapur / HITEC City
+- [Madhapur / HITEC City] Govt MPP Primary School-Madhapur ↔ `Madhapur High School` / Madhapur / HITEC City
+- [Madhapur / HITEC City] Sloka The Global School ↔ `Sloka The Global School - Madhapur` / Madhapur / HITEC City
+- [Madhapur / HITEC City] Ybrant Smartek Schools ↔ `Ybrant Smartek Schools - Madhapur` / Madhapur / HITEC City
+- [Madhapur / HITEC City] Zphs School Madhapur Mandal ↔ `Madhapur High School` / Madhapur / HITEC City
+- [Manikonda] Delhi School Of Excellence, Manikonda ↔ `Delhi School of Excellence` / Manikonda
+- [Manikonda] Elate INTERNATIONAL SCHOOL ↔ `Elate International School` / Manikonda
+- [Manikonda] Shanthinikethan Concept School ↔ `Shanthinikethan Concept School` / Manikonda
+- [Nanakramguda] Mandal Parishad Upper Primary Nanakramguda Government School ↔ `Nanakramguda Government School` / Nanakramguda
+- [Nanakramguda] Sagebrook International School ↔ `Sagebrook International School` / Nanakramguda
+- [Nanakramguda] The Shri Ram Universal School ↔ `The Shri Ram Universal School` / Nanakramguda
+- [Neknampur] Elate INTERNATIONAL SCHOOL ↔ `Elate INTERNATIONAL SCHOOL` / Neknampur
+- [Neknampur] Scholars Academy ↔ `Scholars Academy` / Neknampur
+- [Puppalaguda] Exceed School ↔ `Exceed School` / Puppalaguda
+- [Puppalaguda] National Premium School (NPS) ↔ `National Premium School (NPS)` / Puppalaguda
+- [Puppalaguda] Rosebuds World School ↔ `Rosebuds World School` / Puppalaguda
+- [Puppalaguda] Sai Pallavi International School Puppalaguda campus ↔ `Sai Pallavi International School` / Puppalaguda
+- [Shaikpet] Akshara Abhyasa School – Block 1 ↔ `AKSHARA ABHYASA SCHOOL BLOCK 1 (Primary)` / Shaikpet
+- [Shaikpet] Insight International School ↔ `Insight International School` / Shaikpet
+- [Shaikpet] International School Shaikpet ↔ `International School` / Shaikpet
+- [Shaikpet] Oasis School ↔ `Oasis School` / Shaikpet
+- [Tellapur] Glendale International School IB-PYP ↔ `Glendale International School IB-PYP` / Tellapur
+- [Tellapur] Manthan School ↔ `Manthan School` / Tellapur
+- [Tellapur] Meru International School Tellapur ↔ `Meru International School` / Tellapur
+
+## Formal — brand in DB at another campus (maybe add campus row)
+
+- [Financial District] SVL School Financial District ↔ `SVL School - Financial District` / Nanakramguda
+- [Madhapur / HITEC City] Meridian School ↔ `Meridian School` / Banjara Hills
+- [Madhapur / HITEC City] Santosh Reddy International Schools ↔ `Santosh Reddy International School - HITEC City` / Madhapur / HITEC City
+- [Manikonda] Government High School ↔ `Government High school` / Neknampur
+- [Manikonda] Government High school ↔ `Government High school` / Neknampur
+- [Shaikpet] Government High School ↔ `Government High school` / Neknampur
+- [Tellapur] ABODE School – Tellapur Campus ↔ `ABODE School Tellapur*` / Osman Nagar
+
+## Missing preschool / daycare
+
+- [Banjara Hills] Amaya Montessori
+- [Banjara Hills] Dibber International Preschool, Banjara Hills
+- [Banjara Hills] Ekam Early Learning Centre
+- [Banjara Hills] KLAY MLA Colony - Preschools and Daycare
+- [Banjara Hills] Kidhood Preschool & Daycare - Banjara Hills
+- [Banjara Hills] Sparkles Montessori
+- [Banjara Hills] TIME Kids Preschool, Erramanzil
+- [Banjara Hills] WISH Preschool & Daycare
+- [Financial District] FirstCry Intellitots Preschool - Financial District
+- [Financial District] Inky Palms Daycare & Early Child Learning Center
+- [Financial District] KLAY Phoenix Primea (Nanakramguda)- Preschools and Daycare
+- [Financial District] KLAY Wave Rock SEZ - Preschool and Daycare
+- [Financial District] Kidzee - Financial District
+- [Financial District] Mindful Montessori ELC
+- [Financial District] Safari Kid - BSR Tech Park
+- [Financial District] The Nurtury Preschool
+- [Gachibowli] Athena Kinderhaus
+- [Gachibowli] Bachpan Play School – Gachibowli
+- [Gachibowli] Bumblebee Learning Care
+- [Gachibowli] CHIREC International School - Gachibowli (Preschool) Campus
+- [Gachibowli] Diversity The Playschool
+- [Gachibowli] EuroKids Preschool in Gachibowli, Hyderabad
+- [Gachibowli] Footprints Preschool & Daycare – Gachibowli
+- [Gachibowli] Inspire Preschool and Daycare Gachibowli
+- [Gachibowli] KLAY Gachibowli - Preschools and Daycare
+- [Gachibowli] Kangaroo Kids – Gachibowli
+- [Gachibowli] Kidzee – Gachibowli
+- [Gachibowli] Little Millennium – Gachibowli
+- [Gachibowli] London Kids Preschool – Gachibowli
+- [Gachibowli] Scintilla Pre School And Child Care
+- [Gachibowli] The Nurtury Preschool
+- [Jubilee Hills] Ekam Early Learning Centre
+- [Jubilee Hills] Flintoclass Preschool & Daycare
+- [Jubilee Hills] Indus International Primary School Jubilee Hills
+- [Jubilee Hills] Kohsha Academy
+- [Jubilee Hills] Little Otters
+- [Jubilee Hills] Maple Bear Canadian Pre-school And Daycare, Jubilee Hills
+- [Jubilee Hills] New Mothers Touch School and Daycare
+- [Jubilee Hills] Nirah Early Years
+- [Jubilee Hills] Samskruti Pre School, Jubilee Hills
+- [Jubilee Hills] The Future Kid's Playgroup
+- [Khajaguda] Anganwadi school , khajaguda
+- [Khajaguda] Beginners World – Khajaguda
+- [Khajaguda] KLAY Chitrapuri
+- [Khajaguda] Makoons Play School Khajaguda
+- [Kokapet] Cambridge Montessori Preschool - Kokapet
+- [Kokapet] Diversity The Playschool
+- [Kokapet] Flintoclass Preschool & Daycare
+- [Kokapet] SOLANA PRE SCHOOL & DAYCARE
+- [Kokapet] The Golden Horizon Preschool
+- [Kondapur] Cambridge Montessori Preschool & Daycare, Kondapur
+- [Kondapur] Cherubs International Preschool and Daycare
+- [Kondapur] Junior Junction
+- [Kondapur] Kidhood Preschool & Daycare – Kondapur
+- [Kondapur] Kidizens
+- [Kondapur] Little Millennium Preschool and daycare- Raghavendra Colony, Kondapur
+- [Kondapur] Little Ville Preschool
+- [Kondapur] Mahara Schools – Kondapur
+- [Kondapur] Stellar Kidz Daycare & Preschool
+- [Kondapur] The Tree House Play School & Day Care
+- [Madhapur / HITEC City] Cambridge Montessori Preschool
+- [Madhapur / HITEC City] EuroKids Preschool in Madhapur, Hyderabad
+- [Madhapur / HITEC City] Footprints Preschool & Daycare
+- [Madhapur / HITEC City] Hello Kids
+- [Madhapur / HITEC City] IRA Kids Preschool & Day/Night Childcare
+- [Madhapur / HITEC City] KLAY Madhapur - Pre Schools and Daycare
+- [Madhapur / HITEC City] KLAY Mindspace, Hitech City - Preschools and Daycare
+- [Madhapur / HITEC City] KLAY SKC Octave - Preschools and Daycare
+- [Madhapur / HITEC City] KLAY Salarpuria Knowledge City (SKC) - Preschools and Daycare
+- [Madhapur / HITEC City] Little Elly
+- [Madhapur / HITEC City] Little Millennium
+- [Madhapur / HITEC City] Sunshine Preschool & Daycare
+- [Madhapur / HITEC City] TIME Kids
+- [Madhapur / HITEC City] The Learning Umbrella
+- [Madhapur / HITEC City] The Mulberry Bush
+- [Manikonda] Bachpan Play School – Manikonda
+- [Manikonda] Cambridge Montessori Preschool – Manikonda
+- [Manikonda] EuroKids – Manikonda
+- [Manikonda] FirstCry Intellitots Preschool & Daycare - Manikonda, Hyderabad
+- [Manikonda] Footprints Preschool & Daycare – Manikonda
+- [Manikonda] Iris Florets – Manikonda
+- [Manikonda] Kidzee – Manikonda
+- [Manikonda] Little Millennium – Manikonda
+- [Manikonda] Little Wonders Play School
+- [Manikonda] TIME Kids – Manikonda
+- [Manikonda] The Mulberry Bush
+- [Nanakramguda] Inky Palms Preschool
+- [Nanakramguda] KLAY Phoenix Primea (Nanakramguda)- Preschools and Daycare
+- [Nanakramguda] KLAY Preschool and Daycare- Harsha Icon, ADP ORR Service Road
+- [Nanakramguda] KLAY Wave Rock SEZ - Preschool and Daycare
+- [Nanakramguda] Orelle The School
+- [Nanakramguda] ROCK TUMBLERZ - An Exploratroy Studio for Early Childhood
+- [Nanakramguda] The Singing Bowl Preschool, Daycare & Activity Centre
+- [Narsingi] EuroKids Preschool in Muppa Community - Narsingi, Hyderabad
+- [Narsingi] Grasshopper Playschool & Daycare Narsingi
+- [Narsingi] Hello Kids - Hare Krishna, Narsingi, Hyderabad
+- [Narsingi] IRIS Early Years
+- [Narsingi] Ingenium NXT Preschool & Daycare - Narsingi
+- [Narsingi] Little Genius Preschool, NARSINGI
+- [Narsingi] Little Ville Narsingi
+- [Narsingi] Makoons Preschool – Narsingi
+- [Narsingi] Over The Rainbow
+- [Narsingi] Podar Prep Plus
+- [Narsingi] iKidz Preschool – Narsingi
+- [Neknampur] EuroKids Preschool in Alkapoor - Neknampur, Hyderabad
+- [Neknampur] Ikshana School and Day Care Alkapur - Preschool
+- [Neknampur] Little Pebbles International Preschool & Day Care
+- [Osman Nagar] Blue Blocks – Tellapur / Osman Nagar
+- [Osman Nagar] Little Cosmos Activity Learning Centre & Daycare LLP
+- [Puppalaguda] Basil Woods Juniors School & Day Care - Manikonda
+- [Puppalaguda] Cambridge First Steps Alkapur Township
+- [Puppalaguda] Little Caterpillars Preschool
+- [Puppalaguda] Little Cuddles International Preschool
+- [Puppalaguda] Little Elly
+- [Puppalaguda] Little Millennium
+- [Puppalaguda] Makoons Preschool – Alkapur
+- [Puppalaguda] Pallavi Kidz, Alkapur Township
+- [Puppalaguda] Smartkidz
+- [Puppalaguda] Smartkidz Preschool
+- [Puppalaguda] Sparkle Tots
+- [Puppalaguda] The Plato's School
+- [Shaikpet] A'ala Nature Preschool
+- [Shaikpet] Bright Roots Preschool
+- [Shaikpet] BrightCorner Global School
+- [Shaikpet] Hopscotch Playschool
+- [Shaikpet] Lalana Day Care Center
+- [Shaikpet] Learnatorium Preschool & Child Care
+- [Shaikpet] Little Einstein
+- [Shaikpet] Little Millennium Preschool – OU Colony
+- [Shaikpet] New Alpha Kids Play School
+- [Shaikpet] SmartKids

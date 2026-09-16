@@ -309,5 +309,116 @@ export function createInternalRoutes() {
     }
   });
 
+  // ---- Admin parent signups (secret-gated) ----
+
+  app.get("/admin/parents", async (c) => {
+    if (!requireAdminSecret(c)) return c.json({ error: "Unauthorized" }, 401);
+
+    const dateParam = (c.req.query("date") ?? "").trim();
+    const status = (c.req.query("status") ?? "all").trim().toLowerCase();
+    const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 200), 1), 500);
+
+    // YYYY-MM-DD in Asia/Kolkata; default = today IST
+    const dateOk = /^\d{4}-\d{2}-\d{2}$/.test(dateParam);
+    const daySql = dateOk ? dateParam : null;
+    const statusFilter =
+      status === "complete"
+        ? "AND u.onboarding_complete IS TRUE"
+        : status === "incomplete"
+          ? "AND COALESCE(u.onboarding_complete, false) IS FALSE"
+          : "";
+
+    const client = await pool.connect();
+    try {
+      const { rows: summaryRows } = await client.query(
+        `WITH day AS (
+           SELECT COALESCE($1::date, (now() AT TIME ZONE 'Asia/Kolkata')::date) AS d
+         )
+         SELECT
+           day.d::text AS date,
+           COUNT(u.id)::int AS total,
+           COUNT(u.id) FILTER (WHERE u.onboarding_complete IS TRUE)::int AS complete,
+           COUNT(u.id) FILTER (WHERE u.id IS NOT NULL AND COALESCE(u.onboarding_complete, false) IS FALSE)::int AS incomplete
+         FROM day
+         LEFT JOIN users u
+           ON u.role = 'parent'
+          AND (u.created_at AT TIME ZONE 'Asia/Kolkata')::date = day.d
+         GROUP BY day.d`,
+        [daySql]
+      );
+
+      const { rows: parents } = await client.query(
+        `WITH day AS (
+           SELECT COALESCE($1::date, (now() AT TIME ZONE 'Asia/Kolkata')::date) AS d
+         )
+         SELECT
+           u.id,
+           u.email,
+           u.display_name,
+           u.onboarding_complete,
+           to_char(u.created_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD HH24:MI') AS created_ist,
+           to_char(u.updated_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD HH24:MI') AS updated_ist,
+           loc.pin_code,
+           loc.locality,
+           loc.city,
+           loc.state,
+           COALESCE(ch.child_count, 0)::int AS child_count,
+           ch.first_school
+         FROM day
+         JOIN users u
+           ON u.role = 'parent'
+          AND (u.created_at AT TIME ZONE 'Asia/Kolkata')::date = day.d
+         LEFT JOIN user_locations loc ON loc.user_id = u.id
+         LEFT JOIN LATERAL (
+           SELECT
+             COUNT(*)::int AS child_count,
+             MIN(
+               NULLIF(
+                 concat_ws(
+                   ' · ',
+                   NULLIF(trim(s.name), ''),
+                   NULLIF(trim(s.branch), ''),
+                   NULLIF(trim(s.city), '')
+                 ),
+                 ''
+               )
+             ) AS first_school
+           FROM children c
+           LEFT JOIN schools s ON s.id = c.school_id
+           WHERE c.user_id = u.id
+         ) ch ON true
+         WHERE TRUE
+           ${statusFilter}
+         ORDER BY u.created_at DESC
+         LIMIT $2`,
+        [daySql, limit]
+      );
+
+      const { rows: recentDays } = await client.query(
+        `SELECT
+           (created_at AT TIME ZONE 'Asia/Kolkata')::date::text AS date,
+           COUNT(*)::int AS total,
+           COUNT(*) FILTER (WHERE onboarding_complete IS TRUE)::int AS complete,
+           COUNT(*) FILTER (WHERE COALESCE(onboarding_complete, false) IS FALSE)::int AS incomplete
+         FROM users
+         WHERE role = 'parent'
+           AND created_at >= (now() AT TIME ZONE 'Asia/Kolkata')::date AT TIME ZONE 'Asia/Kolkata'
+                           - interval '14 days'
+         GROUP BY 1
+         ORDER BY 1 DESC`
+      );
+
+      return c.json({
+        ok: true,
+        timezone: "Asia/Kolkata",
+        summary: summaryRows[0] ?? null,
+        recentDays,
+        parents,
+      });
+    } finally {
+      client.release();
+    }
+  });
+
   return app;
 }

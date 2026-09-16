@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow" />
+    <title>Vaara — Parent signups</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+        --teal: #0e9a8a;
+        --teal-dark: #08786d;
+        --bg: #fffcf7;
+        --card: #fff;
+        --text: #0d1b2a;
+        --muted: #5e6974;
+        --border: #e8e3db;
+        --ok: #078675;
+        --warn: #b96d00;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: var(--bg);
+        color: var(--text);
+      }
+      h1 { font-size: 1.45rem; margin: 0 0 6px; }
+      h2 { font-size: 1.05rem; margin: 22px 0 10px; }
+      .muted { color: var(--muted); font-size: 0.9rem; margin: 0 0 18px; }
+      a { color: var(--teal-dark); }
+      label { display: block; font-size: 0.85rem; margin: 0 0 4px; color: var(--muted); }
+      input, select, button {
+        font: inherit;
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+      }
+      button {
+        background: var(--teal);
+        color: #fff;
+        border: none;
+        cursor: pointer;
+        margin-right: 8px;
+      }
+      button.secondary { background: #44403c; }
+      button:disabled { opacity: 0.55; cursor: wait; }
+      .toolbar {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        align-items: end;
+        margin-bottom: 16px;
+      }
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 10px;
+        margin-bottom: 16px;
+      }
+      .stat {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 12px 14px;
+      }
+      .stat .n { font-size: 1.6rem; font-weight: 700; }
+      .stat .l { font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
+      .days {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 14px;
+      }
+      .day-chip {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 6px 12px;
+        cursor: pointer;
+        font-size: 0.85rem;
+      }
+      .day-chip.active {
+        background: #eaf8f6;
+        border-color: var(--teal);
+        color: var(--teal-dark);
+        font-weight: 600;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        overflow: hidden;
+        font-size: 0.9rem;
+      }
+      th, td {
+        text-align: left;
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--border);
+        vertical-align: top;
+      }
+      th {
+        background: #f7f4ee;
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        color: var(--muted);
+      }
+      tr:last-child td { border-bottom: none; }
+      .badge {
+        display: inline-block;
+        border-radius: 999px;
+        padding: 2px 8px;
+        font-size: 0.75rem;
+        font-weight: 700;
+      }
+      .badge.ok { background: #e7f7f4; color: var(--ok); }
+      .badge.warn { background: #fff2d9; color: var(--warn); }
+      .err {
+        color: #b91c1c;
+        background: #feecec;
+        border-radius: 10px;
+        padding: 10px 12px;
+        margin-bottom: 12px;
+        display: none;
+      }
+      .nav { margin-bottom: 14px; font-size: 0.9rem; }
+      .empty { color: var(--muted); padding: 18px 0; }
+      @media (max-width: 720px) {
+        body { padding: 14px; }
+        table { display: block; overflow-x: auto; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="nav">
+      <strong>Admin</strong> · Parent signups ·
+      <a href="/internal/admin/schools.html">School tools</a>
+    </div>
+    <h1>Parent signups</h1>
+    <p class="muted">
+      Date-wise parent accounts (Asia/Kolkata). Requires
+      <code>X-Admin-Secret</code>. Secret stays in this browser only.
+    </p>
+
+    <div class="toolbar">
+      <div>
+        <label>API base</label>
+        <input id="apiBase" size="36" value="https://api.vaara.ai" />
+      </div>
+      <div>
+        <label>X-Admin-Secret</label>
+        <input id="secret" type="password" size="28" autocomplete="off" />
+      </div>
+      <div>
+        <label>Date</label>
+        <input id="date" type="date" />
+      </div>
+      <div>
+        <label>Status</label>
+        <select id="status">
+          <option value="all">All</option>
+          <option value="complete">Complete</option>
+          <option value="incomplete">Incomplete</option>
+        </select>
+      </div>
+      <button id="refresh" type="button">Refresh</button>
+      <button id="today" class="secondary" type="button">Today</button>
+    </div>
+
+    <div id="err" class="err"></div>
+
+    <div class="stats" id="stats">
+      <div class="stat"><div class="n" id="nTotal">—</div><div class="l">Total that day</div></div>
+      <div class="stat"><div class="n" id="nComplete">—</div><div class="l">Onboarding complete</div></div>
+      <div class="stat"><div class="n" id="nIncomplete">—</div><div class="l">Incomplete</div></div>
+    </div>
+
+    <h2>Last 14 days</h2>
+    <div class="days" id="days"></div>
+
+    <h2>Parents</h2>
+    <div id="list"><p class="empty">Enter secret and refresh.</p></div>
+
+    <script>
+      const SECRET_KEY = "vaara_admin_secret";
+      const API_KEY = "vaara_admin_api_base";
+
+      function $(id) { return document.getElementById(id); }
+
+      function todayIst() {
+        // Approximate IST date string from local offset-aware formatting
+        const fmt = new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Asia/Kolkata",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        });
+        return fmt.format(new Date());
+      }
+
+      function apiBase() {
+        return $("apiBase").value.replace(/\/$/, "");
+      }
+
+      function showError(msg) {
+        const box = $("err");
+        if (!msg) {
+          box.style.display = "none";
+          box.textContent = "";
+          return;
+        }
+        box.style.display = "block";
+        box.textContent = msg;
+      }
+
+      function saveCreds() {
+        try {
+          sessionStorage.setItem(SECRET_KEY, $("secret").value);
+          sessionStorage.setItem(API_KEY, $("apiBase").value);
+        } catch (_) {}
+      }
+
+      function loadCreds() {
+        try {
+          const s = sessionStorage.getItem(SECRET_KEY);
+          const a = sessionStorage.getItem(API_KEY);
+          if (s) $("secret").value = s;
+          if (a) $("apiBase").value = a;
+        } catch (_) {}
+      }
+
+      function locationLine(p) {
+        const parts = [p.locality, p.city, p.state, p.pin_code].filter(Boolean);
+        return parts.length ? parts.join(" · ") : "—";
+      }
+
+      function renderDays(recentDays, activeDate) {
+        const wrap = $("days");
+        wrap.replaceChildren();
+        if (!recentDays || !recentDays.length) {
+          wrap.appendChild(Object.assign(document.createElement("span"), {
+            className: "empty",
+            textContent: "No signups in the last 14 days.",
+          }));
+          return;
+        }
+        for (const d of recentDays) {
+          const chip = document.createElement("button");
+          chip.type = "button";
+          chip.className = "day-chip" + (d.date === activeDate ? " active" : "");
+          chip.textContent = `${d.date} · ${d.total} (${d.complete}✓ / ${d.incomplete}…)`;
+          chip.addEventListener("click", () => {
+            $("date").value = d.date;
+            loadParents();
+          });
+          wrap.appendChild(chip);
+        }
+      }
+
+      function renderParents(parents) {
+        const list = $("list");
+        list.replaceChildren();
+        if (!parents || !parents.length) {
+          list.appendChild(Object.assign(document.createElement("p"), {
+            className: "empty",
+            textContent: "No parents for this date / filter.",
+          }));
+          return;
+        }
+
+        const table = document.createElement("table");
+        table.innerHTML = `
+          <thead>
+            <tr>
+              <th>Created (IST)</th>
+              <th>Email</th>
+              <th>Status</th>
+              <th>Location</th>
+              <th>Children</th>
+              <th>School</th>
+            </tr>
+          </thead>
+        `;
+        const tbody = document.createElement("tbody");
+        for (const p of parents) {
+          const tr = document.createElement("tr");
+          const status = p.onboarding_complete
+            ? '<span class="badge ok">Complete</span>'
+            : '<span class="badge warn">Incomplete</span>';
+          tr.innerHTML = `
+            <td>${p.created_ist || "—"}</td>
+            <td>${escapeHtml(p.email || "—")}</td>
+            <td>${status}</td>
+            <td>${escapeHtml(locationLine(p))}</td>
+            <td>${p.child_count ?? 0}</td>
+            <td>${escapeHtml(p.first_school || "—")}</td>
+          `;
+          tbody.appendChild(tr);
+        }
+        table.appendChild(tbody);
+        list.appendChild(table);
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      async function loadParents() {
+        showError("");
+        const secret = $("secret").value.trim();
+        if (!secret) {
+          showError("Enter X-Admin-Secret first.");
+          return;
+        }
+        saveCreds();
+        const btn = $("refresh");
+        btn.disabled = true;
+        try {
+          const date = $("date").value || todayIst();
+          $("date").value = date;
+          const status = $("status").value;
+          const url =
+            `${apiBase()}/internal/admin/parents` +
+            `?date=${encodeURIComponent(date)}` +
+            `&status=${encodeURIComponent(status)}`;
+          const res = await fetch(url, {
+            headers: { "X-Admin-Secret": secret },
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            throw new Error(data.error || `HTTP ${res.status}`);
+          }
+          const s = data.summary || {};
+          $("nTotal").textContent = s.total ?? 0;
+          $("nComplete").textContent = s.complete ?? 0;
+          $("nIncomplete").textContent = s.incomplete ?? 0;
+          renderDays(data.recentDays || [], s.date || date);
+          renderParents(data.parents || []);
+        } catch (e) {
+          showError(e instanceof Error ? e.message : "Failed to load");
+        } finally {
+          btn.disabled = false;
+        }
+      }
+
+      $("refresh").addEventListener("click", loadParents);
+      $("today").addEventListener("click", () => {
+        $("date").value = todayIst();
+        loadParents();
+      });
+      $("status").addEventListener("change", () => {
+        if ($("secret").value.trim()) loadParents();
+      });
+      $("date").addEventListener("change", () => {
+        if ($("secret").value.trim()) loadParents();
+      });
+
+      loadCreds();
+      $("date").value = todayIst();
+    </script>
+  </body>
+</html>

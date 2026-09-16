@@ -2,6 +2,11 @@
   "installCommand": "cd ../.. && rm -rf node_modules && npm install --include=optional --foreground-scripts",
   "buildCommand": "cd ../.. && npm run build:web",
   "outputDirectory": "dist",
+  "redirects": [
+    { "source": "/admin", "destination": "/internal/admin/", "permanent": false },
+    { "source": "/admin/", "destination": "/internal/admin/", "permanent": false },
+    { "source": "/admin/schools.html", "destination": "/internal/admin/schools.html", "permanent": false }
+  ],
   "rewrites": [
     {
       "source": "/p/:shareId",
