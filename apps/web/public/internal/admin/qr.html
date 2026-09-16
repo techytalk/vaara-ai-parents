@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex,nofollow" />
     <title>Vaara — QR codes</title>
-    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
     <style>
       :root {
         color-scheme: light;
@@ -90,12 +89,13 @@
         gap: 12px;
         padding: 20px;
       }
-      #canvas {
+      #preview {
         width: min(100%, 360px);
-        height: auto;
+        aspect-ratio: 1;
         background: #fff;
         border: 1px solid var(--border);
         border-radius: 12px;
+        object-fit: contain;
       }
       .url-preview {
         font-size: 0.85rem;
@@ -192,7 +192,7 @@
       </div>
 
       <div class="panel preview-wrap">
-        <canvas id="canvas" width="360" height="360" aria-label="QR preview"></canvas>
+        <img id="preview" width="360" height="360" alt="QR preview" />
         <div id="urlPreview" class="url-preview"></div>
       </div>
     </div>
@@ -211,7 +211,7 @@
       const urlInput = document.getElementById("url");
       const sizeSelect = document.getElementById("size");
       const labelInput = document.getElementById("label");
-      const canvas = document.getElementById("canvas");
+      const preview = document.getElementById("preview");
       const urlPreview = document.getElementById("urlPreview");
       const errEl = document.getElementById("err");
       const toastEl = document.getElementById("toast");
@@ -253,29 +253,35 @@
           .slice(0, 40);
       }
 
-      async function renderQr() {
+      function qrImageUrl(data, size) {
+        const params = new URLSearchParams({
+          size: `${size}x${size}`,
+          ecc: "H",
+          margin: "8",
+          color: "0d1b2a",
+          bgcolor: "ffffff",
+          data,
+        });
+        return `https://api.qrserver.com/v1/create-qr-code/?${params.toString()}`;
+      }
+
+      function renderQr() {
         const url = normalizeUrl(urlInput.value);
         urlPreview.textContent = url || "Enter a valid URL to generate a QR code.";
         if (!url) {
           showError("Enter a valid URL.");
           downloadBtn.disabled = true;
-          const ctx = canvas.getContext("2d");
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          preview.removeAttribute("src");
           return;
         }
         showError("");
         downloadBtn.disabled = false;
-        try {
-          await QRCode.toCanvas(canvas, url, {
-            width: 360,
-            margin: 2,
-            errorCorrectionLevel: "H",
-            color: { dark: "#0d1b2a", light: "#ffffff" },
-          });
-        } catch (e) {
-          showError(e.message || "Could not generate QR code.");
+        preview.onload = () => showError("");
+        preview.onerror = () => {
+          showError("Could not generate QR preview. Check your network and try again.");
           downloadBtn.disabled = true;
-        }
+        };
+        preview.src = qrImageUrl(url, 360);
       }
 
       function scheduleRender() {
@@ -290,7 +296,6 @@
         });
         if (target !== "custom") {
           urlInput.value = PRESETS[target];
-          urlInput.readOnly = false;
         } else if (!urlInput.value || Object.values(PRESETS).includes(urlInput.value)) {
           urlInput.value = "";
           urlInput.focus();
@@ -315,8 +320,6 @@
         scheduleRender();
       });
 
-      sizeSelect.addEventListener("change", () => {});
-
       copyBtn.addEventListener("click", async () => {
         const url = normalizeUrl(urlInput.value);
         if (!url) return;
@@ -332,25 +335,27 @@
         const url = normalizeUrl(urlInput.value);
         if (!url) return;
         const size = Number(sizeSelect.value) || 1024;
+        downloadBtn.disabled = true;
         try {
-          const dataUrl = await QRCode.toDataURL(url, {
-            width: size,
-            margin: 2,
-            errorCorrectionLevel: "H",
-            color: { dark: "#0d1b2a", light: "#ffffff" },
-          });
+          const res = await fetch(qrImageUrl(url, size));
+          if (!res.ok) throw new Error("Download failed.");
+          const blob = await res.blob();
           const tag =
             slugify(labelInput.value) ||
             (currentTarget !== "custom" ? currentTarget : "custom");
+          const objectUrl = URL.createObjectURL(blob);
           const a = document.createElement("a");
-          a.href = dataUrl;
+          a.href = objectUrl;
           a.download = `vaara-qr-${tag}-${size}.png`;
           document.body.appendChild(a);
           a.click();
           a.remove();
+          URL.revokeObjectURL(objectUrl);
           toast("PNG downloaded");
         } catch (e) {
           showError(e.message || "Download failed.");
+        } finally {
+          downloadBtn.disabled = false;
         }
       });
 
