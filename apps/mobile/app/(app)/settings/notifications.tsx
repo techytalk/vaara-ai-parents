@@ -28,12 +28,20 @@ const PREF_LABELS: Record<BooleanPrefKey, string> = {
   carpool: "Carpool updates",
   school_events: "School calendar",
   expert_sessions: "Expert sessions",
+  group_messages: "Class group messages",
+  thread_replies: "Replies in threads you follow",
+  thread_mentions: "Mentions",
+  provider_responses: "Tutor replies",
+  service_updates: "Tutor channel updates",
 };
 
 const IMMEDIATE_PREFS = new Set<BooleanPrefKey>([
   "circle_replies",
   "direct_messages",
   "disclosures",
+  "thread_replies",
+  "thread_mentions",
+  "provider_responses",
   "reminders",
   "carpool",
   "school_events",

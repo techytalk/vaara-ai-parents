@@ -56,6 +56,25 @@ export default function AppLayout() {
             postId: String(data.postId),
           },
         });
+        return;
+      }
+      if (
+        (type === "thread_reply" ||
+          type === "thread_mention" ||
+          type === "provider_response") &&
+        data.threadId
+      ) {
+        router.push({
+          pathname: "/(app)/messages/threads/[threadId]",
+          params: { threadId: String(data.threadId) },
+        });
+        return;
+      }
+      if (type === "group_message" && data.circleId) {
+        router.push({
+          pathname: "/(app)/messages/groups/[circleId]",
+          params: { circleId: String(data.circleId) },
+        });
       }
     }
 

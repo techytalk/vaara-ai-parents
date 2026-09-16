@@ -1,4 +1,5 @@
 import type { PoolClient } from "pg";
+import { publishUserInboxEvent } from "@vaara/redis";
 import { normalizeCommunityKey } from "../lib/community.js";
 import { formatSchoolLabel } from "../lib/school.js";
 
@@ -217,6 +218,15 @@ export async function syncCircleMembership(
          AND left_at IS NULL
          AND circle_id = ANY($2::uuid[])`,
       [userId, leaving.rows.map((row) => row.circle_id)]
+    );
+    await Promise.all(
+      leaving.rows.map((row) =>
+        publishUserInboxEvent(userId, {
+          type: "access.revoked",
+          userId,
+          circleId: String(row.circle_id),
+        })
+      )
     );
   }
 

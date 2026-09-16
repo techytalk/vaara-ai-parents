@@ -16,7 +16,7 @@ import {
   mapAuthorView,
 } from "../lib/author.js";
 import { resolveAvatarKey } from "../lib/avatar.js";
-import { getOrCreateConversation } from "../lib/conversations.js";
+import { getOrCreateConversation, resolveConversationRoles } from "../lib/conversations.js";
 import {
   loadCirclesForPosts,
   type PostCircleSummary,
@@ -2240,6 +2240,18 @@ export function createConversationsRoutes() {
       }
 
       const shared = await assertSharedCircle(client, userId, peerUserId);
+      const roles = await resolveConversationRoles(
+        client,
+        userId,
+        peerUserId,
+        body.myRole,
+        body.peerRole
+      );
+      if ("error" in roles) {
+        return c.json({ error: roles.error }, roles.status as 400 | 403);
+      }
+      const involvesProvider =
+        roles.myRole === "provider" || roles.peerRole === "provider";
       if (body.listingId) {
         const listing = await client.query(
           `SELECT id, seller_id, status FROM listings WHERE id = $1`,
@@ -2252,11 +2264,11 @@ export function createConversationsRoutes() {
         ) {
           return c.json({ error: "Invalid listing for this conversation" }, 400);
         }
-      } else if (!shared) {
-        return c.json({ error: "You must share a circle to message" }, 403);
-      }
+        } else if (!shared && !involvesProvider) {
+          return c.json({ error: "You must share a circle to message" }, 403);
+        }
 
-      const peerExists = await client.query(
+        const peerExists = await client.query(
         "SELECT id, anonymous_handle FROM users WHERE id = $1",
         [peerUserId]
       );
@@ -2264,13 +2276,11 @@ export function createConversationsRoutes() {
         return c.json({ error: "User not found" }, 404);
       }
 
-      const myRole = body.myRole === "provider" ? "provider" : "parent";
-      const peerRole = body.peerRole === "provider" ? "provider" : "parent";
       const convId = await getOrCreateConversation(client, {
         userId,
         peerUserId,
-        myRole,
-        peerRole,
+        myRole: roles.myRole,
+        peerRole: roles.peerRole,
         initiatedFromCircleId: body.circleId,
         initiatedFromPostId: body.postId,
         initiatedFromThreadId: body.threadId,

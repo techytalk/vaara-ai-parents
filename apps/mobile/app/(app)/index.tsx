@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  FlatList,
   Pressable,
-  RefreshControl,
   StyleSheet,
   Text,
   View,
@@ -12,21 +9,15 @@ import { useRouter } from "expo-router";
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import {
-  useInfiniteQuery,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
 import { ChatHomeScreen } from "@/components/chat/ChatHomeScreen";
-import { FeedPostCard } from "@/components/feed/FeedPostCard";
-import { EmptyState, Avatar, ScreenLoader } from "@/components/ui";
+import { Avatar, ScreenLoader } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import { useRealtimeChannels } from "@/hooks/useRealtimeChannels";
-import { api, type HomeFeedPost } from "@/lib/api";
-import {
-  composeParamsForMode,
-  pickPrimaryCircle,
-  type ComposeMode,
-} from "@/lib/home-feed";
+import { api } from "@/lib/api";
+import { pickPrimaryCircle } from "@/lib/home-feed";
 import { hasCompletedAppTour } from "@/lib/app-tour";
 import {
   dismissCompletionPrompt,
@@ -40,11 +31,6 @@ import {
   endAuthenticatedSession,
   isUnauthorized,
 } from "@/lib/authenticated-state";
-import {
-  HOME_FEED_VIEWABILITY_CONFIG,
-  useHomeFeedImpressions,
-} from "@/lib/home-feed-impressions";
-import { setSavedPostId } from "@/lib/post-cache";
 import { getToken, saveSession } from "@/lib/session";
 import {
   clearOnboardingDraft,
@@ -52,8 +38,6 @@ import {
   getOnboardingCircles,
   getOnboardingUser,
 } from "@/lib/onboarding-draft";
-import { sharePostLink } from "@/lib/share-post";
-import { useSubmitReport } from "@/providers/ReportProvider";
 import { CompletionPrompt } from "@/components/CompletionPrompt";
 import { HomeTourOverlay, useHomeTour } from "@/components/tour/HomeTourOverlay";
 
@@ -73,7 +57,6 @@ export default function HomeScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const queryClient = useQueryClient();
-  const submitReport = useSubmitReport();
   const [draftSnapshot] = useState(() => ({
     user: getOnboardingUser(),
     circles: getOnboardingCircles(),
@@ -83,36 +66,10 @@ export default function HomeScreen() {
     useState<CompletionPromptCandidate | null>(null);
   const authExitStartedRef = useRef(false);
   const homeFirstOpenFiredRef = useRef(false);
-  const { onViewableItemsChanged } = useHomeFeedImpressions();
-  const viewabilityConfigRef = useRef(HOME_FEED_VIEWABILITY_CONFIG);
 
   useEffect(() => {
     clearOnboardingDraft();
   }, []);
-
-  const feedQuery = useInfiniteQuery({
-    queryKey: ["homeFeed"],
-    initialPageParam: undefined as string | undefined,
-    queryFn: async ({ pageParam }) => {
-      const token = await getToken();
-      if (!token) throw new Error("Not signed in");
-      return api.getHomeFeed(token, {
-        cursor: pageParam,
-        limit: 20,
-      });
-    },
-    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
-    retry: false,
-  });
-
-  const posts = useMemo(
-    () => feedQuery.data?.pages.flatMap((page) => page.posts) ?? [],
-    [feedQuery.data]
-  );
-
-  const refreshFeed = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ["homeFeed"] });
-  }, [queryClient]);
 
   const userQuery = useQuery({
     queryKey: ["sessionUser"],
@@ -124,7 +81,6 @@ export default function HomeScreen() {
       return me;
     },
     initialData: draftSnapshot.user ?? undefined,
-    enabled: feedQuery.isSuccess,
     retry: false,
   });
   const user = userQuery.data ?? null;
@@ -133,7 +89,6 @@ export default function HomeScreen() {
     queryKey: ["circles"],
     queryFn: () => authed((token) => api.getCircles(token)),
     initialData: draftSnapshot.circles ?? undefined,
-    enabled: feedQuery.isSuccess,
     retry: false,
   });
   const circles = circlesQuery.data ?? [];
@@ -141,41 +96,27 @@ export default function HomeScreen() {
   const notificationsQuery = useQuery({
     queryKey: ["me", "notifications"],
     queryFn: () => authed((token) => api.getNotifications(token)),
-    enabled: feedQuery.isSuccess,
     retry: false,
   });
   const unreadAlerts =
     notificationsQuery.data?.filter((item) => !item.readAt).length ?? 0;
 
-  const savedQuery = useQuery({
-    queryKey: ["me", "savedPostIds"],
-    queryFn: async () => {
-      const result = await authed((token) => api.getSaved(token));
-      return result.posts.map((post) => post.id);
-    },
-    enabled: feedQuery.isSuccess,
-    retry: false,
-  });
-  const savedPostIds = useMemo(
-    () => new Set(savedQuery.data ?? []),
-    [savedQuery.data]
-  );
-
   const childrenQuery = useQuery({
     queryKey: ["me", "children"],
     queryFn: () => authed((token) => api.getChildren(token)),
     initialData: draftSnapshot.children ?? undefined,
-    enabled: feedQuery.isSuccess,
     retry: false,
   });
 
+  const refreshHome = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["chatHome"] });
+  }, [queryClient]);
+
   useEffect(() => {
     const unauthorized = [
-      feedQuery.error,
       userQuery.error,
       circlesQuery.error,
       notificationsQuery.error,
-      savedQuery.error,
       childrenQuery.error,
     ].some(isUnauthorized);
     if (!unauthorized || authExitStartedRef.current) return;
@@ -185,11 +126,9 @@ export default function HomeScreen() {
       router.replace("/(auth)/login");
     });
   }, [
-    feedQuery.error,
     userQuery.error,
     circlesQuery.error,
     notificationsQuery.error,
-    savedQuery.error,
     childrenQuery.error,
     router,
   ]);
@@ -198,7 +137,6 @@ export default function HomeScreen() {
     let cancelled = false;
     (async () => {
       if (
-        !feedQuery.isSuccess ||
         !circlesQuery.isSuccess ||
         !childrenQuery.isSuccess
       ) {
@@ -220,7 +158,6 @@ export default function HomeScreen() {
       cancelled = true;
     };
   }, [
-    feedQuery.isSuccess,
     childrenQuery.data,
     childrenQuery.isSuccess,
     circlesQuery.data,
@@ -236,16 +173,21 @@ export default function HomeScreen() {
     channels: circleChannels,
     enabled: circleChannels.length > 0,
     onEvent: (event) => {
-      if (event.type === "post.new" || event.type === "reply.new") {
-        refreshFeed();
+      if (
+        event.type === "chat.message" ||
+        event.type === "inbox.updated" ||
+        event.type === "post.new" ||
+        event.type === "reply.new"
+      ) {
+        refreshHome();
       }
     },
-    onPollFallback: refreshFeed,
+    onPollFallback: refreshHome,
   });
 
   useLayoutEffect(() => {
     navigation.setOptions({
-      title: "Feed",
+      title: "Home",
       headerRight: () => (
         <Pressable
           onPress={() => router.push("/(app)/notifications")}
@@ -268,28 +210,24 @@ export default function HomeScreen() {
   }, [navigation, router, unreadAlerts]);
 
   const primaryCircle = useMemo(() => pickPrimaryCircle(circles), [circles]);
-  const loading = feedQuery.isLoading && posts.length === 0;
+  const loading = userQuery.isLoading;
   const composeLocked = circlesQuery.isPending || circlesQuery.isError;
-  const circlesKnown = circlesQuery.isSuccess;
-  const hasCircles = circlesKnown && circles.length > 0;
   const tour = useHomeTour(
-    !feedQuery.isLoading && Boolean(user) && circlesQuery.isSuccess
+    Boolean(user) && circlesQuery.isSuccess
   );
 
   useEffect(() => {
     if (homeFirstOpenFiredRef.current) return;
-    if (!feedQuery.isSuccess || !circlesQuery.isSuccess || !user) return;
+    if (!circlesQuery.isSuccess || !user) return;
     homeFirstOpenFiredRef.current = true;
     void trackHomeFirstOpen(user.id, {
       circle_count: circles.length,
-      post_count: posts.length,
+      post_count: 0,
     });
   }, [
-    feedQuery.isSuccess,
     circlesQuery.isSuccess,
     user,
     circles.length,
-    posts.length,
   ]);
 
   async function onDismissPrompt() {
@@ -306,136 +244,6 @@ export default function HomeScreen() {
     if (!activePrompt) return;
     const href = hrefForCompletionPrompt(activePrompt);
     router.push(href as never);
-  }
-
-  function openNewPost(mode?: ComposeMode) {
-    if (circlesQuery.isPending || circlesQuery.isError) {
-      return;
-    }
-    if (!primaryCircle) {
-      router.push("/onboarding/children");
-      return;
-    }
-    router.push({
-      pathname: "/circles/[circleId]/new-post",
-      params: {
-        circleId: primaryCircle.id,
-        title: primaryCircle.displayName,
-        ...(mode ? composeParamsForMode(mode) : {}),
-      },
-    });
-  }
-
-  function openPost(post: HomeFeedPost) {
-    router.push({
-      pathname: "/circles/[circleId]/posts/[postId]",
-      params: {
-        circleId: post.circleId,
-        postId: post.id,
-        title: post.circleName,
-      },
-    });
-  }
-
-  function updatePostInCache(
-    postId: string,
-    updater: (post: HomeFeedPost) => HomeFeedPost
-  ) {
-    queryClient.setQueryData(
-      ["homeFeed"],
-      (current:
-        | {
-            pages: Array<{ posts: HomeFeedPost[]; nextCursor: string | null }>;
-            pageParams: unknown[];
-          }
-        | undefined) => {
-        if (!current) return current;
-        return {
-          ...current,
-          pages: current.pages.map((page) => ({
-            ...page,
-            posts: page.posts.map((post) =>
-              post.id === postId ? updater(post) : post
-            ),
-          })),
-        };
-      }
-    );
-  }
-
-  function reportPost(post: HomeFeedPost) {
-    submitReport({
-      title: "Report post",
-      submit: async (reason) => {
-        const token = await getToken();
-        if (!token) throw new Error("Not signed in");
-        await api.reportPost(token, post.circleId, post.id, reason);
-      },
-    });
-  }
-
-  async function onPollVote(post: HomeFeedPost, optionId: string) {
-    const token = await getToken();
-    if (!token) return;
-    try {
-      const { poll } = await api.votePoll(
-        token,
-        post.circleId,
-        post.id,
-        optionId
-      );
-      if (!poll) return;
-      updatePostInCache(post.id, (item) => ({ ...item, poll }));
-    } catch {
-      // ignore vote errors in feed
-    }
-  }
-
-  async function toggleSave(postId: string) {
-    const token = await getToken();
-    if (!token) return;
-    const isSaved = savedPostIds.has(postId);
-    try {
-      if (isSaved) {
-        await api.unsaveItem(token, "post", postId);
-      } else {
-        await api.saveItem(token, { itemType: "post", itemId: postId });
-      }
-      setSavedPostId(queryClient, postId, !isSaved);
-    } catch {
-      // ignore save errors in feed
-    }
-  }
-
-  async function toggleHelpful(post: HomeFeedPost) {
-    const token = await getToken();
-    if (!token) return;
-    try {
-      const result = await api.togglePostHelpful(token, post.id);
-      updatePostInCache(post.id, (item) => ({
-        ...item,
-        myHelpful: result.helpful,
-        helpfulCount: result.helpfulCount,
-      }));
-    } catch {
-      // ignore helpful errors in feed
-    }
-  }
-
-  async function sharePost(post: HomeFeedPost) {
-    const token = await getToken();
-    if (!token) return;
-    try {
-      await sharePostLink({
-        token,
-        circleId: post.circleId,
-        postId: post.id,
-        post,
-        circleName: post.circleName,
-      });
-    } catch {
-      // user dismissed share sheet
-    }
   }
 
   const listHeader = (
@@ -478,58 +286,11 @@ export default function HomeScreen() {
         />
         <Text style={styles.composePlaceholder}>Ask your group</Text>
       </Pressable>
-
-      <View style={styles.composeActions}>
-        <Pressable
-          style={[styles.composeAction, composeLocked && styles.composeLocked]}
-          disabled={composeLocked}
-          onPress={() => openNewPost("photo")}
-        >
-          <Ionicons name="image-outline" size={18} color={colors.primaryDark} />
-          <Text style={styles.composeActionText}>Photo</Text>
-        </Pressable>
-        <Pressable
-          style={[styles.composeAction, composeLocked && styles.composeLocked]}
-          disabled={composeLocked}
-          onPress={() => openNewPost("poll")}
-        >
-          <Ionicons name="bar-chart-outline" size={18} color={colors.primaryDark} />
-          <Text style={styles.composeActionText}>Poll</Text>
-        </Pressable>
-        <Pressable
-          style={[styles.composeAction, composeLocked && styles.composeLocked]}
-          disabled={composeLocked}
-          onPress={() => openNewPost("recommendation")}
-        >
-          <Ionicons
-            name="star-outline"
-            size={18}
-            color={colors.primaryDark}
-          />
-          <Text style={styles.composeActionText}>Recommendation</Text>
-        </Pressable>
-      </View>
     </View>
   );
 
-  if (loading || isUnauthorized(feedQuery.error)) {
-    return <ScreenLoader label="Loading your feed" />;
-  }
-
-  if (feedQuery.isError) {
-    return (
-      <View style={styles.screen}>
-        <EmptyState
-          icon="cloud-offline-outline"
-          title="Couldn't load your feed"
-          message="Check your connection and try again."
-          actionLabel="Retry"
-          onAction={() => {
-            void feedQuery.refetch();
-          }}
-        />
-      </View>
-    );
+  if (loading || isUnauthorized(userQuery.error)) {
+    return <ScreenLoader label="Loading Home" />;
   }
 
   return (

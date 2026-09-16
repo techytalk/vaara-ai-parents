@@ -1,4 +1,5 @@
 import type { PoolClient } from "pg";
+import { listUserRoles, type AccountRole } from "./user-roles.js";
 
 export type PresentationRole = "parent" | "provider";
 
@@ -13,6 +14,33 @@ export function conversationContextKey(
     : `${peerRole}:${myRole}`;
 }
 
+export async function resolveConversationRoles(
+  client: PoolClient,
+  userId: string,
+  peerUserId: string,
+  requestedMy?: PresentationRole,
+  requestedPeer?: PresentationRole
+): Promise<
+  | { myRole: PresentationRole; peerRole: PresentationRole }
+  | { error: string; status: number }
+> {
+  const myRoles = await listUserRoles(client, userId);
+  const peerRoles = await listUserRoles(client, peerUserId);
+  const myRole = requestedMy ?? (myRoles.includes("parent") ? "parent" : myRoles[0]);
+  const peerRole =
+    requestedPeer ?? (peerRoles.includes("parent") ? "parent" : peerRoles[0]);
+  if (!myRole || !peerRole) {
+    return { error: "Both accounts need an active role", status: 400 };
+  }
+  if (!myRoles.includes(myRole)) {
+    return { error: "You do not have that role", status: 403 };
+  }
+  if (!peerRoles.includes(peerRole as AccountRole)) {
+    return { error: "That person does not have that role", status: 400 };
+  }
+  return { myRole, peerRole };
+}
+
 export async function getOrCreateConversation(
   client: PoolClient,
   params: {
@@ -25,8 +53,17 @@ export async function getOrCreateConversation(
     initiatedFromThreadId?: string | null;
   }
 ): Promise<string> {
-  const myRole = params.myRole ?? "parent";
-  const peerRole = params.peerRole ?? "parent";
+  const resolved = await resolveConversationRoles(
+    client,
+    params.userId,
+    params.peerUserId,
+    params.myRole,
+    params.peerRole
+  );
+  if ("error" in resolved) {
+    throw new Error(resolved.error);
+  }
+  const { myRole, peerRole } = resolved;
   const contextKey = conversationContextKey(
     params.userId,
     params.peerUserId,

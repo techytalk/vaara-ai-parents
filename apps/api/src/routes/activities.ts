@@ -132,6 +132,18 @@ export function createProviderRoutes() {
       );
 
       await client.query(
+        `INSERT INTO user_roles (user_id, role) VALUES ($1, 'provider')
+         ON CONFLICT DO NOTHING`,
+        [userId]
+      );
+      await client.query(
+        `INSERT INTO provider_channels (provider_id, status)
+         VALUES ($1, 'active')
+         ON CONFLICT (provider_id) DO NOTHING`,
+        [userId]
+      );
+
+      await client.query(
         "UPDATE users SET onboarding_complete = true, updated_at = now() WHERE id = $1",
         [userId]
       );

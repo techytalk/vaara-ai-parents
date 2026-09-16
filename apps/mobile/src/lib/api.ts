@@ -11,6 +11,7 @@ export type AuthUser = {
   id: string;
   email: string;
   role: string;
+  roles?: Array<"parent" | "provider">;
   displayName: string | null;
   anonymousHandle: string;
   onboardingComplete: boolean;
@@ -543,6 +544,7 @@ export type ChatMessage = {
   };
   createdAt: string;
   editedAt: string | null;
+  reactions?: Array<{ reaction: string; count: number; mine: boolean }>;
 };
 
 export type MessageableParent = {
@@ -683,6 +685,11 @@ export type NotificationPrefs = {
   carpool?: boolean;
   school_events?: boolean;
   expert_sessions?: boolean;
+  group_messages?: boolean;
+  thread_replies?: boolean;
+  thread_mentions?: boolean;
+  provider_responses?: boolean;
+  service_updates?: boolean;
   quiet_hours?: {
     enabled?: boolean;
     start?: string;
@@ -1376,6 +1383,7 @@ export const api = {
       shareId?: string;
       circleId?: string;
       postId?: string;
+      threadId?: string | null;
       access?: string;
       url?: string;
     }>(`/v1/shares/${shareId}`, {}, token ?? undefined),
@@ -1875,7 +1883,8 @@ export const api = {
       id: string;
       createdAt: string;
       circleId: string;
-      postId: string;
+      threadId?: string;
+      postId?: string | null;
     }>(
       `/v1/schools/${schoolId}/questions`,
       { method: "POST", body: JSON.stringify({ body }) },
@@ -2134,8 +2143,20 @@ export const api = {
   getChatInbox: (token: string) =>
     request<ChatInbox>("/v1/chat/inbox", {}, token),
 
-  getChatHome: (token: string) =>
-    request<{ items: ChatHomeItem[] }>("/v1/chat/home", {}, token),
+  getChatHome: (
+    token: string,
+    query?: { cursor?: string; limit?: number }
+  ) => {
+    const search = new URLSearchParams();
+    if (query?.cursor) search.set("cursor", query.cursor);
+    if (query?.limit != null) search.set("limit", String(query.limit));
+    const q = search.toString();
+    return request<{ items: ChatHomeItem[]; nextCursor: string | null }>(
+      `/v1/chat/home${q ? `?${q}` : ""}`,
+      {},
+      token
+    );
+  },
 
   recordChatHomeImpressions: (
     token: string,
@@ -2233,10 +2254,13 @@ export const api = {
       replyCount: number;
       lastMessageAt: string;
       serviceRepliesAllowed: boolean;
+      muted?: boolean;
       access: {
         canReply: boolean;
         canOpenGroup: boolean;
+        canMessageAuthor?: boolean;
         grantRole: string | null;
+        discovery?: boolean;
       };
     }>(`/v1/threads/${threadId}`, {}, token),
 
@@ -2274,6 +2298,67 @@ export const api = {
       token
     ),
 
+  muteThread: (token: string, threadId: string) =>
+    request<{ ok: boolean; muted: boolean }>(
+      `/v1/threads/${threadId}/mute`,
+      { method: "POST" },
+      token
+    ),
+
+  unmuteThread: (token: string, threadId: string) =>
+    request<{ ok: boolean; muted: boolean }>(
+      `/v1/threads/${threadId}/mute`,
+      { method: "DELETE" },
+      token
+    ),
+
+  editCircleMessage: (
+    token: string,
+    circleId: string,
+    messageId: string,
+    body: string
+  ) =>
+    request<ChatMessage>(
+      `/v1/circles/${circleId}/messages/${messageId}`,
+      { method: "PATCH", body: JSON.stringify({ body }) },
+      token
+    ),
+
+  deleteCircleMessage: (
+    token: string,
+    circleId: string,
+    messageId: string
+  ) =>
+    request<{ ok: boolean }>(
+      `/v1/circles/${circleId}/messages/${messageId}`,
+      { method: "DELETE" },
+      token
+    ),
+
+  addMessageReaction: (
+    token: string,
+    circleId: string,
+    messageId: string,
+    reaction: string
+  ) =>
+    request<{ ok: boolean }>(
+      `/v1/circles/${circleId}/messages/${messageId}/reactions`,
+      { method: "POST", body: JSON.stringify({ reaction }) },
+      token
+    ),
+
+  removeMessageReaction: (
+    token: string,
+    circleId: string,
+    messageId: string,
+    reaction: string
+  ) =>
+    request<{ ok: boolean }>(
+      `/v1/circles/${circleId}/messages/${messageId}/reactions?reaction=${encodeURIComponent(reaction)}`,
+      { method: "DELETE" },
+      token
+    ),
+
   followThread: (token: string, threadId: string) =>
     request<{ ok: boolean }>(
       `/v1/threads/${threadId}/follow`,
@@ -2282,7 +2367,7 @@ export const api = {
     ),
 
   messageThreadAuthor: (token: string, threadId: string) =>
-    request<{ conversationId: string }>(
+    request<{ conversationId?: string; kind?: string }>(
       `/v1/threads/${threadId}/message-author`,
       { method: "POST" },
       token
@@ -2304,6 +2389,24 @@ export const api = {
   followProviderChannel: (token: string, providerId: string) =>
     request<{ ok: boolean }>(
       `/v1/provider-channels/${providerId}/follow`,
+      { method: "POST" },
+      token
+    ),
+
+  getMatchedThreads: (token: string) =>
+    request<{
+      threads: Array<{
+        id: string;
+        title: string | null;
+        body: string | null;
+        circleName: string;
+        lastMessageAt: string;
+      }>;
+    }>("/v1/chat/matched-threads", {}, token),
+
+  openProviderThread: (token: string, threadId: string) =>
+    request<{ ok: boolean }>(
+      `/v1/threads/${threadId}/provider-open`,
       { method: "POST" },
       token
     ),

@@ -40,6 +40,7 @@ const DIGEST_NOTIFICATION_TYPES = new Set<NotificationType>([
   "school_event",
   "activity_nearby",
   "listing_interest",
+  "group_message",
 ]);
 
 const DIGEST_MIN_AGE_MS = Number(

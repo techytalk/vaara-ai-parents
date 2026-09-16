@@ -35,6 +35,14 @@ export async function drainChatOutbox(client: PoolClient): Promise<number> {
           authorId: payload.authorId ?? "",
           messageId: payload.messageId ?? "",
         });
+        await notifyMentions(client, payload.messageId ?? "", payload.authorId ?? "");
+      }
+      if (row.event_type === "message.created" && payload.circleId && !payload.threadId) {
+        await notifyGroupMessage(client, {
+          circleId: payload.circleId,
+          authorId: payload.authorId ?? "",
+          messageId: payload.messageId ?? "",
+        });
       }
       await client.query(
         `UPDATE chat_event_outbox SET processed_at = now() WHERE id = $1`,
@@ -73,7 +81,12 @@ async function notifyThreadReply(
        WHERE thread_id = $1 AND following = true
          AND (muted_until IS NULL OR muted_until < now())
      ) r
-     WHERE user_id <> $2`,
+     WHERE user_id <> $2
+       AND NOT EXISTS (
+         SELECT 1 FROM user_blocks ub
+         WHERE (ub.blocker_id = r.user_id AND ub.blocked_id = $2)
+            OR (ub.blocker_id = $2 AND ub.blocked_id = r.user_id)
+       )`,
     [params.threadId, params.authorId]
   );
   if (recipients.rows.length === 0) return;
@@ -92,6 +105,79 @@ async function notifyThreadReply(
         type: "thread_reply",
         threadId: params.threadId,
         circleId: thread.rows[0].circle_id,
+        messageId: params.messageId,
+      },
+    }))
+  );
+}
+
+async function notifyMentions(
+  client: PoolClient,
+  messageId: string,
+  authorId: string
+) {
+  if (!messageId) return;
+  const { rows } = await client.query(
+    `SELECT m.mentioned_user_id, msg.circle_id, msg.thread_id, c.display_name
+     FROM circle_message_mentions m
+     JOIN circle_messages msg ON msg.id = m.message_id
+     JOIN circles c ON c.id = msg.circle_id
+     WHERE m.message_id = $1 AND m.mentioned_user_id <> $2
+       AND NOT EXISTS (
+         SELECT 1 FROM user_blocks ub
+         WHERE (ub.blocker_id = m.mentioned_user_id AND ub.blocked_id = $2)
+            OR (ub.blocker_id = $2 AND ub.blocked_id = m.mentioned_user_id)
+       )`,
+    [messageId, authorId]
+  );
+  if (rows.length === 0) return;
+  await batchCreateNotifications(
+    client,
+    "thread_mention",
+    rows.map((row) => ({
+      userId: String(row.mentioned_user_id),
+      title: row.display_name,
+      body: "You were mentioned in a group chat",
+      data: {
+        type: "thread_mention",
+        messageId,
+        circleId: row.circle_id,
+        threadId: row.thread_id,
+      },
+    }))
+  );
+}
+
+async function notifyGroupMessage(
+  client: PoolClient,
+  params: { circleId: string; authorId: string; messageId: string }
+) {
+  const circle = await client.query(
+    `SELECT display_name FROM circles WHERE id = $1`,
+    [params.circleId]
+  );
+  if (circle.rows.length === 0) return;
+  const recipients = await client.query(
+    `SELECT cm.user_id FROM circle_members cm
+     WHERE cm.circle_id = $1 AND cm.user_id <> $2
+       AND NOT EXISTS (
+         SELECT 1 FROM user_blocks ub
+         WHERE (ub.blocker_id = cm.user_id AND ub.blocked_id = $2)
+            OR (ub.blocker_id = $2 AND ub.blocked_id = cm.user_id)
+       )`,
+    [params.circleId, params.authorId]
+  );
+  if (recipients.rows.length === 0) return;
+  await batchCreateNotifications(
+    client,
+    "group_message",
+    recipients.rows.map((row) => ({
+      userId: String(row.user_id),
+      title: circle.rows[0].display_name,
+      body: "New message in your class group",
+      data: {
+        type: "group_message",
+        circleId: params.circleId,
         messageId: params.messageId,
       },
     }))

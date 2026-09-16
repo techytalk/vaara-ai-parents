@@ -51,6 +51,10 @@ export default function MessagesInboxScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
+  const [matched, setMatched] = useState<
+    Array<{ id: string; title: string | null; body: string | null; circleName: string }>
+  >([]);
+
   const load = useCallback(async () => {
     const token = await getToken();
     if (!token) return;
@@ -60,6 +64,12 @@ export default function MessagesInboxScreen() {
     ]);
     setInbox(list);
     setUserId(me.id);
+    if (me.roles?.includes("provider") || me.role === "provider") {
+      const result = await api.getMatchedThreads(token).catch(() => ({ threads: [] }));
+      setMatched(result.threads);
+    } else {
+      setMatched([]);
+    }
   }, []);
 
   useFocusEffect(
@@ -134,6 +144,42 @@ export default function MessagesInboxScreen() {
             actionLabel="New message"
             onAction={() => router.push("/(app)/messages/new")}
           />
+        }
+        ListHeaderComponent={
+          matched.length > 0 ? (
+            <View style={{ marginBottom: spacing.md }}>
+              <Text style={styles.section}>Parent requests</Text>
+              {matched.map((thread) => (
+                <Pressable
+                  key={thread.id}
+                  style={styles.row}
+                  onPress={() => {
+                    void (async () => {
+                      const token = await getToken();
+                      if (!token) return;
+                      await api.openProviderThread(token, thread.id);
+                      router.push({
+                        pathname: "/(app)/messages/threads/[threadId]",
+                        params: { threadId: thread.id },
+                      });
+                    })();
+                  }}
+                >
+                  <View style={styles.supportAvatar}>
+                    <Ionicons name="briefcase" size={20} color={colors.warning} />
+                  </View>
+                  <View style={styles.rowMain}>
+                    <Text style={styles.handle} numberOfLines={1}>
+                      {thread.title || thread.body || "Service request"}
+                    </Text>
+                    <Text style={styles.preview} numberOfLines={1}>
+                      {thread.circleName}
+                    </Text>
+                  </View>
+                </Pressable>
+              ))}
+            </View>
+          ) : null
         }
         renderItem={({ item }) => {
           if (item.kind === "group") {
@@ -254,6 +300,11 @@ const styles = StyleSheet.create({
     ...typography.screenTitle,
     color: colors.text,
     fontFamily: typography.bold,
+  },
+  section: {
+    fontFamily: typography.semibold,
+    color: colors.textMuted,
+    marginBottom: spacing.sm,
   },
   list: {
     paddingHorizontal: spacing.lg,

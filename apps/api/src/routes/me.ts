@@ -29,6 +29,7 @@ import {
   reserveIdempotencyKey,
   storeIdempotentResponse,
 } from "../lib/idempotency.js";
+import { listUserRoles } from "../lib/user-roles.js";
 import { lookupPostalCode } from "../lib/postal-code/index.js";
 
 const CHILD_SELECT = `
@@ -175,10 +176,12 @@ export function createMeRoutes() {
         return c.json({ error: "User not found" }, 404);
       }
       const user = rows[0];
+      const roles = await listUserRoles(client, String(user.id));
       return c.json({
         id: user.id,
         email: user.email,
         role: user.role,
+        roles,
         displayName: user.display_name,
         anonymousHandle: user.anonymous_handle,
         onboardingComplete: user.onboarding_complete,

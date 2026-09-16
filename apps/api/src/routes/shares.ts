@@ -131,6 +131,13 @@ export function createShareRoutes() {
         return { status: "unavailable" as const };
       }
 
+      const thread = await client.query(
+        `SELECT id FROM circle_threads
+         WHERE source_post_id = $1 AND source_target_circle_id = $2
+         LIMIT 1`,
+        [share.postId, share.circleId]
+      );
+
       let accessState:
         | "member"
         | "author"
@@ -166,6 +173,7 @@ export function createShareRoutes() {
         shareId,
         circleId: share.circleId,
         postId: share.postId,
+        threadId: thread.rows[0]?.id ? String(thread.rows[0].id) : null,
         access: accessState,
         url: publicShareUrl(shareId),
         preview: {

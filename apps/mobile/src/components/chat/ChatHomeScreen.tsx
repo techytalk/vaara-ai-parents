@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   FlatList,
   Pressable,
   RefreshControl,
@@ -8,10 +9,11 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { EmptyState, ScreenLoader } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
+import { useRealtimeChannel } from "@/hooks/useRealtimeChannel";
 import { api, type ChatHomeItem } from "@/lib/api";
 import { getToken } from "@/lib/session";
 import { formatPostTime } from "@/components/circles/ui";
@@ -25,12 +27,36 @@ async function authed<T>(fn: (token: string) => Promise<T>): Promise<T> {
 export function ChatHomeScreen() {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
-  const query = useQuery({
+  const query = useInfiniteQuery({
     queryKey: ["chatHome"],
-    queryFn: () => authed((token) => api.getChatHome(token)),
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam }) =>
+      authed((token) =>
+        api.getChatHome(token, { cursor: pageParam, limit: 20 })
+      ),
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+  });
+  const meQuery = useQuery({
+    queryKey: ["sessionUser"],
+    queryFn: () => authed((token) => api.me(token)),
   });
 
-  const items = query.data?.items ?? [];
+  useRealtimeChannel({
+    channel: meQuery.data?.id ? `user:${meQuery.data.id}:inbox` : null,
+    onEvent: (event) => {
+      if (event.type === "inbox.updated" || event.type === "chat.message") {
+        void query.refetch();
+      }
+    },
+    onPollFallback: () => {
+      void query.refetch();
+    },
+  });
+
+  const items = useMemo(
+    () => query.data?.pages.flatMap((page) => page.items) ?? [],
+    [query.data]
+  );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -82,8 +108,19 @@ export function ChatHomeScreen() {
         <EmptyState
           icon="chatbubbles-outline"
           title="Start a conversation"
-          message="Ask something in one of your groups. Lasting questions show up here."
+          message="Ask something in one of your groups. Lasting questions stay here. If your groups are quiet, we also show relevant threads from nearby parents."
         />
+      }
+      onEndReached={() => {
+        if (query.hasNextPage && !query.isFetchingNextPage) {
+          void query.fetchNextPage();
+        }
+      }}
+      onEndReachedThreshold={0.4}
+      ListFooterComponent={
+        query.isFetchingNextPage ? (
+          <ActivityIndicator color={colors.primary} style={{ marginVertical: 12 }} />
+        ) : null
       }
       renderItem={({ item }) => (
         <HomeRow

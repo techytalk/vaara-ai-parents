@@ -56,9 +56,16 @@ export default function SchoolProfileScreen() {
       if (!token) return;
       const created = await api.askSchoolQuestion(token, id, text);
       setQuestion("");
+      if (created.threadId) {
+        router.push({
+          pathname: "/(app)/messages/threads/[threadId]",
+          params: { threadId: created.threadId },
+        });
+        return;
+      }
       router.push({
         pathname: "/circles/[circleId]/posts/[postId]",
-        params: { circleId: created.circleId, postId: created.postId },
+        params: { circleId: created.circleId, postId: created.postId ?? "" },
       });
     } catch (cause) {
       Alert.alert("Error", cause instanceof Error ? cause.message : "Could not post");

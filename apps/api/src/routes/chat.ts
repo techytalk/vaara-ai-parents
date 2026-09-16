@@ -16,11 +16,16 @@ import {
 import {
   createCircleMessage,
   createThread,
+  deleteCircleMessage,
+  editCircleMessage,
   listHome,
   listInbox,
   listLinearMessages,
+  listMatchedServiceThreads,
   listThreadMessages,
+  openProviderThread,
   publishChatNudge,
+  setMessageReaction,
 } from "../services/chat.js";
 import { drainChatOutbox } from "../services/chat-outbox.js";
 
@@ -61,7 +66,25 @@ export function createChatRoutes() {
     const userId = c.get("user").sub;
     const client = await pool.connect();
     try {
-      return c.json(await listHome(client, userId));
+      return c.json(
+        await listHome(client, userId, {
+          cursor: c.req.query("cursor"),
+          limit: Number(c.req.query("limit") ?? 20),
+        })
+      );
+    } finally {
+      client.release();
+    }
+  });
+
+  app.get("/matched-threads", async (c) => {
+    const userId = c.get("user").sub;
+    const client = await pool.connect();
+    try {
+      if (!(await userHasRole(client, userId, "provider"))) {
+        return c.json({ error: "Provider role required" }, 403);
+      }
+      return c.json({ threads: await listMatchedServiceThreads(client, userId) });
     } finally {
       client.release();
     }
@@ -184,6 +207,103 @@ export function createCircleChatRoutes() {
     }
   });
 
+  const reactionLimit = rateLimitMiddleware({
+    prefix: "group-reaction",
+    limit: 120,
+    windowSeconds: 3600,
+  });
+
+  app.patch("/:circleId/messages/:messageId", async (c) => {
+    const userId = c.get("user").sub;
+    const circleId = String(c.req.param("circleId"));
+    const messageId = String(c.req.param("messageId"));
+    const body = await c.req.json<{ body?: string }>();
+    const client = await pool.connect();
+    try {
+      const result = await editCircleMessage({
+        client,
+        userId,
+        circleId,
+        messageId,
+        body: body.body ?? "",
+      });
+      if ("error" in result) {
+        return c.json({ error: result.error }, result.status as 400 | 403 | 404);
+      }
+      return c.json(result.message);
+    } finally {
+      client.release();
+    }
+  });
+
+  app.delete("/:circleId/messages/:messageId", async (c) => {
+    const userId = c.get("user").sub;
+    const circleId = String(c.req.param("circleId"));
+    const messageId = String(c.req.param("messageId"));
+    const client = await pool.connect();
+    try {
+      const result = await deleteCircleMessage({
+        client,
+        userId,
+        circleId,
+        messageId,
+      });
+      if ("error" in result) {
+        return c.json({ error: result.error }, result.status as 400 | 403 | 404);
+      }
+      return c.json({ ok: true });
+    } finally {
+      client.release();
+    }
+  });
+
+  app.post("/:circleId/messages/:messageId/reactions", reactionLimit, async (c) => {
+    const userId = c.get("user").sub;
+    const circleId = String(c.req.param("circleId"));
+    const messageId = String(c.req.param("messageId"));
+    const body = await c.req.json<{ reaction?: string }>();
+    const client = await pool.connect();
+    try {
+      const result = await setMessageReaction({
+        client,
+        userId,
+        circleId,
+        messageId,
+        reaction: body.reaction ?? "",
+      });
+      if ("error" in result) {
+        return c.json({ error: result.error }, result.status as 400 | 403 | 404);
+      }
+      return c.json({ ok: true });
+    } finally {
+      client.release();
+    }
+  });
+
+  app.delete("/:circleId/messages/:messageId/reactions", async (c) => {
+    const userId = c.get("user").sub;
+    const circleId = String(c.req.param("circleId"));
+    const messageId = String(c.req.param("messageId"));
+    const reaction = c.req.query("reaction") ?? "";
+    const client = await pool.connect();
+    try {
+      const result = await setMessageReaction({
+        client,
+        userId,
+        circleId,
+        messageId,
+        reaction,
+        remove: true,
+      });
+      if ("error" in result) {
+        return c.json({ error: result.error }, result.status as 400 | 403 | 404);
+      }
+      return c.json({ ok: true });
+    } finally {
+      client.release();
+    }
+  });
+
   app.post("/:circleId/chat-read", async (c) => {
     const userId = c.get("user").sub;
     const circleId = String(c.req.param("circleId"));
@@ -252,6 +372,11 @@ export function createCircleChatRoutes() {
                   )`
                : ""
            }
+           AND NOT EXISTS (
+             SELECT 1 FROM user_blocks ub
+             WHERE (ub.blocker_id = $2 AND ub.blocked_id = t.author_id)
+                OR (ub.blocker_id = t.author_id AND ub.blocked_id = $2)
+           )
          ORDER BY t.last_activity_seq DESC
          LIMIT 25`,
         localOnly ? [circleId, userId, pin] : [circleId, userId]
@@ -378,6 +503,11 @@ export function createThreadRoutes() {
          WHERE t.id = $1`,
         [threadId]
       );
+      const muted = await client.query(
+        `SELECT muted_until FROM circle_thread_reads
+         WHERE thread_id = $1 AND user_id = $2`,
+        [threadId, userId]
+      );
       const row = rows[0];
       return c.json({
         id: row.id,
@@ -391,10 +521,16 @@ export function createThreadRoutes() {
         replyCount: row.reply_count,
         lastMessageAt: row.last_message_at,
         serviceRepliesAllowed: row.service_replies_allowed,
+        muted: Boolean(
+          muted.rows[0]?.muted_until &&
+            new Date(muted.rows[0].muted_until).getTime() > Date.now()
+        ),
         access: {
           canReply: access.canReply,
           canOpenGroup: access.canOpenGroup,
+          canMessageAuthor: access.canMessageAuthor,
           grantRole: access.grantRole,
+          discovery: access.discovery,
         },
       });
     } finally {
@@ -497,6 +633,43 @@ export function createThreadRoutes() {
     }
   });
 
+  app.post("/:threadId/mute", async (c) => {
+    const userId = c.get("user").sub;
+    const threadId = String(c.req.param("threadId"));
+    const client = await pool.connect();
+    try {
+      const access = await loadThreadAccess(client, threadId, userId);
+      if (!access || !access.canRead) {
+        return c.json({ error: "Thread not found" }, 404);
+      }
+      await client.query(
+        `INSERT INTO circle_thread_reads (thread_id, user_id, muted_until, last_read_at)
+         VALUES ($1, $2, now() + interval '10 years', now())
+         ON CONFLICT (thread_id, user_id) DO UPDATE SET muted_until = now() + interval '10 years'`,
+        [threadId, userId]
+      );
+      return c.json({ ok: true, muted: true });
+    } finally {
+      client.release();
+    }
+  });
+
+  app.delete("/:threadId/mute", async (c) => {
+    const userId = c.get("user").sub;
+    const threadId = String(c.req.param("threadId"));
+    const client = await pool.connect();
+    try {
+      await client.query(
+        `UPDATE circle_thread_reads SET muted_until = NULL
+         WHERE thread_id = $1 AND user_id = $2`,
+        [threadId, userId]
+      );
+      return c.json({ ok: true, muted: false });
+    } finally {
+      client.release();
+    }
+  });
+
   app.post("/:threadId/follow", async (c) => {
     const userId = c.get("user").sub;
     const threadId = String(c.req.param("threadId"));
@@ -562,33 +735,157 @@ export function createThreadRoutes() {
     }
   });
 
+  app.patch("/:threadId", async (c) => {
+    const userId = c.get("user").sub;
+    const threadId = String(c.req.param("threadId"));
+    const body = await c.req.json<{
+      title?: string;
+      body?: string;
+      status?: "open" | "closed";
+    }>();
+    const client = await pool.connect();
+    try {
+      const access = await loadThreadAccess(client, threadId, userId);
+      if (!access || access.authorId !== userId) {
+        return c.json({ error: "Thread not found" }, 404);
+      }
+      const current = await client.query(
+        `SELECT title, body, created_at, status FROM circle_threads WHERE id = $1`,
+        [threadId]
+      );
+      const row = current.rows[0];
+      const ageMs = Date.now() - new Date(row.created_at).getTime();
+      if ((body.title != null || body.body != null) && ageMs > 60 * 60 * 1000) {
+        return c.json({ error: "Edit window has closed" }, 400);
+      }
+      const title = body.title?.trim() ?? row.title;
+      const text = body.body?.trim() ?? row.body;
+      const status = body.status ?? row.status;
+      if (status !== "open" && status !== "closed") {
+        return c.json({ error: "Invalid status" }, 400);
+      }
+      await client.query(
+        `UPDATE circle_threads
+         SET title = $2, body = $3, status = $4, updated_at = now()
+         WHERE id = $1`,
+        [threadId, title, text, status]
+      );
+      return c.json({ ok: true, status });
+    } finally {
+      client.release();
+    }
+  });
+
+  app.delete("/:threadId", async (c) => {
+    const userId = c.get("user").sub;
+    const threadId = String(c.req.param("threadId"));
+    const client = await pool.connect();
+    try {
+      const access = await loadThreadAccess(client, threadId, userId);
+      if (!access || access.authorId !== userId) {
+        return c.json({ error: "Thread not found" }, 404);
+      }
+      const replies = await client.query(
+        `SELECT COUNT(*)::int AS n FROM circle_messages WHERE thread_id = $1 AND status = 'visible'`,
+        [threadId]
+      );
+      if (Number(replies.rows[0].n) > 0) {
+        return c.json({ error: "Close the thread instead of deleting it" }, 400);
+      }
+      await client.query(
+        `UPDATE circle_threads SET status = 'deleted', updated_at = now() WHERE id = $1`,
+        [threadId]
+      );
+      return c.json({ ok: true });
+    } finally {
+      client.release();
+    }
+  });
+
+  app.delete("/:threadId/grants/:grantUserId", async (c) => {
+    const userId = c.get("user").sub;
+    const threadId = String(c.req.param("threadId"));
+    const grantUserId = String(c.req.param("grantUserId"));
+    const client = await pool.connect();
+    try {
+      const access = await loadThreadAccess(client, threadId, userId);
+      if (!access || (!access.isMember && access.authorId !== userId)) {
+        return c.json({ error: "Not allowed" }, 403);
+      }
+      await client.query(
+        `UPDATE circle_thread_access_grants
+         SET revoked_at = now()
+         WHERE thread_id = $1 AND user_id = $2 AND revoked_at IS NULL`,
+        [threadId, grantUserId]
+      );
+      return c.json({ ok: true });
+    } finally {
+      client.release();
+    }
+  });
+
+  app.post("/:threadId/provider-open", async (c) => {
+    const userId = c.get("user").sub;
+    const threadId = String(c.req.param("threadId"));
+    const client = await pool.connect();
+    try {
+      const result = await openProviderThread(client, userId, threadId);
+      if ("error" in result) {
+        return c.json({ error: result.error }, result.status as 400 | 403 | 404);
+      }
+      return c.json({ ok: true });
+    } finally {
+      client.release();
+    }
+  });
+
   app.post("/:threadId/message-author", async (c) => {
     const userId = c.get("user").sub;
     const threadId = String(c.req.param("threadId"));
     const client = await pool.connect();
     try {
       const access = await loadThreadAccess(client, threadId, userId);
-      if (!access || !access.canRead) {
+      if (!access || !access.canRead || !access.canMessageAuthor) {
         return c.json({ error: "Thread not found" }, 404);
       }
-      const thread = await client.query(
-        `SELECT author_id, circle_id FROM circle_threads WHERE id = $1`,
-        [threadId]
-      );
-      const authorId = String(thread.rows[0].author_id);
-      if (authorId === userId) {
-        return c.json({ error: "Cannot message yourself" }, 400);
-      }
+      const authorId = access.authorId;
       if (await isBlocked(client, userId, authorId)) {
         return c.json({ error: "Cannot message this parent" }, 403);
       }
-      const conversationId = await getOrCreateConversation(client, {
-        userId,
-        peerUserId: authorId,
-        initiatedFromCircleId: access.circleId,
-        initiatedFromThreadId: threadId,
-      });
-      return c.json({ conversationId });
+      if (access.isMember) {
+        const conversationId = await getOrCreateConversation(client, {
+          userId,
+          peerUserId: authorId,
+          initiatedFromCircleId: access.circleId,
+          initiatedFromThreadId: threadId,
+        });
+        return c.json({ kind: "conversation", conversationId });
+      }
+      if (!(await incrementDailyQuota(client, userId, "discovery_message", 10))) {
+        return c.json({ error: "Daily message-author limit reached" }, 429);
+      }
+      const existing = await client.query(
+        `SELECT id, status FROM parent_connection_requests
+         WHERE sender_id = $1 AND recipient_id = $2
+         ORDER BY created_at DESC LIMIT 1`,
+        [userId, authorId]
+      );
+      if (existing.rows[0]?.status === "accepted") {
+        const conversationId = await getOrCreateConversation(client, {
+          userId,
+          peerUserId: authorId,
+          initiatedFromCircleId: access.circleId,
+          initiatedFromThreadId: threadId,
+        });
+        return c.json({ kind: "conversation", conversationId });
+      }
+      await client.query(
+        `INSERT INTO parent_connection_requests (sender_id, recipient_id, introduction)
+         VALUES ($1, $2, $3)
+         ON CONFLICT DO NOTHING`,
+        [userId, authorId, "From a thread on Home"]
+      );
+      return c.json({ kind: "request" });
     } finally {
       client.release();
     }

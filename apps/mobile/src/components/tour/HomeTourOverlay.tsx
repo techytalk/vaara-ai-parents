@@ -66,11 +66,7 @@ export function HomeTourOverlay({ visible, circles, onFinished }: Props) {
     onFinished();
     if (primary) {
       router.push({
-        pathname: "/circles/[circleId]/new-post",
-        params: {
-          circleId: primary.id,
-          title: primary.displayName,
-        },
+        pathname: "/(app)/messages",
       });
     }
   }

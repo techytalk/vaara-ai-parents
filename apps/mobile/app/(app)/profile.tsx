@@ -148,18 +148,13 @@ export default function ProfileScreen() {
           onPress={() => openMore("/onboarding/children", "children")}
         />
         <MenuRow
-          icon="people-circle-outline"
-          label="My Circles"
-          onPress={() => openMore("/(app)/circles", "circles")}
-        />
-        <MenuRow
-          icon="create-outline"
-          label="Your Posts"
-          onPress={() => openMore("/(app)/your-posts", "your_posts")}
+          icon="chatbubbles-outline"
+          label="My groups"
+          onPress={() => openMore("/(app)/messages", "groups")}
         />
         <MenuRow
           icon="bookmark-outline"
-          label="Saved Posts"
+          label="Saved"
           onPress={() => openMore("/(app)/saved", "saved")}
         />
         <MenuRow

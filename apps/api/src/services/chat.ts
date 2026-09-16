@@ -1,4 +1,5 @@
 import type { PoolClient } from "pg";
+import { pool } from "@vaara/db";
 import {
   publishCircleEvent,
   publishThreadEvent,
@@ -9,11 +10,21 @@ import {
   detectMedicalAdvice,
   rejectObjectionableText,
 } from "../lib/content-guard.js";
+import {
+  encodeChatHomeCursor,
+  isAfterChatHomeCursor,
+  parseChatHomeCursor,
+} from "../lib/chat-home-cursor.js";
+import { isBlocked } from "../lib/author.js";
 import { userHasRole } from "../lib/user-roles.js";
 import {
+  DISCOVERY_MATCH_SQL,
   insertChatOutbox,
+  isCircleDiscoveryEligible,
+  incrementDailyQuota,
   isCircleMember,
   isLinearCircleType,
+  listCircleInboxRecipients,
   loadThreadAccess,
   nextCircleSeq,
 } from "./chat-access.js";
@@ -38,6 +49,7 @@ export type ChatMessageView = {
   author: ChatAuthor;
   createdAt: string;
   editedAt: string | null;
+  reactions: Array<{ reaction: string; count: number; mine: boolean }>;
 };
 
 export type ChatThreadView = {
@@ -124,7 +136,228 @@ export function mapMessageRow(
     editedAt: row.edited_at
       ? new Date(String(row.edited_at)).toISOString()
       : null,
+    reactions: [],
   };
+}
+
+async function attachReactions(
+  client: PoolClient,
+  messages: ChatMessageView[],
+  userId: string
+): Promise<void> {
+  if (messages.length === 0) return;
+  const { rows } = await client.query(
+    `SELECT message_id, reaction, COUNT(*)::int AS count,
+            BOOL_OR(user_id = $2) AS mine
+     FROM circle_message_reactions
+     WHERE message_id = ANY($1::uuid[])
+     GROUP BY message_id, reaction`,
+    [messages.map((item) => item.id), userId]
+  );
+  const byId = new Map<string, ChatMessageView["reactions"]>();
+  for (const row of rows) {
+    const id = String(row.message_id);
+    const list = byId.get(id) ?? [];
+    list.push({
+      reaction: String(row.reaction),
+      count: Number(row.count),
+      mine: row.mine === true,
+    });
+    byId.set(id, list);
+  }
+  for (const message of messages) {
+    message.reactions = byId.get(message.id) ?? [];
+  }
+}
+
+export async function editCircleMessage(params: {
+  client: PoolClient;
+  userId: string;
+  circleId: string;
+  messageId: string;
+  body: string;
+}): Promise<{ message: ChatMessageView } | { error: string; status: number }> {
+  const body = params.body.trim();
+  if (!body) return { error: "Message is required", status: 400 };
+  if (body.length > 4000) return { error: "Message is too long", status: 400 };
+  const blocked = guardText(body);
+  if (blocked) return { error: blocked.error, status: 400 };
+  const { rows } = await params.client.query(
+    `SELECT * FROM circle_messages WHERE id = $1 AND circle_id = $2`,
+    [params.messageId, params.circleId]
+  );
+  const row = rows[0];
+  if (!row) return { error: "Message not found", status: 404 };
+  if (String(row.author_id) !== params.userId) {
+    return { error: "You can only edit your own message", status: 403 };
+  }
+  if (row.status !== "visible") {
+    return { error: "Message cannot be edited", status: 400 };
+  }
+  if (Date.now() - new Date(row.created_at).getTime() > 15 * 60 * 1000) {
+    return { error: "Edit window has closed", status: 400 };
+  }
+  const updated = await params.client.query(
+    `UPDATE circle_messages SET body = $2, edited_at = now()
+     WHERE id = $1 RETURNING *`,
+    [params.messageId, body]
+  );
+  const author = await authorView(
+    params.client,
+    params.userId,
+    row.author_role,
+    false
+  );
+  return { message: mapMessageRow(updated.rows[0], author) };
+}
+
+export async function deleteCircleMessage(params: {
+  client: PoolClient;
+  userId: string;
+  circleId: string;
+  messageId: string;
+}): Promise<{ ok: true } | { error: string; status: number }> {
+  const { rows } = await params.client.query(
+    `SELECT * FROM circle_messages WHERE id = $1 AND circle_id = $2`,
+    [params.messageId, params.circleId]
+  );
+  const row = rows[0];
+  if (!row) return { error: "Message not found", status: 404 };
+  if (String(row.author_id) !== params.userId) {
+    return { error: "You can only delete your own message", status: 403 };
+  }
+  if (Date.now() - new Date(row.created_at).getTime() > 24 * 60 * 60 * 1000) {
+    return { error: "Delete window has closed", status: 400 };
+  }
+  await params.client.query(
+    `UPDATE circle_messages
+     SET status = 'deleted', body = NULL, deleted_at = now()
+     WHERE id = $1`,
+    [params.messageId]
+  );
+  return { ok: true };
+}
+
+export async function setMessageReaction(params: {
+  client: PoolClient;
+  userId: string;
+  circleId: string;
+  messageId: string;
+  reaction: string;
+  remove?: boolean;
+}): Promise<{ ok: true } | { error: string; status: number }> {
+  const reaction = params.reaction.trim().slice(0, 32);
+  if (!reaction) return { error: "Reaction is required", status: 400 };
+  const { rows } = await params.client.query(
+    `SELECT id, thread_id, author_id FROM circle_messages
+     WHERE id = $1 AND circle_id = $2 AND status = 'visible'`,
+    [params.messageId, params.circleId]
+  );
+  if (rows.length === 0) return { error: "Message not found", status: 404 };
+  if (rows[0].thread_id) {
+    const access = await loadThreadAccess(
+      params.client,
+      String(rows[0].thread_id),
+      params.userId
+    );
+    if (!access || !access.canRead) return { error: "Message not found", status: 404 };
+  } else if (!(await isCircleMember(params.client, params.circleId, params.userId))) {
+    return { error: "Not a member of this group", status: 403 };
+  }
+  if (await isBlocked(params.client, params.userId, String(rows[0].author_id))) {
+    return { error: "Cannot react to this message", status: 403 };
+  }
+  if (params.remove) {
+    await params.client.query(
+      `DELETE FROM circle_message_reactions
+       WHERE message_id = $1 AND user_id = $2 AND reaction = $3`,
+      [params.messageId, params.userId, reaction]
+    );
+  } else {
+    await params.client.query(
+      `INSERT INTO circle_message_reactions (message_id, user_id, reaction)
+       VALUES ($1, $2, $3)
+       ON CONFLICT DO NOTHING`,
+      [params.messageId, params.userId, reaction]
+    );
+  }
+  return { ok: true };
+}
+
+export async function listMatchedServiceThreads(
+  client: PoolClient,
+  providerUserId: string
+) {
+  const { rows } = await client.query(
+    `SELECT t.id, t.title, t.body, t.kind, t.last_message_at, t.reply_count,
+            c.display_name, c.circle_type, c.circle_type AS circle_label
+     FROM circle_threads t
+     JOIN circles c ON c.id = t.circle_id
+     JOIN providers p ON p.user_id = $1
+     WHERE t.service_replies_allowed = true
+       AND t.status = 'open'
+       AND NOT EXISTS (
+         SELECT 1 FROM circle_members cm
+         WHERE cm.circle_id = t.circle_id AND cm.user_id = $1
+       )
+       AND NOT EXISTS (
+         SELECT 1 FROM user_blocks ub
+         WHERE (ub.blocker_id = $1 AND ub.blocked_id = t.author_id)
+            OR (ub.blocker_id = t.author_id AND ub.blocked_id = $1)
+       )
+       AND (
+         c.metadata->>'pin_code' = ANY (p.service_pin_codes)
+         OR EXISTS (
+           SELECT 1 FROM user_locations ul
+           WHERE ul.user_id = t.author_id
+             AND ul.pin_code = ANY (p.service_pin_codes)
+         )
+       )
+     ORDER BY t.last_message_at DESC
+     LIMIT 40`,
+    [providerUserId]
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    body: previewText(row.body, row.title),
+    kind: row.kind,
+    circleName: row.display_name,
+    circleType: row.circle_type,
+    lastMessageAt: row.last_message_at,
+    replyCount: row.reply_count,
+  }));
+}
+
+export async function openProviderThread(
+  client: PoolClient,
+  userId: string,
+  threadId: string
+): Promise<{ ok: true } | { error: string; status: number }> {
+  if (!(await userHasRole(client, userId, "provider"))) {
+    return { error: "Provider role required", status: 403 };
+  }
+  const thread = await client.query(
+    `SELECT id, circle_id, author_id, status, service_replies_allowed
+     FROM circle_threads WHERE id = $1`,
+    [threadId]
+  );
+  if (thread.rows.length === 0) return { error: "Thread not found", status: 404 };
+  if (thread.rows[0].status !== "open" || !thread.rows[0].service_replies_allowed) {
+    return { error: "This thread is not open to providers", status: 403 };
+  }
+  if (await isBlocked(client, userId, String(thread.rows[0].author_id))) {
+    return { error: "Cannot open this thread", status: 403 };
+  }
+  await client.query(
+    `INSERT INTO circle_thread_access_grants (
+       thread_id, user_id, grant_role, granted_by, can_reply
+     )
+     VALUES ($1, $2, 'provider_responder', $2, true)
+     ON CONFLICT DO NOTHING`,
+    [threadId, userId]
+  );
+  return { ok: true };
 }
 
 export async function createThread(params: {
@@ -143,7 +376,14 @@ export async function createThread(params: {
   if (!isParent) return { error: "Parent role required", status: 403 };
 
   const member = await isCircleMember(client, params.circleId, params.userId);
-  if (!member && !params.guest) {
+  if (params.guest) {
+    if (member) {
+      return { error: "Use the group composer instead of a guest thread", status: 400 };
+    }
+    if (!(await isCircleDiscoveryEligible(client, params.circleId, params.userId))) {
+      return { error: "You cannot start a guest thread in this group", status: 403 };
+    }
+  } else if (!member) {
     return { error: "Not a member of this group", status: 403 };
   }
 
@@ -255,9 +495,50 @@ export async function createCircleMessage(params: {
     if (!access.canReply) {
       return { error: "You cannot reply in this thread", status: 403 };
     }
-    if (authorRole === "provider" && access.grantRole !== "provider_responder" && !access.isMember) {
-      return { error: "Provider replies need a thread grant", status: 403 };
-    }
+      if (authorRole === "provider") {
+        if (
+          access.grantRole !== "provider_responder" &&
+          !access.isMember
+        ) {
+          return { error: "Provider replies need a thread grant", status: 403 };
+        }
+        const prior = await client.query(
+          `SELECT 1 FROM circle_messages
+           WHERE thread_id = $1 AND author_id = $2 AND author_role = 'provider'
+           LIMIT 1`,
+          [params.threadId, params.userId]
+        );
+        if (prior.rows.length === 0) {
+          if (!(await incrementDailyQuota(client, params.userId, "provider_reply", 20))) {
+            return { error: "Provider reply daily limit reached", status: 429 };
+          }
+        } else {
+          const parentFollowUp = await client.query(
+            `SELECT 1 FROM circle_messages
+             WHERE thread_id = $1 AND author_role = 'parent' AND status = 'visible'
+               AND created_at > (
+                 SELECT MAX(created_at) FROM circle_messages
+                 WHERE thread_id = $1 AND author_id = $2 AND author_role = 'provider'
+               )
+             LIMIT 1`,
+            [params.threadId, params.userId]
+          );
+          const dm = await client.query(
+            `SELECT 1 FROM conversations
+             WHERE (
+               (user_a_id = LEAST($1::uuid, $3::uuid) AND user_b_id = GREATEST($1::uuid, $3::uuid))
+             )
+             LIMIT 1`,
+            [params.userId, params.threadId, access.authorId]
+          );
+          if (parentFollowUp.rows.length === 0 && dm.rows.length === 0) {
+            return {
+              error: "Wait for the parent to reply, or continue in a tutor DM",
+              status: 403,
+            };
+          }
+        }
+      }
   } else {
     const member = await isCircleMember(client, params.circleId, params.userId);
     if (!member) return { error: "Not a member of this group", status: 403 };
@@ -312,6 +593,24 @@ export async function createCircleMessage(params: {
     ]
   );
   const row = inserted.rows[0];
+  const handles = [...body.matchAll(/@([A-Za-z0-9_]{3,32})/g)].map((m) =>
+    m[1].toLowerCase()
+  );
+  if (handles.length > 0) {
+    const mentioned = await client.query(
+      `SELECT id FROM users WHERE lower(anonymous_handle) = ANY($1::text[])`,
+      [handles]
+    );
+    for (const person of mentioned.rows) {
+      if (String(person.id) === params.userId) continue;
+      if (await isBlocked(client, params.userId, String(person.id))) continue;
+      await client.query(
+        `INSERT INTO circle_message_mentions (message_id, mentioned_user_id)
+         VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [row.id, person.id]
+      );
+    }
+  }
   if (params.threadId) {
     await client.query(
       `UPDATE circle_threads
@@ -354,6 +653,10 @@ export async function listLinearMessages(params: {
 
   const filters = [`m.circle_id = $1`, `m.thread_id IS NULL`];
   const values: unknown[] = [params.circleId, params.userId];
+  filters.push(`m.created_at >= COALESCE((
+    SELECT MAX(joined_at) FROM circle_membership_periods
+    WHERE circle_id = $1 AND user_id = $2 AND left_at IS NULL
+  ), m.created_at)`);
   if (params.beforeSeq != null) {
     values.push(params.beforeSeq);
     filters.push(`m.seq < $${values.length}`);
@@ -387,6 +690,7 @@ export async function listLinearMessages(params: {
     );
     messages.push(mapMessageRow(row, author));
   }
+  await attachReactions(params.client, messages, params.userId);
   const nextCursor =
     !params.afterSeq && rows.length === params.limit
       ? Number(rows[rows.length - 1].seq)
@@ -457,6 +761,7 @@ export async function listThreadMessages(params: {
     void guest;
     messages.push(mapMessageRow(row, author));
   }
+  await attachReactions(params.client, messages, params.userId);
   const nextCursor =
     !params.afterSeq && rows.length === params.limit
       ? Number(rows[rows.length - 1].seq)
@@ -605,7 +910,11 @@ export async function listInbox(client: PoolClient, userId: string) {
   };
 }
 
-export async function listHome(client: PoolClient, userId: string) {
+export async function listHome(
+  client: PoolClient,
+  userId: string,
+  options?: { cursor?: string | null; limit?: number }
+) {
   const loc = await client.query(
     `SELECT pin_code FROM user_locations WHERE user_id = $1`,
     [userId]
@@ -654,17 +963,8 @@ export async function listHome(client: PoolClient, userId: string) {
          SELECT 1 FROM circle_members cm
          WHERE cm.circle_id = t.circle_id AND cm.user_id = $1
        )
-       AND (
-         $2::text IS NULL
-         OR c.circle_type <> 'locality'
-         OR c.metadata->>'pin_code' = $2
-         OR EXISTS (
-           SELECT 1 FROM user_locations ul
-           JOIN children ch ON ch.user_id = t.author_id
-           JOIN curricula cur ON cur.id = ch.curriculum_id
-           WHERE ul.user_id = t.author_id AND ul.pin_code = $2
-         )
-       )
+       AND (hi.dismissed_at IS NULL)
+       AND ${DISCOVERY_MATCH_SQL}
        AND NOT EXISTS (
          SELECT 1 FROM user_blocks ub
          WHERE (ub.blocker_id = $1 AND ub.blocked_id = t.author_id)
@@ -672,7 +972,7 @@ export async function listHome(client: PoolClient, userId: string) {
        )
      ORDER BY t.last_message_at DESC
      LIMIT 40`,
-    [userId, pin]
+    [userId]
   );
 
   const updates = await client.query(
@@ -795,10 +1095,33 @@ export async function listHome(client: PoolClient, userId: string) {
   }
 
   if (organic.filter((r) => r.kind === "thread").length === 0) {
-    return { items: organic.slice(0, 20).map((r) => r.payload).filter((p) => p.kind !== "service") };
+    organic.splice(0, organic.length, ...organic.filter((r) => r.kind !== "service"));
   }
 
-  return { items: organic.slice(0, 20).map((r) => r.payload) };
+  const raw = options?.limit ?? 20;
+  const limit = Math.min(Math.max(Number.isFinite(raw) ? raw : 20, 1), 40);
+  const cursor = parseChatHomeCursor(options?.cursor);
+  const page = cursor
+    ? organic.filter((row) =>
+        isAfterChatHomeCursor(
+          { bucket: row.bucket, lastAt: row.lastAt, id: row.id },
+          cursor
+        )
+      )
+    : organic;
+  const sliced = page.slice(0, limit);
+  const last = sliced[sliced.length - 1];
+  return {
+    items: sliced.map((r) => r.payload),
+    nextCursor:
+      sliced.length === limit && last
+        ? encodeChatHomeCursor({
+            bucket: last.bucket,
+            lastAt: last.lastAt,
+            id: last.id,
+          })
+        : null,
+  };
 }
 
 export async function publishChatNudge(payload: {
@@ -819,12 +1142,24 @@ export async function publishChatNudge(payload: {
   if (payload.threadId) {
     await publishThreadEvent(payload.threadId, event);
   }
-  if (payload.authorId) {
-    await publishUserInboxEvent(payload.authorId, {
-      type: "inbox.updated",
-      userId: payload.authorId,
-      reason: "message",
-    });
+  const client = await pool.connect();
+  try {
+    const recipients = await listCircleInboxRecipients(
+      client,
+      payload.circleId,
+      payload.threadId
+    );
+    await Promise.all(
+      recipients.map((userId) =>
+        publishUserInboxEvent(userId, {
+          type: "inbox.updated",
+          userId,
+          reason: "message",
+        })
+      )
+    );
+  } finally {
+    client.release();
   }
 }
 

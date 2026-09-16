@@ -25,11 +25,8 @@ import {
 import { schoolVisiblePredicate, schoolNotRedirected } from "../lib/school-visibility.js";
 import { authMiddleware, type AuthVariables } from "../middleware/auth.js";
 import { rateLimitMiddleware } from "../middleware/rate-limit.js";
-import {
-  createCrossPosts,
-  dispatchCrossPostsCreated,
-  toCircleTargets,
-} from "../services/cross-posts.js";
+import { createThread } from "../services/chat.js";
+import { incrementDailyQuota, isCircleMember } from "../services/chat-access.js";
 import { syncCircleMembership } from "../services/circle-sync.js";
 
 const PLACEHOLDER_SCHOOL_KEY = "school_not_specified||unknown";
@@ -849,49 +846,47 @@ export function createSchoolsRoutes() {
         [userId]
       );
 
-      const result = await createCrossPosts(client, {
-        userId,
-        body: text,
-        tag: "question",
-        targetCircleIds: [circleId],
-        media: [],
-      });
-
-      if (result.ok === false) {
+      const member = await isCircleMember(client, circleId, userId);
+      const guest = !member;
+      if (guest && !(await incrementDailyQuota(client, userId, "guest_thread", 5))) {
         await client.query("ROLLBACK");
-        return c.json({ error: result.error }, result.status);
+        return c.json({ error: "Guest thread daily limit reached" }, 429);
       }
 
-      const postId = result.postId;
+      const result = await createThread({
+        client,
+        userId,
+        circleId,
+        title: text.slice(0, 140),
+        body: text,
+        kind: "question",
+        guest,
+      });
+
+      if ("error" in result) {
+        await client.query("ROLLBACK");
+        return c.json({ error: result.error }, result.status as 400 | 403 | 404 | 429);
+      }
+
+      const threadId = String(result.thread.id);
 
       const question = await client.query(
         `INSERT INTO school_questions (school_id, asker_id, body, circle_post_id)
-         VALUES ($1, $2, $3, $4)
+         VALUES ($1, $2, $3, NULL)
          RETURNING id, created_at`,
-        [schoolId, userId, text, postId]
+        [schoolId, userId, text]
       );
 
       await client.query("COMMIT");
-
-      const targets = toCircleTargets(result.circleRows);
-      await dispatchCrossPostsCreated({
-        userId,
-        body: text,
-        postId: result.postId,
-        createdAt: result.createdAt,
-        classifiedTargets: targets,
-        topicIds: [],
-        topicSlugs: [],
-      });
 
       return c.json(
         {
           id: question.rows[0].id,
           createdAt: question.rows[0].created_at,
           authorHandle: userRow.rows[0].anonymous_handle,
-          circleId: result.primaryCircleId,
-          postId,
-          guestQuota: result.guestQuota,
+          circleId,
+          threadId,
+          postId: null,
         },
         201
       );

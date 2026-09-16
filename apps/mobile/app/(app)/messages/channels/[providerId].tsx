@@ -71,7 +71,7 @@ export default function ProviderChannelScreen() {
       <Text style={styles.title}>{channel.name}</Text>
       <Text style={styles.badge}>Tutor</Text>
       <Pressable style={styles.cta} onPress={() => void followAndMessage()}>
-        <Text style={styles.ctaLabel}>Message as Tutor</Text>
+        <Text style={styles.ctaLabel}>Message tutor</Text>
       </Pressable>
       {channel.updates.map((update) => (
         <View key={update.id} style={styles.card}>

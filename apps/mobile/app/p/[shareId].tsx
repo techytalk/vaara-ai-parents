@@ -23,7 +23,20 @@ export default function SharedPostGate() {
       }
       try {
         const resolved = await api.resolveShare(token, shareId);
-        if (!resolved.available || !resolved.circleId || !resolved.postId) {
+        if (!resolved.available) {
+          if (!cancelled) setTarget("/(app)");
+          return;
+        }
+        if (resolved.threadId) {
+          if (!cancelled) {
+            router.replace({
+              pathname: "/(app)/messages/threads/[threadId]",
+              params: { threadId: resolved.threadId },
+            });
+          }
+          return;
+        }
+        if (!resolved.circleId || !resolved.postId) {
           if (!cancelled) setTarget("/(app)");
           return;
         }

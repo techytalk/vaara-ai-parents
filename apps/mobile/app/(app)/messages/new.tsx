@@ -97,17 +97,31 @@ export default function NewMessageScreen() {
       }
       const token = await getToken();
       if (!token) return;
-      const result = await api.startConversation(token, {
-        peerUserId: parent.userId,
-        circleId: parent.circleId,
-      });
-      router.replace({
-        pathname: "/(app)/messages/[conversationId]",
-        params: {
-          conversationId: result.id,
-          peerHandle: parent.anonymousHandle,
-        },
-      });
+      const dual = (me?.roles ?? []).includes("parent") && (me?.roles ?? []).includes("provider");
+      const start = async (myRole: "parent" | "provider") => {
+        const result = await api.startConversation(token, {
+          peerUserId: parent.userId,
+          circleId: parent.circleId,
+          myRole,
+          peerRole: "parent",
+        });
+        router.replace({
+          pathname: "/(app)/messages/[conversationId]",
+          params: {
+            conversationId: result.id,
+            peerHandle: parent.anonymousHandle,
+          },
+        });
+      };
+      if (dual) {
+        Alert.alert("Chat as", "Choose how this conversation should appear.", [
+          { text: "Parent", onPress: () => void start("parent") },
+          { text: "Tutor", onPress: () => void start("provider") },
+          { text: "Cancel", style: "cancel" },
+        ]);
+        return;
+      }
+      await start("parent");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not start chat");
     } finally {

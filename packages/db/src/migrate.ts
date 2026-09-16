@@ -78,6 +78,10 @@ const MIGRATIONS = [
     version: "048_migrate_posts_to_threads",
     file: "048_migrate_posts_to_threads.sql",
   },
+  {
+    version: "049_chat_backfill_repair",
+    file: "049_chat_backfill_repair.sql",
+  },
 ];
 
 async function isMigrationApplied(
