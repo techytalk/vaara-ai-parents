@@ -418,5 +418,131 @@ export function createInternalRoutes() {
     }
   });
 
+  // ---- Admin school directory by region/locality (open for now) ----
+
+  app.get("/admin/schools/directory", async (c) => {
+    const regionParam = (c.req.query("region") ?? "").trim();
+    const localityParam = (c.req.query("locality") ?? "").trim();
+    const verifiedParam = (c.req.query("verified") ?? "all").trim().toLowerCase();
+    const q = (c.req.query("q") ?? "").trim();
+    const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 2000), 1), 5000);
+
+    const client = await pool.connect();
+    try {
+      const { rows: tree } = await client.query(
+        `SELECT
+           coalesce(region, '(no region)') AS region,
+           coalesce(locality, '(no locality)') AS locality,
+           COUNT(*)::int AS total,
+           COUNT(*) FILTER (WHERE verified IS TRUE)::int AS verified,
+           COUNT(*) FILTER (WHERE verified IS NOT TRUE)::int AS unverified
+         FROM schools s
+         WHERE s.redirect_to_school_id IS NULL
+           AND s.normalized_key <> 'school_not_specified||unknown'
+         GROUP BY 1, 2
+         ORDER BY 1, 2`
+      );
+
+      const { rows: regions } = await client.query(
+        `SELECT
+           coalesce(region, '(no region)') AS region,
+           COUNT(*)::int AS total,
+           COUNT(*) FILTER (WHERE verified IS TRUE)::int AS verified,
+           COUNT(*) FILTER (WHERE verified IS NOT TRUE)::int AS unverified,
+           COUNT(DISTINCT coalesce(locality, '(no locality)'))::int AS localities
+         FROM schools s
+         WHERE s.redirect_to_school_id IS NULL
+           AND s.normalized_key <> 'school_not_specified||unknown'
+         GROUP BY 1
+         ORDER BY 1`
+      );
+
+      const params: unknown[] = [];
+      let sql = `
+        SELECT
+          s.id,
+          s.name,
+          s.branch,
+          s.locality,
+          s.region,
+          s.city,
+          s.state,
+          s.pin_code,
+          s.verified,
+          to_char(s.verified_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD HH24:MI') AS verified_at_ist,
+          s.verified_by,
+          to_char(s.created_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD HH24:MI') AS created_ist
+        FROM schools s
+        WHERE s.redirect_to_school_id IS NULL
+          AND s.normalized_key <> 'school_not_specified||unknown'
+      `;
+
+      if (regionParam === "(no region)") {
+        sql += ` AND s.region IS NULL`;
+      } else if (regionParam) {
+        params.push(regionParam);
+        sql += ` AND s.region = $${params.length}`;
+      }
+
+      if (localityParam === "(no locality)") {
+        sql += ` AND s.locality IS NULL`;
+      } else if (localityParam) {
+        params.push(localityParam);
+        sql += ` AND s.locality = $${params.length}`;
+      }
+
+      if (verifiedParam === "verified") {
+        sql += ` AND s.verified IS TRUE`;
+      } else if (verifiedParam === "unverified") {
+        sql += ` AND s.verified IS NOT TRUE`;
+      }
+
+      if (q) {
+        params.push(q);
+        sql += ` AND (
+          s.name ILIKE '%' || $${params.length} || '%'
+          OR coalesce(s.branch, '') ILIKE '%' || $${params.length} || '%'
+          OR coalesce(s.locality, '') ILIKE '%' || $${params.length} || '%'
+          OR coalesce(s.city, '') ILIKE '%' || $${params.length} || '%'
+        )`;
+      }
+
+      params.push(limit);
+      sql += `
+        ORDER BY s.region NULLS LAST, s.locality NULLS LAST, s.verified DESC, s.name, s.branch
+        LIMIT $${params.length}`;
+
+      const { rows: schools } = await client.query(sql, params);
+
+      const { rows: totals } = await client.query(
+        `SELECT
+           COUNT(*)::int AS total,
+           COUNT(*) FILTER (WHERE verified IS TRUE)::int AS verified,
+           COUNT(*) FILTER (WHERE verified IS NOT TRUE)::int AS unverified,
+           COUNT(DISTINCT coalesce(region, '(no region)'))::int AS regions,
+           COUNT(DISTINCT coalesce(locality, '(no locality)'))::int AS localities
+         FROM schools s
+         WHERE s.redirect_to_school_id IS NULL
+           AND s.normalized_key <> 'school_not_specified||unknown'`
+      );
+
+      return c.json({
+        ok: true,
+        filters: {
+          region: regionParam || null,
+          locality: localityParam || null,
+          verified: verifiedParam,
+          q: q || null,
+        },
+        summary: totals[0] ?? null,
+        regions,
+        tree,
+        schools,
+      });
+    } finally {
+      client.release();
+    }
+  });
+
   return app;
 }

@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow" />
+    <title>Vaara — School directory</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+        --teal: #0e9a8a;
+        --teal-dark: #08786d;
+        --bg: #fffcf7;
+        --card: #fff;
+        --text: #0d1b2a;
+        --muted: #5e6974;
+        --border: #e8e3db;
+        --ok: #078675;
+        --warn: #b96d00;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: var(--bg);
+        color: var(--text);
+      }
+      h1 { font-size: 1.45rem; margin: 0 0 6px; }
+      h2 { font-size: 1.05rem; margin: 22px 0 10px; }
+      .muted { color: var(--muted); font-size: 0.9rem; margin: 0 0 18px; }
+      a { color: var(--teal-dark); }
+      label { display: block; font-size: 0.85rem; margin: 0 0 4px; color: var(--muted); }
+      input, select, button {
+        font: inherit;
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+      }
+      button {
+        background: var(--teal);
+        color: #fff;
+        border: none;
+        cursor: pointer;
+        margin-right: 8px;
+      }
+      button.secondary { background: #44403c; }
+      button:disabled { opacity: 0.55; cursor: wait; }
+      .toolbar {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        align-items: end;
+        margin-bottom: 16px;
+      }
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 10px;
+        margin-bottom: 16px;
+      }
+      .stat {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 12px 14px;
+      }
+      .stat .n { font-size: 1.5rem; font-weight: 700; }
+      .stat .l { font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(220px, 300px) 1fr;
+        gap: 16px;
+        align-items: start;
+      }
+      @media (max-width: 900px) {
+        .layout { grid-template-columns: 1fr; }
+      }
+      .panel {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 12px;
+        max-height: 75vh;
+        overflow: auto;
+      }
+      .region {
+        margin-bottom: 10px;
+      }
+      .region-btn, .loc-btn {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        width: 100%;
+        text-align: left;
+        background: transparent;
+        color: var(--text);
+        border: 1px solid transparent;
+        border-radius: 8px;
+        padding: 8px 10px;
+        margin: 0 0 4px;
+        cursor: pointer;
+      }
+      .region-btn:hover, .loc-btn:hover { background: #f7f4ee; }
+      .region-btn.active, .loc-btn.active {
+        background: #eaf8f6;
+        border-color: var(--teal);
+        color: var(--teal-dark);
+        font-weight: 600;
+      }
+      .loc-btn {
+        font-size: 0.88rem;
+        padding-left: 18px;
+        color: var(--muted);
+      }
+      .count { font-variant-numeric: tabular-nums; color: var(--muted); font-weight: 500; }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.9rem;
+      }
+      th, td {
+        text-align: left;
+        padding: 9px 10px;
+        border-bottom: 1px solid var(--border);
+        vertical-align: top;
+      }
+      th {
+        background: #f7f4ee;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        color: var(--muted);
+        position: sticky;
+        top: 0;
+      }
+      .badge {
+        display: inline-block;
+        border-radius: 999px;
+        padding: 2px 8px;
+        font-size: 0.75rem;
+        font-weight: 700;
+      }
+      .badge.ok { background: #e7f7f4; color: var(--ok); }
+      .badge.warn { background: #fff2d9; color: var(--warn); }
+      .err {
+        color: #b91c1c;
+        background: #feecec;
+        border-radius: 10px;
+        padding: 10px 12px;
+        margin-bottom: 12px;
+        display: none;
+      }
+      .nav { margin-bottom: 14px; font-size: 0.9rem; }
+      .empty { color: var(--muted); padding: 18px 0; }
+      .meta { font-size: 0.82rem; color: var(--muted); }
+    </style>
+  </head>
+  <body>
+    <div class="nav">
+      <strong>Admin</strong> · School directory ·
+      <a href="/internal/admin/">Parent signups</a> ·
+      <a href="/internal/admin/schools.html">School tools</a>
+    </div>
+    <h1>School directory</h1>
+    <p class="muted">Cross-check schools by region and locality (excludes merged / placeholder).</p>
+
+    <div class="toolbar">
+      <div>
+        <label>Search</label>
+        <input id="q" type="search" size="28" placeholder="Name, branch, locality…" />
+      </div>
+      <div>
+        <label>Verified</label>
+        <select id="verified">
+          <option value="all">All</option>
+          <option value="verified">Verified</option>
+          <option value="unverified">Unverified</option>
+        </select>
+      </div>
+      <button id="refresh" type="button">Refresh</button>
+      <button id="clear" class="secondary" type="button">Clear filters</button>
+    </div>
+
+    <div id="err" class="err"></div>
+
+    <div class="stats">
+      <div class="stat"><div class="n" id="nTotal">—</div><div class="l">Total schools</div></div>
+      <div class="stat"><div class="n" id="nVerified">—</div><div class="l">Verified</div></div>
+      <div class="stat"><div class="n" id="nUnverified">—</div><div class="l">Unverified</div></div>
+      <div class="stat"><div class="n" id="nRegions">—</div><div class="l">Regions</div></div>
+      <div class="stat"><div class="n" id="nLocalities">—</div><div class="l">Localities</div></div>
+      <div class="stat"><div class="n" id="nShowing">—</div><div class="l">Showing now</div></div>
+    </div>
+
+    <div class="layout">
+      <div class="panel" id="treePanel"><p class="empty">Loading…</p></div>
+      <div class="panel" id="listPanel"><p class="empty">Loading…</p></div>
+    </div>
+
+    <script>
+      const API_BASE = "https://api.vaara.ai";
+      let cache = { regions: [], tree: [], schools: [] };
+      let selectedRegion = "";
+      let selectedLocality = "";
+
+      function $(id) { return document.getElementById(id); }
+
+      function showError(msg) {
+        const box = $("err");
+        if (!msg) {
+          box.style.display = "none";
+          box.textContent = "";
+          return;
+        }
+        box.style.display = "block";
+        box.textContent = msg;
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function localitiesForRegion(region) {
+        return cache.tree.filter((t) => t.region === region);
+      }
+
+      function renderTree() {
+        const panel = $("treePanel");
+        panel.replaceChildren();
+
+        const allBtn = document.createElement("button");
+        allBtn.type = "button";
+        allBtn.className = "region-btn" + (!selectedRegion ? " active" : "");
+        allBtn.innerHTML = `<span>All regions</span><span class="count">${cache.summary?.total ?? 0}</span>`;
+        allBtn.addEventListener("click", () => {
+          selectedRegion = "";
+          selectedLocality = "";
+          loadDirectory();
+        });
+        panel.appendChild(allBtn);
+
+        for (const r of cache.regions) {
+          const wrap = document.createElement("div");
+          wrap.className = "region";
+
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "region-btn" + (selectedRegion === r.region && !selectedLocality ? " active" : "");
+          btn.innerHTML = `<span>${escapeHtml(r.region)}</span><span class="count">${r.total} · ${r.localities} loc</span>`;
+          btn.addEventListener("click", () => {
+            selectedRegion = r.region;
+            selectedLocality = "";
+            loadDirectory();
+          });
+          wrap.appendChild(btn);
+
+          if (!selectedRegion || selectedRegion === r.region) {
+            for (const loc of localitiesForRegion(r.region)) {
+              const locBtn = document.createElement("button");
+              locBtn.type = "button";
+              locBtn.className = "loc-btn" + (selectedRegion === r.region && selectedLocality === loc.locality ? " active" : "");
+              locBtn.innerHTML = `<span>${escapeHtml(loc.locality)}</span><span class="count">${loc.total}</span>`;
+              locBtn.addEventListener("click", () => {
+                selectedRegion = r.region;
+                selectedLocality = loc.locality;
+                loadDirectory();
+              });
+              wrap.appendChild(locBtn);
+            }
+          }
+
+          panel.appendChild(wrap);
+        }
+      }
+
+      function renderSchools(schools) {
+        const panel = $("listPanel");
+        panel.replaceChildren();
+        $("nShowing").textContent = schools.length;
+
+        if (!schools.length) {
+          panel.appendChild(Object.assign(document.createElement("p"), {
+            className: "empty",
+            textContent: "No schools for this filter.",
+          }));
+          return;
+        }
+
+        const heading = document.createElement("div");
+        heading.className = "meta";
+        heading.style.marginBottom = "10px";
+        const parts = [];
+        if (selectedRegion) parts.push(selectedRegion);
+        if (selectedLocality) parts.push(selectedLocality);
+        heading.textContent = parts.length
+          ? `Filtered: ${parts.join(" → ")}`
+          : "All schools (current filters)";
+        panel.appendChild(heading);
+
+        const table = document.createElement("table");
+        table.innerHTML = `
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Branch</th>
+              <th>Locality</th>
+              <th>Region</th>
+              <th>City / PIN</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+        `;
+        const tbody = document.createElement("tbody");
+        for (const s of schools) {
+          const tr = document.createElement("tr");
+          const status = s.verified
+            ? '<span class="badge ok">Verified</span>'
+            : '<span class="badge warn">Unverified</span>';
+          const cityPin = [s.city, s.pin_code].filter(Boolean).join(" · ") || "—";
+          tr.innerHTML = `
+            <td>${escapeHtml(s.name || "—")}</td>
+            <td>${escapeHtml(s.branch || "—")}</td>
+            <td>${escapeHtml(s.locality || "—")}</td>
+            <td>${escapeHtml(s.region || "—")}</td>
+            <td>${escapeHtml(cityPin)}</td>
+            <td>${status}</td>
+          `;
+          tbody.appendChild(tr);
+        }
+        table.appendChild(tbody);
+        panel.appendChild(table);
+      }
+
+      async function loadDirectory() {
+        showError("");
+        const btn = $("refresh");
+        btn.disabled = true;
+        try {
+          const params = new URLSearchParams();
+          if (selectedRegion) params.set("region", selectedRegion);
+          if (selectedLocality) params.set("locality", selectedLocality);
+          const verified = $("verified").value;
+          if (verified && verified !== "all") params.set("verified", verified);
+          const q = $("q").value.trim();
+          if (q) params.set("q", q);
+
+          const res = await fetch(`${API_BASE}/internal/admin/schools/directory?${params}`);
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+          cache = {
+            summary: data.summary || {},
+            regions: data.regions || [],
+            tree: data.tree || [],
+            schools: data.schools || [],
+          };
+
+          $("nTotal").textContent = cache.summary.total ?? 0;
+          $("nVerified").textContent = cache.summary.verified ?? 0;
+          $("nUnverified").textContent = cache.summary.unverified ?? 0;
+          $("nRegions").textContent = cache.summary.regions ?? 0;
+          $("nLocalities").textContent = cache.summary.localities ?? 0;
+
+          renderTree();
+          renderSchools(cache.schools);
+        } catch (e) {
+          showError(e instanceof Error ? e.message : "Failed to load");
+        } finally {
+          btn.disabled = false;
+        }
+      }
+
+      $("refresh").addEventListener("click", loadDirectory);
+      $("clear").addEventListener("click", () => {
+        selectedRegion = "";
+        selectedLocality = "";
+        $("q").value = "";
+        $("verified").value = "all";
+        loadDirectory();
+      });
+      $("verified").addEventListener("change", loadDirectory);
+      let qTimer = null;
+      $("q").addEventListener("input", () => {
+        clearTimeout(qTimer);
+        qTimer = setTimeout(loadDirectory, 300);
+      });
+
+      loadDirectory();
+    </script>
+  </body>
+</html>
