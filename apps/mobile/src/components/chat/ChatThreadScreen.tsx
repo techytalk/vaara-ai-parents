@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Alert,
   FlatList,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   StyleSheet,
@@ -10,19 +10,34 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useHeaderHeight } from "@react-navigation/elements";
+import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
-import { EmptyState, ScreenLoader } from "@/components/ui";
-import { colors, radii, spacing, typography } from "@/constants/theme";
+import { Avatar, EmptyState, ScreenLoader } from "@/components/ui";
+import { colors, radii, shadows, spacing, typography } from "@/constants/theme";
+import { useBottomChromeInset } from "@/hooks/useBottomChromeInset";
+import { useAndroidImeDockOffset } from "@/hooks/useKeyboardHeight";
 import { useRealtimeChannel } from "@/hooks/useRealtimeChannel";
 import { api, type ChatMessage } from "@/lib/api";
 import { getToken } from "@/lib/session";
 import { randomUUID } from "@/lib/uuid";
 
+const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🎉"] as const;
+
 async function authed<T>(fn: (token: string) => Promise<T>): Promise<T> {
   const token = await getToken();
   if (!token) throw new Error("Not signed in");
   return fn(token);
+}
+
+function formatTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 export function ChatThreadScreen({
@@ -36,9 +51,15 @@ export function ChatThreadScreen({
 }) {
   const queryClient = useQueryClient();
   const router = useRouter();
+  const headerHeight = useHeaderHeight();
+  const bottomChrome = useBottomChromeInset();
+  const androidDockOffset = useAndroidImeDockOffset(bottomChrome);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [sheetMessage, setSheetMessage] = useState<ChatMessage | null>(null);
+  const [sheetMode, setSheetMode] = useState<"react" | "more">("react");
+  const [pendingDelete, setPendingDelete] = useState<ChatMessage | null>(null);
   const lastSeqRef = useRef(0);
 
   const meQuery = useQuery({
@@ -66,6 +87,8 @@ export function ChatThreadScreen({
   const messages = listQuery.data?.messages ?? [];
   const maxSeq = messages.reduce((max, item) => Math.max(max, item.seq), 0);
   lastSeqRef.current = maxSeq;
+  const myId = meQuery.data?.id;
+  const editingMessage = messages.find((item) => item.id === editingId);
 
   const catchUp = useCallback(async () => {
     const afterSeq = lastSeqRef.current;
@@ -202,12 +225,15 @@ export function ChatThreadScreen({
     await threadQuery.refetch();
   }
 
-  async function react(message: ChatMessage) {
-    const mine = message.reactions?.some((item) => item.reaction === "👍" && item.mine);
+  async function react(message: ChatMessage, reaction: string) {
+    if (message.status !== "visible") return;
+    const mine = message.reactions?.some(
+      (item) => item.reaction === reaction && item.mine
+    );
     await authed((token) =>
       mine
-        ? api.removeMessageReaction(token, message.circleId, message.id, "👍")
-        : api.addMessageReaction(token, message.circleId, message.id, "👍")
+        ? api.removeMessageReaction(token, message.circleId, message.id, reaction)
+        : api.addMessageReaction(token, message.circleId, message.id, reaction)
     );
     await listQuery.refetch();
   }
@@ -219,50 +245,31 @@ export function ChatThreadScreen({
     await listQuery.refetch();
   }
 
-  function onLongPress(message: ChatMessage) {
+  function openSheet(message: ChatMessage, nextMode: "react" | "more") {
     if (message.status !== "visible") return;
-    const mine = message.author.userId === meQuery.data?.id;
-    const ageMs = Date.now() - new Date(message.createdAt).getTime();
-    const buttons: Array<{
-      text: string;
-      style?: "cancel" | "destructive" | "default";
-      onPress?: () => void;
-    }> = [
-      { text: "React 👍", onPress: () => void react(message) },
-    ];
-    if (mine && ageMs <= 15 * 60 * 1000) {
-      buttons.push({
-        text: "Edit",
-        onPress: () => {
-          setEditingId(message.id);
-          setDraft(message.body ?? "");
-        },
-      });
-    }
-    if (mine && ageMs <= 24 * 60 * 60 * 1000) {
-      buttons.push({
-        text: "Delete",
-        style: "destructive",
-        onPress: () =>
-          Alert.alert("Delete message?", "Everyone in this chat will see it as deleted.", [
-            { text: "Cancel", style: "cancel" },
-            { text: "Delete", style: "destructive", onPress: () => void remove(message) },
-          ]),
-      });
-    }
-    buttons.push({ text: "Cancel", style: "cancel" });
-    Alert.alert("Message", undefined, buttons);
+    setSheetMode(nextMode);
+    setSheetMessage(message);
+  }
+
+  function startEdit(message: ChatMessage) {
+    setEditingId(message.id);
+    setDraft(message.body ?? "");
+    setSheetMessage(null);
   }
 
   if (listQuery.isLoading) {
     return <ScreenLoader label="Loading chat" />;
   }
 
+  const dockStyle =
+    androidDockOffset > 0 ? { marginBottom: androidDockOffset } : null;
+  const canSend = Boolean(draft.trim()) && !sending;
+
   return (
     <KeyboardAvoidingView
       style={styles.screen}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={88}
+      keyboardVerticalOffset={Platform.OS === "ios" ? headerHeight : 0}
     >
       {mode === "thread" && threadQuery.data ? (
         <View style={styles.topic}>
@@ -288,9 +295,11 @@ export function ChatThreadScreen({
         </View>
       ) : null}
       <FlatList
+        style={styles.listFlex}
         data={messages}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
+        keyboardShouldPersistTaps="handled"
         ListEmptyComponent={
           <EmptyState
             icon="chatbubble-outline"
@@ -301,86 +310,347 @@ export function ChatThreadScreen({
         renderItem={({ item }) => (
           <Bubble
             message={item}
+            mine={item.author.userId === myId}
             highlight={item.id === editingId}
-            onLongPress={() => onLongPress(item)}
-            onReact={() => void react(item)}
+            onLike={() => void react(item, "👍")}
+            onOpenReact={() => openSheet(item, "react")}
+            onOpenMore={() => openSheet(item, "more")}
+            onReact={(reaction) => void react(item, reaction)}
           />
         )}
       />
       {canReply ? (
-        <View style={styles.composer}>
-          <TextInput
-            style={styles.input}
-            placeholder={editingId ? "Edit message" : "Message"}
-            value={draft}
-            onChangeText={setDraft}
-            multiline
-          />
+        <View style={[styles.composer, dockStyle]}>
           {editingId ? (
-            <Pressable
-              style={styles.send}
-              onPress={() => {
-                setEditingId(null);
-                setDraft("");
-              }}
-            >
-              <Text style={styles.sendLabel}>Cancel</Text>
-            </Pressable>
+            <View style={styles.editBanner}>
+              <View style={styles.editAccent} />
+              <View style={styles.editCopy}>
+                <Text style={styles.editTitle}>Editing message</Text>
+                <Text style={styles.editPreview} numberOfLines={1}>
+                  {editingMessage?.body ?? draft}
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => {
+                  setEditingId(null);
+                  setDraft("");
+                }}
+                hitSlop={10}
+                accessibilityLabel="Cancel edit"
+              >
+                <Ionicons name="close" size={20} color={colors.textMuted} />
+              </Pressable>
+            </View>
           ) : null}
-          <Pressable
-            style={[styles.send, !draft.trim() && styles.sendDisabled]}
-            onPress={() => void send()}
-            disabled={!draft.trim() || sending}
-          >
-            <Text style={styles.sendLabel}>{editingId ? "Save" : "Send"}</Text>
-          </Pressable>
+          <View style={styles.inputRow}>
+            <TextInput
+              style={styles.input}
+              placeholder={editingId ? "Update message" : "Message"}
+              placeholderTextColor={colors.textSubtle}
+              value={draft}
+              onChangeText={setDraft}
+              multiline
+            />
+            <Pressable
+              style={[styles.send, !canSend && styles.sendDisabled]}
+              onPress={() => void send()}
+              disabled={!canSend}
+              accessibilityLabel={editingId ? "Save message" : "Send message"}
+            >
+              <Ionicons
+                name={editingId ? "checkmark" : "send"}
+                size={18}
+                color={colors.textInverse}
+              />
+            </Pressable>
+          </View>
         </View>
       ) : (
-        <Text style={styles.readonly}>You can read this thread, not reply.</Text>
+        <Text style={[styles.readonly, dockStyle]}>
+          You can read this thread, not reply.
+        </Text>
       )}
+
+      <MessageActionSheet
+        message={sheetMessage}
+        mode={sheetMode}
+        mine={sheetMessage?.author.userId === myId}
+        onClose={() => setSheetMessage(null)}
+        onReact={(reaction) => {
+          if (!sheetMessage) return;
+          void react(sheetMessage, reaction);
+          setSheetMessage(null);
+        }}
+        onEdit={() => {
+          if (sheetMessage) startEdit(sheetMessage);
+        }}
+        onDelete={() => {
+          if (!sheetMessage) return;
+          setPendingDelete(sheetMessage);
+          setSheetMessage(null);
+        }}
+      />
+
+      <Modal visible={Boolean(pendingDelete)} transparent animationType="fade">
+        <Pressable style={styles.confirmBackdrop} onPress={() => setPendingDelete(null)}>
+          <Pressable style={styles.confirmCard} onPress={() => {}}>
+            <Text style={styles.confirmTitle}>Delete this message?</Text>
+            <Text style={styles.confirmBody}>
+              Everyone in this chat will see it as deleted.
+            </Text>
+            <Pressable
+              style={styles.confirmDelete}
+              onPress={() => {
+                if (!pendingDelete) return;
+                void remove(pendingDelete);
+                setPendingDelete(null);
+              }}
+            >
+              <Text style={styles.confirmDeleteLabel}>Delete</Text>
+            </Pressable>
+            <Pressable
+              style={styles.confirmCancel}
+              onPress={() => setPendingDelete(null)}
+            >
+              <Text style={styles.confirmCancelLabel}>Keep message</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
 
 function Bubble({
   message,
+  mine,
   highlight,
-  onLongPress,
+  onLike,
+  onOpenReact,
+  onOpenMore,
   onReact,
 }: {
   message: ChatMessage;
+  mine: boolean;
   highlight: boolean;
-  onLongPress: () => void;
-  onReact: () => void;
+  onLike: () => void;
+  onOpenReact: () => void;
+  onOpenMore: () => void;
+  onReact: (reaction: string) => void;
 }) {
-  const thumbs = message.reactions?.find((item) => item.reaction === "👍");
+  const reactions = message.reactions?.filter((item) => item.count > 0) ?? [];
+  const visible = message.status === "visible";
+  const liked = message.reactions?.some(
+    (item) => item.reaction === "👍" && item.mine
+  );
+  const ageMs = Date.now() - new Date(message.createdAt).getTime();
+  const canManage = mine && ageMs <= 24 * 60 * 60 * 1000;
+  const role =
+    message.author.role === "provider"
+      ? "Tutor"
+      : message.author.isGuest
+        ? "Guest"
+        : null;
+
   return (
-    <Pressable
-      onLongPress={onLongPress}
-      style={[styles.bubble, highlight && styles.bubbleEditing]}
-    >
-      <Text style={styles.author}>
-        {message.author.displayName}
-        {message.author.role === "provider" ? " · Tutor" : ""}
-        {message.author.isGuest ? " · Guest" : ""}
-      </Text>
-      <Text style={styles.body}>
-        {message.status === "visible" ? message.body : "Message deleted"}
-      </Text>
-      {message.editedAt && message.status === "visible" ? (
-        <Text style={styles.edited}>edited</Text>
-      ) : null}
-      {thumbs ? (
-        <Pressable onPress={onReact} style={styles.reactChip}>
-          <Text style={styles.reactLabel}>👍 {thumbs.count}</Text>
+    <View style={[styles.row, mine && styles.rowMine]}>
+      {!mine ? (
+        <Avatar
+          handle={message.author.displayName}
+          avatarKey={message.author.avatarKey}
+          size={32}
+        />
+      ) : (
+        <View style={styles.avatarSpacer} />
+      )}
+      <View style={[styles.stack, mine && styles.stackMine]}>
+        {!mine ? (
+          <Text style={styles.author} numberOfLines={1}>
+            {message.author.displayName}
+            {role ? ` · ${role}` : ""}
+          </Text>
+        ) : null}
+        <Pressable
+          onLongPress={onOpenReact}
+          delayLongPress={320}
+          style={[
+            styles.bubble,
+            mine ? styles.bubbleMine : styles.bubbleTheir,
+            highlight && styles.bubbleEditing,
+            !visible && styles.bubbleDeleted,
+          ]}
+        >
+          <Text
+            style={[
+              styles.body,
+              mine && visible && styles.bodyMine,
+              !visible && styles.bodyDeleted,
+            ]}
+          >
+            {visible ? message.body : "Message deleted"}
+          </Text>
+          <Text style={[styles.time, mine && visible && styles.timeMine]}>
+            {message.editedAt && visible ? "edited · " : ""}
+            {formatTime(message.createdAt)}
+          </Text>
         </Pressable>
+        {visible ? (
+          <View style={[styles.quickActions, mine && styles.quickActionsMine]}>
+            <Pressable
+              onPress={onLike}
+              style={styles.actionBtn}
+              accessibilityLabel="Like"
+            >
+              <Ionicons
+                name={liked ? "thumbs-up" : "thumbs-up-outline"}
+                size={15}
+                color={liked ? colors.primaryDark : colors.textMuted}
+              />
+              <Text style={[styles.actionLabel, liked && styles.actionLabelOn]}>
+                Like
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={onOpenReact}
+              style={styles.actionBtn}
+              accessibilityLabel="React"
+            >
+              <Ionicons name="happy-outline" size={16} color={colors.textMuted} />
+              <Text style={styles.actionLabel}>React</Text>
+            </Pressable>
+            {canManage ? (
+              <Pressable
+                onPress={onOpenMore}
+                style={styles.actionBtn}
+                accessibilityLabel="More"
+              >
+                <Ionicons
+                  name="ellipsis-horizontal"
+                  size={16}
+                  color={colors.textMuted}
+                />
+                <Text style={styles.actionLabel}>More</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
+        {reactions.length > 0 ? (
+          <View style={[styles.reactRow, mine && styles.reactRowMine]}>
+            {reactions.map((item) => (
+              <Pressable
+                key={item.reaction}
+                onPress={() => onReact(item.reaction)}
+                style={[styles.reactChip, item.mine && styles.reactChipMine]}
+              >
+                <Text style={styles.reactLabel}>
+                  {item.reaction} {item.count}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+      </View>
+      {mine ? (
+        <Avatar
+          handle={message.author.displayName}
+          avatarKey={message.author.avatarKey}
+          size={32}
+        />
       ) : null}
-    </Pressable>
+    </View>
+  );
+}
+
+function MessageActionSheet({
+  message,
+  mode,
+  mine,
+  onClose,
+  onReact,
+  onEdit,
+  onDelete,
+}: {
+  message: ChatMessage | null;
+  mode: "react" | "more";
+  mine: boolean;
+  onClose: () => void;
+  onReact: (reaction: string) => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  if (!message) return null;
+  const ageMs = Date.now() - new Date(message.createdAt).getTime();
+  const canEdit = mine && ageMs <= 15 * 60 * 1000;
+  const canDelete = mine && ageMs <= 24 * 60 * 60 * 1000;
+  const showReact = mode === "react";
+  const showMore = mode === "more" && (canEdit || canDelete);
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.backdrop} onPress={onClose}>
+        <Pressable style={styles.sheet} onPress={() => {}}>
+          {showReact ? (
+            <>
+              <Text style={styles.sheetTitle}>React</Text>
+              <View style={styles.emojiBar}>
+                {QUICK_REACTIONS.map((emoji) => {
+                  const active = message.reactions?.some(
+                    (item) => item.reaction === emoji && item.mine
+                  );
+                  return (
+                    <Pressable
+                      key={emoji}
+                      onPress={() => onReact(emoji)}
+                      style={[styles.emojiBtn, active && styles.emojiBtnActive]}
+                      accessibilityLabel={`React ${emoji}`}
+                    >
+                      <Text style={styles.emoji}>{emoji}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </>
+          ) : null}
+          {showMore ? (
+            <View style={styles.sheetActions}>
+              <Text style={styles.sheetTitle}>Your message</Text>
+              {canEdit ? (
+                <Pressable style={styles.sheetAction} onPress={onEdit}>
+                  <View style={styles.sheetIcon}>
+                    <Ionicons name="pencil" size={16} color={colors.primaryDark} />
+                  </View>
+                  <View>
+                    <Text style={styles.sheetActionLabel}>Edit</Text>
+                    <Text style={styles.sheetHint}>Up to 15 minutes after sending</Text>
+                  </View>
+                </Pressable>
+              ) : null}
+              {canDelete ? (
+                <Pressable style={styles.sheetAction} onPress={onDelete}>
+                  <View style={[styles.sheetIcon, styles.sheetIconDanger]}>
+                    <Ionicons name="trash-outline" size={16} color={colors.error} />
+                  </View>
+                  <View>
+                    <Text style={[styles.sheetActionLabel, styles.sheetActionDanger]}>
+                      Delete
+                    </Text>
+                    <Text style={styles.sheetHint}>
+                      Everyone in the group will see it as deleted
+                    </Text>
+                  </View>
+                </Pressable>
+              ) : null}
+            </View>
+          ) : null}
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
+  listFlex: { flex: 1 },
   topic: {
     padding: spacing.md,
     borderBottomWidth: 1,
@@ -413,69 +683,279 @@ const styles = StyleSheet.create({
     fontFamily: typography.semibold,
     color: colors.primaryDark,
   },
-  list: { padding: spacing.md, gap: 8, paddingBottom: 24 },
+  list: { paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: 20 },
+  row: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 8,
+    marginBottom: 12,
+  },
+  rowMine: { justifyContent: "flex-end" },
+  avatarSpacer: { width: 32 },
+  stack: { maxWidth: "74%", alignItems: "flex-start" },
+  stackMine: { alignItems: "flex-end" },
+  author: {
+    fontFamily: typography.semibold,
+    color: colors.textMuted,
+    fontSize: 12,
+    marginBottom: 4,
+    marginLeft: 4,
+  },
   bubble: {
+    maxWidth: "100%",
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingTop: 8,
+    paddingBottom: 6,
+  },
+  bubbleTheir: {
     backgroundColor: colors.card,
-    borderRadius: radii.md,
-    padding: spacing.sm,
+    borderTopLeftRadius: 6,
+    ...shadows.card,
+  },
+  bubbleMine: {
+    backgroundColor: colors.primary,
+    borderBottomRightRadius: 6,
+  },
+  bubbleEditing: {
+    borderWidth: 1.5,
+    borderColor: colors.amber,
+  },
+  bubbleDeleted: {
+    backgroundColor: colors.surfaceMuted,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  bubbleEditing: { borderColor: colors.primary },
-  author: {
-    fontFamily: typography.semibold,
+  body: {
+    fontFamily: typography.regular,
     color: colors.text,
-    fontSize: 12,
-    marginBottom: 4,
+    fontSize: 15,
+    lineHeight: 21,
   },
-  body: { fontFamily: typography.regular, color: colors.text, fontSize: 15 },
-  edited: {
+  bodyMine: { color: colors.textInverse },
+  bodyDeleted: {
+    fontFamily: typography.medium,
+    color: colors.textSubtle,
+    fontStyle: "italic",
+  },
+  time: {
     marginTop: 4,
+    alignSelf: "flex-end",
     fontFamily: typography.regular,
     color: colors.textSubtle,
-    fontSize: 11,
+    fontSize: 10,
   },
+  timeMine: { color: "rgba(255,255,255,0.78)" },
+  reactRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 4,
+    marginTop: -8,
+    marginLeft: 8,
+  },
+  reactRowMine: { marginLeft: 0, marginRight: 8, justifyContent: "flex-end" },
   reactChip: {
-    alignSelf: "flex-start",
-    marginTop: 6,
-    backgroundColor: colors.primarySoft,
-    borderRadius: radii.sm,
-    paddingHorizontal: 8,
+    backgroundColor: colors.card,
+    borderRadius: radii.pill,
+    paddingHorizontal: 7,
     paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...shadows.card,
+  },
+  reactChipMine: {
+    borderColor: colors.primaryLight,
+    backgroundColor: colors.primarySoft,
   },
   reactLabel: { fontFamily: typography.medium, fontSize: 12, color: colors.text },
-  composer: {
+  quickActions: {
     flexDirection: "row",
-    gap: spacing.sm,
-    padding: spacing.md,
+    alignItems: "center",
+    gap: 12,
+    marginTop: 6,
+    marginLeft: 4,
+  },
+  quickActionsMine: { marginLeft: 0, marginRight: 4 },
+  actionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingVertical: 2,
+  },
+  actionLabel: {
+    fontFamily: typography.semibold,
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  actionLabelOn: { color: colors.primaryDark },
+  composer: {
     borderTopWidth: 1,
     borderTopColor: colors.border,
     backgroundColor: colors.card,
+    paddingHorizontal: spacing.sm,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.sm,
+  },
+  editBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 8,
+    paddingHorizontal: 4,
+  },
+  editAccent: {
+    width: 3,
+    height: 32,
+    borderRadius: 2,
+    backgroundColor: colors.primary,
+  },
+  editCopy: { flex: 1 },
+  editTitle: {
+    fontFamily: typography.semibold,
+    color: colors.primaryDark,
+    fontSize: 12,
+  },
+  editPreview: {
+    fontFamily: typography.regular,
+    color: colors.textMuted,
+    fontSize: 12,
+  },
+  inputRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 8,
   },
   input: {
     flex: 1,
-    minHeight: 40,
+    minHeight: 44,
     maxHeight: 120,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 8,
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radii.pill,
+    paddingHorizontal: 16,
+    paddingTop: 11,
+    paddingBottom: 11,
     fontFamily: typography.regular,
     color: colors.text,
+    fontSize: 15,
   },
   send: {
-    alignSelf: "flex-end",
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: colors.primary,
-    borderRadius: radii.md,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  sendDisabled: { opacity: 0.4 },
-  sendLabel: { fontFamily: typography.semibold, color: colors.textInverse },
+  sendDisabled: { opacity: 0.35 },
   readonly: {
     textAlign: "center",
     padding: spacing.md,
+    color: colors.textMuted,
+  },
+  backdrop: {
+    flex: 1,
+    backgroundColor: "rgba(13,27,42,0.45)",
+    justifyContent: "flex-end",
+    padding: spacing.md,
+  },
+  confirmBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(13,27,42,0.45)",
+    justifyContent: "center",
+    padding: spacing.lg,
+  },,
+  sheet: {
+    backgroundColor: colors.card,
+    borderRadius: radii.xl,
+    padding: spacing.md,
+    ...shadows.floating,
+  },
+  sheetTitle: {
+    fontFamily: typography.semibold,
+    color: colors.text,
+    fontSize: 15,
+    marginBottom: 10,
+  },
+  sheetHint: {
+    fontFamily: typography.regular,
+    color: colors.textSubtle,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  emojiBar: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radii.pill,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  emojiBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emojiBtnActive: { backgroundColor: colors.primarySoft },
+  emoji: { fontSize: 24 },
+  sheetActions: {
+    marginTop: 12,
+    gap: 6,
+  },
+  sheetAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+  },
+  sheetIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.primarySoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sheetIconDanger: { backgroundColor: colors.errorSoft },
+  sheetActionLabel: {
+    fontFamily: typography.semibold,
+    color: colors.text,
+    fontSize: 16,
+  },
+  sheetActionDanger: { color: colors.error },
+  confirmCard: {
+    backgroundColor: colors.card,
+    borderRadius: radii.xl,
+    padding: spacing.lg,
+    ...shadows.floating,
+  },
+  confirmTitle: {
+    fontFamily: typography.bold,
+    color: colors.text,
+    fontSize: 18,
+  },
+  confirmBody: {
+    marginTop: 8,
+    fontFamily: typography.regular,
+    color: colors.textMuted,
+    lineHeight: 20,
+  },
+  confirmDelete: {
+    marginTop: 18,
+    backgroundColor: colors.error,
+    borderRadius: radii.md,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  confirmDeleteLabel: {
+    fontFamily: typography.semibold,
+    color: colors.textInverse,
+  },
+  confirmCancel: { marginTop: 8, paddingVertical: 10, alignItems: "center" },
+  confirmCancelLabel: {
+    fontFamily: typography.semibold,
     color: colors.textMuted,
   },
 });
