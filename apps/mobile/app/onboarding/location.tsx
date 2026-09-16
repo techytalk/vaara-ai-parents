@@ -2,18 +2,22 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { useHeaderHeight } from "@react-navigation/elements";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, type PostalCountry } from "@/lib/api";
 import { trackEvent, trackOnboardingBegin } from "@/lib/analytics";
 import { invalidateFamilyMeta } from "@/lib/authenticated-state";
+import { useAndroidImeDockOffset } from "@/hooks/useKeyboardHeight";
 import { getToken, getStoredUser, saveSession } from "@/lib/session";
 import {
   getOnboardingLocation,
@@ -128,9 +132,16 @@ const hookAccent = {
 
 export default function LocationScreen() {
   const router = useRouter();
+  const headerHeight = useHeaderHeight();
+  const androidDockOffset = useAndroidImeDockOffset(0);
+  const contentStyle = useOnboardingContentStyle();
+  const footerContentStyle = useOnboardingContentStyle({
+    includeVertical: false,
+  });
   const [countries, setCountries] = useState<PostalCountry[]>([]);
   const [countryCode, setCountryCode] = useState("IN");
   const [countryOpen, setCountryOpen] = useState(false);
+  const [localityOpen, setLocalityOpen] = useState(false);
   const [pinCode, setPinCode] = useState("");
   const [locality, setLocality] = useState("");
   const [city, setCity] = useState("");
@@ -147,7 +158,6 @@ export default function LocationScreen() {
   const beganRef = useRef(false);
   const lookupRequestRef = useRef(0);
   const skipNextLookupRef = useRef(false);
-  const contentStyle = useOnboardingContentStyle();
 
   const selectedCountry = useMemo(
     () => countries.find((country) => country.code === countryCode) ?? null,
@@ -324,6 +334,7 @@ export default function LocationScreen() {
     setLocalityOptions([]);
     setCommunitySuggestions([]);
     setLookupError(null);
+    setLocalityOpen(false);
   }
 
   function selectCountry(code: string) {
@@ -439,11 +450,16 @@ export default function LocationScreen() {
     countryCode === "SG";
 
   return (
-    <ScrollView
+    <KeyboardAvoidingView
       style={styles.container}
-      contentContainerStyle={[styles.content, contentStyle]}
-      keyboardShouldPersistTaps="handled"
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      keyboardVerticalOffset={Platform.OS === "ios" ? headerHeight : 0}
     >
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[styles.content, contentStyle]}
+        keyboardShouldPersistTaps="handled"
+      >
       {alreadyComplete ? null : (
         <Text style={styles.step}>Step 1 of 3</Text>
       )}
@@ -529,19 +545,20 @@ export default function LocationScreen() {
                   ? "Choose your area to find parents nearby:"
                   : "Suggested area for this pin:"}
               </Text>
-              <View style={styles.chipRow}>
-                {localityOptions.map((option) => (
-                  <Chip
-                    key={option}
-                    label={option}
-                    selected={locality === option}
-                    onPress={() => {
-                      setLocality(option);
-                      trackEvent("area_selected", { source: "chip" });
-                    }}
-                  />
-                ))}
-              </View>
+              <Pressable
+                style={styles.dropdown}
+                onPress={() => setLocalityOpen(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Choose locality or area"
+                accessibilityState={{ expanded: localityOpen }}
+              >
+                <Text style={styles.dropdownText}>
+                  {localityOptions.includes(locality)
+                    ? locality
+                    : "Select area"}
+                </Text>
+                <Ionicons name="chevron-down" size={20} color={colors.textMuted} />
+              </Pressable>
             </View>
           ) : (
             <FieldInput
@@ -632,15 +649,27 @@ export default function LocationScreen() {
             : "Select or type your locality / area to continue."}
         </Text>
       ) : null}
+      </ScrollView>
 
-      <PrimaryButton
-        label={alreadyComplete ? "Save location" : "Continue"}
-        onPress={onFinish}
-        loading={loading}
-        disabled={!canContinue}
-      />
+      <View
+        style={[
+          styles.footerDock,
+          androidDockOffset > 0
+            ? { marginBottom: androidDockOffset }
+            : null,
+        ]}
+      >
+        <View style={footerContentStyle}>
+          <PrimaryButton
+            label={alreadyComplete ? "Save location" : "Continue"}
+            onPress={onFinish}
+            loading={loading}
+            disabled={!canContinue}
+          />
 
-      {alreadyComplete ? null : <OnboardingAccountSwitch step="location" />}
+          {alreadyComplete ? null : <OnboardingAccountSwitch step="location" />}
+        </View>
+      </View>
 
       <Modal
         visible={countryOpen}
@@ -683,13 +712,67 @@ export default function LocationScreen() {
           />
         </View>
       </Modal>
-    </ScrollView>
+
+      <Modal
+        visible={localityOpen}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setLocalityOpen(false)}
+      >
+        <View style={styles.modal}>
+          <View style={styles.modalHead}>
+            <Text style={styles.modalTitle}>Select your area</Text>
+            <Pressable onPress={() => setLocalityOpen(false)} accessibilityRole="button">
+              <Text style={styles.modalClose}>Done</Text>
+            </Pressable>
+          </View>
+          <FlatList
+            data={localityOptions}
+            keyExtractor={(option) => option}
+            keyboardShouldPersistTaps="handled"
+            renderItem={({ item }) => (
+              <Pressable
+                style={[
+                  styles.countryRow,
+                  item === locality && styles.countryRowActive,
+                ]}
+                onPress={() => {
+                  setLocality(item);
+                  setLocalityOpen(false);
+                  trackEvent("area_selected", { source: "dropdown" });
+                }}
+              >
+                <Text
+                  style={[
+                    styles.countryName,
+                    item === locality && styles.countryNameActive,
+                  ]}
+                >
+                  {item}
+                </Text>
+                {item === locality ? (
+                  <Ionicons name="checkmark" size={20} color={colors.primary} />
+                ) : null}
+              </Pressable>
+            )}
+          />
+        </View>
+      </Modal>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
+  scroll: { flex: 1 },
   content: {},
+  footerDock: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    backgroundColor: colors.card,
+    paddingTop: 6,
+    paddingBottom: 6,
+  },
   step: {
     fontSize: 13,
     fontWeight: "700",

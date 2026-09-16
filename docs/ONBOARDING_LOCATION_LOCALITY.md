@@ -3,286 +3,376 @@
 Decision doc for Step 1 (`/onboarding/location`). Supplements
 `ONBOARDING_SIGNUP_REDESIGN.md`.
 
-Related: school search speed (Step 2) —
-[`ONBOARDING_SCHOOL_SEARCH.md`](./ONBOARDING_SCHOOL_SEARCH.md).
+**Status:** implemented in `apps/mobile/app/onboarding/location.tsx`.
+**Date:** 16 September 2026 (revised).
 
-**Status:** agreed, not yet implemented.  
-**Date:** 15 September 2026.
+**In scope (this change only):**
+
+1. Locality control → **dropdown** (when lookup returns options)
+2. **Continue** positioned **above the keypad**, using the same dock pattern as
+   Post / Save on the new-post / edit-post screen
+
+**Out of scope:** city/state field changes, API / backend changes, community
+field, ranking of postal names, 2G / Redis / on-device packs, school step,
+child identity, or any other onboarding screen.
 
 ---
 
 ## Problem
 
-Parents drop after Google signup with `created_at = updated_at` and no
-`user_locations` row. They never leave the location screen.
+On `apps/mobile/app/onboarding/location.tsx` today:
 
-Observed friction on the current UI:
-
-1. **Continue is hidden** until PIN is valid *and* locality is non-empty. If
-   the parent enters a PIN but does not tap a chip, there is no primary CTA —
-   the screen can look broken or stuck.
-2. **Locality chips are India Post office names** (e.g. `Admn. Bldgs`,
-   `A.I.E. R.C.puram`), not how parents name their area (e.g. `Tellapur`).
-3. **City and state are editable form fields** after lookup. They add noise;
-   circle placement for locality uses **PIN**, not free-text city/state.
-4. Multi-locality PINs (e.g. `502032` → 8 options) force a chip pick before
-   Continue appears.
-
-Child nickname / DOB are out of scope here. This doc is only about location
-step clarity.
+1. **Continue sits under the keyboard.** The screen is a single `ScrollView`.
+   Continue is the last scroll content item — not a dock. After entering a PIN
+   (number pad open), the parent must dismiss the keypad to reach Continue.
+2. **Locality is chips + free text**, which adds height and pushes Continue
+   further down.
 
 ---
 
 ## Decision
 
-### What the parent sees (Step 1)
-
-Required:
-
-- Country (default India)
-- PIN / postal code
-- **Area** — free-text field (primary). Parent types what they call the place
-  (e.g. Tellapur). Chips are **optional shortcuts**, not a hard gate.
-
-Not shown when PIN lookup succeeds:
-
-- City
-- State / region
-
-Always show **Continue** (disabled with a one-line hint when area is empty).
-
-### What the backend stores
-
-On save (`PUT` / update location), always persist:
-
-| Field | Source |
+| Change | Detail |
 | --- | --- |
-| `country_code` | Parent selection |
-| `pin_code` | Parent entry |
-| `locality` | Parent-typed or chip-selected area (required) |
-| `city` | From postal lookup for that PIN (server-filled) |
-| `state` | From postal lookup for that PIN (server-filled) |
-| `community_name` | Optional; not collected on first-run Step 1 |
+| **Locality → dropdown** | When `localityOptions.length > 0`, replace the chip row with a Country-style pressable + modal list. Keep the existing free-text locality field when lookup has no options / fails / unsupported country. Keep existing auto-select when there is a single option. |
+| **Continue above keypad** | Lift Continue and the existing “Signed in as … · Not you?” row out of the `ScrollView` into a fixed bottom dock, using the **same keyboard-dock pattern as Post / Save** on `apps/mobile/app/circles/[circleId]/new-post.tsx` (create = Post, edit = Save — one screen). |
 
-The client **does not need to send** city/state when lookup succeeded. The API
-fills them from the same postal-code provider used by
-`GET /v1/reference/postal-codes/:country/:code`.
-
-If the client still sends city/state, the server may ignore them when a
-successful lookup exists for that PIN, so the DB stays consistent with the
-postal directory.
-
-### When city / state *are* shown (and editable)
-
-Only if postal lookup **fails** or is **unsupported** for the country:
-
-- Show city + state fields
-- Parent fills them manually
-- Continue still requires area (locality)
+Everything else on the location screen stays as it is today (payoff copy,
+country picker, PIN field, city/state behavior, save payload, community block
+for already-complete users, etc.).
 
 ---
 
-## Target UI (ASCII)
+## How Continue sits above the keypad
 
-### Lookup succeeds (normal India path)
+Reference implementation: **Post** and **Save** on
+`apps/mobile/app/circles/[circleId]/new-post.tsx`.
+
+That screen does **not** put the primary button inside the `ScrollView`. It
+docks it below the scroll content and lifts the dock with the keyboard:
+
+```
+SafeAreaView (edges bottom on iOS)
+  KeyboardAvoidingView
+    behavior = "padding" on iOS only
+    keyboardVerticalOffset = useHeaderHeight() on iOS
+    …
+    ScrollView (flex: 1)     ← fields / body only
+    composerDock             ← OUTSIDE ScrollView
+      …toolbar…
+      Post / Save button
+      + androidDockOffset margin on Android
+```
+
+Relevant pieces already in that file:
+
+| Piece | Role |
+| --- | --- |
+| `useHeaderHeight()` | iOS `keyboardVerticalOffset` so padding clears the nav header |
+| `KeyboardAvoidingView` `behavior="padding"` (iOS) | Shrinks the KAV when the keyboard opens; dock rides up with it |
+| `behavior={undefined}` on Android | Avoid double-offset; Android uses the IME dock hook instead |
+| Dock **sibling** of `ScrollView`, not inside it | Button stays painted at the bottom of the KAV |
+| `useAndroidImeDockOffset(...)` | Android: `marginBottom` on the dock when the window does **not** resize for the IME (`apps/mobile/src/hooks/useKeyboardHeight.ts`) |
+| Existing onboarding `SafeAreaView` | `app/onboarding/_layout.tsx` already applies `edges={["bottom"]}`; do not add a second safe-area wrapper |
+| `keyboardShouldPersistTaps="handled"` | Retain it for controls inside the `ScrollView`; the dock is outside the scroll view and does not depend on this prop |
+
+### Target tree for location
+
+Mirror that structure in `location.tsx` only — reuse the same hooks / KAV
+settings; do not invent a new keyboard system. The onboarding stack already
+supplies the bottom safe-area inset, so use `useAndroidImeDockOffset(0)`.
+Passing `useBottomChromeInset()` here as new-post does would count the bottom
+inset twice while the keyboard is closed.
+
+```
+Existing onboarding SafeAreaView (in _layout.tsx; do not duplicate)
+  KeyboardAvoidingView            ← iOS padding + headerHeight offset
+    ScrollView                    ← all existing fields, errors and hints
+    footerDock                    ← OUTSIDE ScrollView
+      PrimaryButton Continue
+      OnboardingAccountSwitch     ← first-run only, same as today
+      + useAndroidImeDockOffset(0) margin on Android
+```
+
+Acceptance: with the PIN number pad open, Continue is visible and tappable
+without dismissing the keypad — same feel as Post / Save with the body field
+focused. The existing validation hint remains in the scroll content; only the
+button and account-switch row move into the dock.
+
+---
+
+## Locality dropdown rules
+
+1. `localityOptions.length > 0` → pressable “Select area” (or selected label) +
+   chevron; opens a `Modal` + `FlatList` like Country. Selection sets
+   `locality` and closes the picker.
+2. No options / lookup fail / unsupported country → keep existing free-text
+   “Locality / area *” field.
+3. Do not change save / `canContinue` rules: valid PIN + non-empty locality.
+
+Optional “Or type a different area” under the dropdown: **leave as today**
+without changing its behavior.
+
+---
+
+## Target UI (keyboard open)
 
 ```
 ┌─────────────────────────────────────┐
 │  Step 1 of 3                        │
-│                                     │
-│  Where do you live?                 │
-│  PIN finds nearby parents.          │
-│                                     │
-│  Country                            │
-│  ┌─────────────────────────────┐    │
-│  │ India                    ▾  │    │
-│  └─────────────────────────────┘    │
+│  …existing fields…                  │
 │                                     │
 │  PIN code                           │
 │  ┌─────────────────────────────┐    │
-│  │ 502032                      │    │
+│  │ 502032                      │    │  ← focused; keypad open
 │  └─────────────────────────────┘    │
 │                                     │
-│  Medak · Telangana                  │  ← read-only summary from lookup
-│                                     │  ← not editable fields
-│                                     │
-│  Your area *                        │
+│  Your area                          │
 │  ┌─────────────────────────────┐    │
-│  │ e.g. Tellapur               │    │  ← primary: free text
+│  │ Tellapur                 ▾  │    │  ← dropdown (was chips)
 │  └─────────────────────────────┘    │
 │                                     │
-│  Nearby areas (tap to fill)         │
-│  ┌──────────┐ ┌──────────┐          │
-│  │ Tellapur │ │ Ameenpur │          │  ← suggestions; optional
-│  └──────────┘ └──────────┘          │
-│  More areas ▾                       │  ← bury noisy PO names
-│                                     │
+├─────────────────────────────────────┤
 │  ┌─────────────────────────────┐    │
-│  │        Continue             │    │  ← always visible
+│  │        Continue             │    │  ← dock (like Post/Save)
 │  └─────────────────────────────┘    │
-│  Type or pick your area to go on.   │  ← only while area empty
-└─────────────────────────────────────┘
-```
-
-### Lookup fails / unsupported country
-
-```
-┌─────────────────────────────────────┐
-│  PIN                                │
-│  ┌─────────────────────────────┐    │
-│  │ …                           │    │
-│  └─────────────────────────────┘    │
-│  We couldn't look up this PIN.      │
-│  Enter your area and city below.    │
-│                                     │
-│  Your area *   [ ................ ] │
-│  City *        [ ................ ] │  ← shown only on failure
-│  State         [ ................ ] │
-│                                     │
-│  [ Continue ]                       │
+│  Signed in as a***@gmail.com ·      │  ← existing first-run row
+│  Not you?                           │
+├─────────────────────────────────────┤
+│         [ system number pad ]       │
 └─────────────────────────────────────┘
 ```
 
 ---
 
-## Product rules
+## Detailed code-change steps
 
-1. **Text-first locality.** Chips fill the text field; they do not replace it.
-2. **Continue always visible.** Disabled until area has non-empty trimmed text
-   (and PIN is valid). Never hide the button.
-3. **No city/state editing on the happy path.** Show a single read-only line
-   (`{city} · {state}`) after successful lookup for reassurance only.
-4. **Server fills city/state from PIN.** Client may omit them on save when
-   lookup succeeded.
-5. **Suggestion ranking (follow-up).** Prefer parent-language / high-usage
-   locality names; fold cryptic India Post labels under “More areas”. Exact
-   ranking algorithm can land in a later change; UX does not depend on it.
-6. **Circle model unchanged.** Locality circle key remains PIN-based
-   (`PIN_{code}`). Free-text `locality` is display / matching context, not a
-   new circle type.
+Implementation file: `apps/mobile/app/onboarding/location.tsx` only.
+Existing shared hooks and components are reused without modification.
+
+### 1. Add keyboard-dock imports
+
+From React Native, add:
+
+- `KeyboardAvoidingView`
+- `Platform`
+
+Add:
+
+- `useHeaderHeight` from `@react-navigation/elements`
+- `useAndroidImeDockOffset` from `@/hooks/useKeyboardHeight`
+
+Do **not** add `SafeAreaView` or `useBottomChromeInset`; onboarding
+`_layout.tsx` already owns the bottom safe area.
+
+Keep the `Chip` import. Locality chips are removed, but `Chip` is still used
+for existing community suggestions when `alreadyComplete` is true.
+
+### 2. Add locality-picker and dock state
+
+Alongside `countryOpen`, add:
+
+```ts
+const [localityOpen, setLocalityOpen] = useState(false);
+```
+
+Near the existing router / content-style values, add:
+
+```ts
+const headerHeight = useHeaderHeight();
+const androidDockOffset = useAndroidImeDockOffset(0);
+const footerContentStyle = useOnboardingContentStyle({
+  includeVertical: false,
+});
+```
+
+Why `0`: the onboarding layout already reserves the closed-state bottom safe
+area. The hook only needs to add the Android IME height when the app window
+does not resize.
+
+In `resetArea()`, also call `setLocalityOpen(false)` so changing / clearing a
+PIN cannot leave a stale area picker open.
+
+### 3. Replace only the locality chip row
+
+Keep the existing condition:
+
+```ts
+localityOptions.length > 0
+```
+
+Inside that branch:
+
+1. Keep the current label and helper copy.
+2. Replace `styles.chipRow` and the mapped locality `Chip` components with a
+   `Pressable` using the existing `styles.dropdown`.
+3. Display the selected option when
+   `localityOptions.includes(locality)`; otherwise display “Select area”.
+4. Show the existing `chevron-down` icon.
+5. On press, call `setLocalityOpen(true)`.
+6. Add `accessibilityRole="button"`,
+   `accessibilityLabel="Choose locality or area"`, and
+   `accessibilityState={{ expanded: localityOpen }}`.
+
+Do not touch:
+
+- the no-options free-text branch
+- “Or type a different area”
+- `canContinue`
+- single-option auto-selection in the lookup effect
+- city/state, community, save or analytics logic outside locality selection
+
+### 4. Add the locality modal
+
+Add a second `Modal` beside the existing Country modal, not inside the
+scrollable form:
+
+- `visible={localityOpen}`
+- `animationType="slide"`
+- `presentationStyle="pageSheet"`
+- `onRequestClose={() => setLocalityOpen(false)}`
+- title: “Select your area”
+- data: `localityOptions`
+- `keyExtractor={(option) => option}`
+
+Reuse the existing modal header and row styles (`modal`, `modalHead`,
+`modalTitle`, `modalClose`, `countryRow`, active-row styles). Renaming those
+styles is optional and unnecessary for this scoped change.
+
+When a row is selected:
+
+1. `setLocality(option)`
+2. `setLocalityOpen(false)`
+3. `trackEvent("area_selected", { source: "dropdown" })`
+
+Show the existing checkmark for the selected option. The Country modal remains
+functionally unchanged.
+
+### 5. Restructure the root layout
+
+Change the root from a single `ScrollView` to:
+
+```tsx
+<KeyboardAvoidingView
+  style={styles.container}
+  behavior={Platform.OS === "ios" ? "padding" : undefined}
+  keyboardVerticalOffset={Platform.OS === "ios" ? headerHeight : 0}
+>
+  <ScrollView
+    style={styles.scroll}
+    contentContainerStyle={[styles.content, contentStyle]}
+    keyboardShouldPersistTaps="handled"
+  >
+    {/* all existing fields, error and disabled hint */}
+  </ScrollView>
+
+  <View
+    style={[
+      styles.footerDock,
+      androidDockOffset > 0
+        ? { marginBottom: androidDockOffset }
+        : null,
+    ]}
+  >
+    <View style={footerContentStyle}>
+      {/* existing PrimaryButton */}
+      {/* existing OnboardingAccountSwitch */}
+    </View>
+  </View>
+
+  {/* Country modal */}
+  {/* Locality modal */}
+</KeyboardAvoidingView>
+```
+
+The enclosing `SafeAreaView` remains the one in
+`apps/mobile/app/onboarding/_layout.tsx`. Do not edit that file.
+
+### 6. Move the button and account row together
+
+Move these existing elements, unchanged, from the end of the `ScrollView` into
+`footerDock`, preserving their order:
+
+1. `PrimaryButton`
+2. `{alreadyComplete ? null : <OnboardingAccountSwitch step="location" />}`
+
+This keeps “Signed in as … · Not you?” directly below Continue as it is today.
+For an already-onboarded user, the dock contains only “Save location”, matching
+the current conditional behavior.
+
+Leave `error` and the `!canContinue` hint where they currently are inside the
+`ScrollView`; moving those would be an additional UX change.
+
+### 7. Add only the required styles
+
+Add:
+
+```ts
+scroll: { flex: 1 },
+footerDock: {
+  borderTopWidth: StyleSheet.hairlineWidth,
+  borderTopColor: colors.border,
+  backgroundColor: colors.card,
+  paddingTop: 6,
+  paddingBottom: 6,
+},
+```
+
+Keep `container: { flex: 1, backgroundColor: colors.bg }`, now applied to the
+`KeyboardAvoidingView`. The centered `footerContentStyle` supplies the same
+phone / tablet width and horizontal padding as the form.
+
+No absolute positioning is needed. Because the scroll view has `flex: 1` and
+the dock is its sibling, the dock occupies layout space and does not cover the
+last scroll item.
+
+### 8. Verify behavior
+
+Static check:
+
+```sh
+npx tsc --noEmit -p apps/mobile/tsconfig.json
+```
+
+Manual checks on both iOS and Android:
+
+1. **PIN incomplete:** Continue is visible, disabled, and the existing hint is
+   still present.
+2. **Single-locality PIN:** locality auto-selects; with number pad still open,
+   Continue enables and is tappable above the keypad.
+3. **Multi-locality PIN:** dropdown appears instead of chips; select one row;
+   the selected name appears and Continue enables.
+4. **Different-area field:** typing a custom area still works and enables
+   Continue exactly as today.
+5. **Lookup fails / unsupported country:** the existing free-text locality
+   path remains unchanged.
+6. **First-run account row:** “Signed in as … · Not you?” remains below
+   Continue and opens the existing confirmation.
+7. **Already complete:** button label remains “Save location”; account row
+   remains hidden; community suggestions still render as chips.
+8. **Android resize modes:** no keyboard-sized gap when the window resizes and
+   no keypad overlap when it does not resize.
+9. **Keyboard closed:** no doubled bottom safe-area gap.
+
+No API, schema, shared-hook, or other-screen changes.
 
 ---
 
-## API notes (implementation)
+## Out of scope (explicit)
 
-Current write path: `apps/api/src/routes/me.ts` location update inserts
-`locality`, `city`, `state` from the request body.
-
-Intended behavior after this change:
-
-1. Validate country + postal code.
-2. Attempt `lookupPostalCode(client, country, pin)`.
-3. If lookup hits:
-   - `city` / `state` ← lookup result (authoritative)
-   - `locality` ← required from body (trimmed)
-4. If lookup misses:
-   - require `locality` and `city` from body; `state` optional
-5. Response still returns the stored row (including server-filled city/state)
-   so the school step can seed nearby search with city + PIN.
-
-Mobile (`apps/mobile/app/onboarding/location.tsx`):
-
-- Stop rendering editable City / State when `lookupSupported` and lookup OK.
-- Keep locality text field always available once PIN is ready.
-- Always render Continue; disable when `!canContinue`.
-- On save, send country + PIN + locality; omit city/state on success path
-  (or send them and let the server overwrite — either is fine if documented
-  in the route).
-
----
-
-## Speed: area suggestions on slow networks (2G)
-
-Goal: after the 6th PIN digit, area suggestions should feel **instant** even
-on 2G. The bottleneck on 2G is almost always **RTT to the phone**, not
-Postgres CPU.
-
-### What we have today
-
-| Layer | Behavior |
-| --- | --- |
-| Endpoint | `GET /v1/reference/postal-codes/:country/:code` (public, no auth) |
-| Origin | DB cache of offices → else `api.postalpincode.in` → else bundled `@twin.techies/india-pincode` |
-| Edge | Already `Cache-Control: public, max-age=3600, s-maxage=86400`. Production shows `x-vercel-cache: HIT` for warm PINs |
-| Payload | ~900 B for `502032` (full locality objects + empty `communities`) |
-| Client | Debounce 350 ms, then network lookup before chips appear |
-
-So **CDN is already leveraged** for popular PINs. A cache HIT still costs one
-mobile RTT (~300–800 ms on 2G, often worse). Redis at the origin does **not**
-remove that RTT.
-
-### Redis vs CDN — which helps what
-
-```
-Phone ──RTT──► CDN edge ──(miss)──► API origin ──► Redis / Postgres / postal API
-                 ▲
-                 └── HIT: no origin, but phone still paid the RTT
-```
-
-| Option | Helps | Does not help |
-| --- | --- | --- |
-| **CDN (Vercel)** | Repeat / popular PIN lookups; zero origin cost; already working | First request on a cold PIN from a phone still waits on network |
-| **Redis (Upstash, ap-south-1)** | Origin cold path after CDN miss; faster than Postgres + external postal API; good for write-through after first lookup | Phone→edge latency on 2G; first paint if every user still hits the network |
-| **Slim response** | Less transfer on 2G (~200 B names-only vs ~900 B today) | RTT (headers still round-trip) |
-| **On-device India PIN pack** | **True instant chips on 2G** (0 network for suggestions) | Non-IN countries; keeping the pack fresh |
-
-**Recommendation (in order):**
-
-1. **CDN first (keep + tighten)** — public GET is the right shape. Prefer a
-   **slim** suggestion payload so HIT responses are tiny. Optionally raise
-   `s-maxage` (PIN→areas rarely change).
-2. **Redis as origin L1** — key `postal:IN:{pin}` → JSON `{city,state,areas[]}`.
-   Fill on miss from current lookup pipeline; TTL days/weeks. Cuts CDN-miss
-   origin time; does not replace CDN.
-3. **On-device for India (best 2G UX)** — ship a compact PIN→`{city,state,areas}`
-   map (or reuse the same dataset the API already bundles). Show suggestions
-   **synchronously** when the 6th digit is typed; optionally refresh from CDN
-   in the background. Save path still hits the API (server fills city/state).
-
-Do **not** put Redis in front of the phone. Redis belongs behind the API for
-origin acceleration. CDN belongs in front of the API for shared GETs.
-
-### Suggested response shape for chips (CDN + Redis friendly)
-
-```json
-{
-  "countryCode": "IN",
-  "postalCode": "502032",
-  "city": "Medak",
-  "state": "Telangana",
-  "areas": ["Tellapur", "Ameenpur", "Ramachandrapuram"]
-}
-```
-
-Omit per-office metadata and empty `communities` from the hot path. Community
-suggestions can load later or only on settings edit.
-
-### Target latency
-
-| Path | Target after PIN complete |
-| --- | --- |
-| India, on-device hit | &lt; 50 ms to show chips (no network) |
-| CDN HIT (slim) | one RTT + ~200 B |
-| CDN miss + Redis HIT | one RTT + origin &lt; ~30 ms |
-| Cold (postal API) | rare; acceptable if Redis/CDN warm afterward |
-
----
-
-## Out of scope
-
-- Changing onboarding step order (location → school → class)
-- Community / apartment field on first-run Step 1 (already deferred)
-- Making child optional for `onboarding_complete` (separate discussion)
-- School picker loading / nearby suggestions
+- Hiding / changing city or state fields
+- Server-side location save behavior
+- Community / apartment field
+- Postal-name ranking / “More areas”
+- 2G CDN / Redis / on-device PIN packs
+- School, class, or child onboarding screens
+- Extracting a shared sticky-footer component unless needed for this screen
 
 ---
 
 ## Success signal
 
-Fewer accounts stuck with Google signup only (`onboarding_complete = false`,
-no `user_locations` row) within the same day of install, without reducing
-quality of PIN → locality circle placement.
-
-Secondary: time from 6th PIN digit → first area chip visible stays under
-~100 ms on device for India when the on-device pack is present; network path
-remains acceptable on 2G via slim CDN responses.
+- Parent can enter PIN and tap Continue **without dismissing the keypad**.
+- Multi-locality PIN: pick area from dropdown; Continue stays on screen above
+  the keypad.
+- No other location-step behavior regressions.
