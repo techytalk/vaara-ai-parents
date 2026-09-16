@@ -2,6 +2,7 @@ import {
   circleChannel,
   conversationChannel,
   postChannel,
+  threadChannel,
   topicChannel,
   userInboxChannel,
 } from "./channels.js";
@@ -36,6 +37,25 @@ export type RealtimeEvent =
       reason: "message" | "request" | "request_response";
       conversationId?: string;
       requestId?: string;
+    }
+  | {
+      type: "chat.message";
+      circleId: string;
+      threadId?: string;
+      messageId?: string;
+      seq?: number;
+    }
+  | {
+      type: "chat.thread";
+      circleId: string;
+      threadId: string;
+      seq?: number;
+    }
+  | {
+      type: "access.revoked";
+      userId: string;
+      circleId?: string;
+      threadId?: string;
     };
 
 async function publish(channel: string, event: RealtimeEvent): Promise<void> {
@@ -51,7 +71,10 @@ async function publish(channel: string, event: RealtimeEvent): Promise<void> {
 
 export async function publishCircleEvent(
   circleId: string,
-  event: Extract<RealtimeEvent, { type: "post.new" | "poll.vote" | "reply.new" }>
+  event: Extract<
+    RealtimeEvent,
+    { type: "post.new" | "poll.vote" | "reply.new" | "chat.message" | "chat.thread" }
+  >
 ): Promise<void> {
   await publish(circleChannel(circleId), event);
 }
@@ -72,9 +95,16 @@ export async function publishConversationEvent(
 
 export async function publishUserInboxEvent(
   userId: string,
-  event: Extract<RealtimeEvent, { type: "inbox.updated" }>
+  event: Extract<RealtimeEvent, { type: "inbox.updated" | "access.revoked" }>
 ): Promise<void> {
   await publish(userInboxChannel(userId), event);
+}
+
+export async function publishThreadEvent(
+  threadId: string,
+  event: Extract<RealtimeEvent, { type: "chat.message" | "chat.thread" }>
+): Promise<void> {
+  await publish(threadChannel(threadId), event);
 }
 
 export async function publishTopicEvent(

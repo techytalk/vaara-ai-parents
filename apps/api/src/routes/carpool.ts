@@ -4,33 +4,20 @@ import type { PoolClient } from "pg";
 import { buildPeerView } from "../services/disclosure.js";
 import { createNotification } from "../services/notifications.js";
 import { authMiddleware, type AuthVariables } from "../middleware/auth.js";
+import { getOrCreateConversation } from "../lib/conversations.js";
 
 const ROLES = ["driver", "rider", "either"] as const;
 const STATUSES = ["open", "forming", "active", "paused", "closed"] as const;
 
-async function getOrCreateConversation(
+async function getOrCreateCarpoolConversation(
   client: PoolClient,
   userA: string,
   userB: string
 ) {
-  const [a, b] = userA < userB ? [userA, userB] : [userB, userA];
-  const existing = await client.query(
-    `SELECT id FROM conversations WHERE user_a_id = $1 AND user_b_id = $2`,
-    [a, b]
-  );
-  if (existing.rows.length > 0) return existing.rows[0].id;
-
-  const inserted = await client.query(
-    `INSERT INTO conversations (user_a_id, user_b_id) VALUES ($1, $2) RETURNING id`,
-    [a, b]
-  );
-  const convId = inserted.rows[0].id;
-  await client.query(
-    `INSERT INTO conversation_participants (conversation_id, user_id)
-     VALUES ($1, $2), ($1, $3) ON CONFLICT DO NOTHING`,
-    [convId, userA, userB]
-  );
-  return convId;
+  return getOrCreateConversation(client, {
+    userId: userA,
+    peerUserId: userB,
+  });
 }
 
 export function createCarpoolRoutes() {
@@ -449,7 +436,7 @@ export function createCarpoolRoutes() {
 
       const peerViews = await Promise.all(
         participants.rows.map(async (p) => {
-          const convId = await getOrCreateConversation(client, userId, p.user_id);
+          const convId = await getOrCreateCarpoolConversation(client, userId, p.user_id);
           const peer = await buildPeerView(client, {
             conversationId: convId,
             viewerId: userId,

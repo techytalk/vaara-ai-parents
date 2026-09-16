@@ -13,6 +13,12 @@ import {
   createActivitiesRoutes,
   createProviderRoutes,
 } from "./routes/activities.js";
+import {
+  createChatRoutes,
+  createCircleChatRoutes,
+  createProviderChannelRoutes,
+  createThreadRoutes,
+} from "./routes/chat.js";
 import { createInternalRoutes } from "./routes/internal.js";
 import { createShareRoutes } from "./routes/shares.js";
 import { createAppRoutes } from "./routes/app.js";
@@ -56,6 +62,10 @@ app.get("/health", async (c) => {
 app.route("/v1/auth", createAuthRoutes());
 app.route("/v1/me", createMeRoutes());
 app.route("/v1/circles", createCirclesRoutes());
+app.route("/v1/circles", createCircleChatRoutes());
+app.route("/v1/chat", createChatRoutes());
+app.route("/v1/threads", createThreadRoutes());
+app.route("/v1/provider-channels", createProviderChannelRoutes());
 app.route("/v1/cross-posts", createCrossPostRoutes());
 app.route("/v1/conversations", createConversationsRoutes());
 app.route("/v1/reference", createReferenceRoutes());

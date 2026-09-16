@@ -8,6 +8,7 @@ import {
 } from "../lib/notification-prefs.js";
 import { isInQuietHours, nextAllowedPushTime } from "../lib/quiet-hours.js";
 import { drainTimelineOutbox } from "./timeline-outbox.js";
+import { drainChatOutbox } from "./chat-outbox.js";
 
 type NotificationType =
   | "circle_post"
@@ -24,7 +25,12 @@ type NotificationType =
   | "expert_session"
   | "school_event"
   | "playdate_interest"
-  | "connection_request";
+  | "connection_request"
+  | "group_message"
+  | "thread_reply"
+  | "thread_mention"
+  | "provider_response"
+  | "service_update";
 
 export type NotificationDelivery = "immediate" | "digest";
 
@@ -670,17 +676,20 @@ export async function processBackgroundJobs(client: PoolClient): Promise<{
   digestsSent: number;
   listingsExpired: number;
   timelineOutbox: number;
+  chatOutbox: number;
 }> {
   const remindersSent = await processPendingReminders(client);
   const digestsSent = await processNotificationDigests(client);
   const pushesDelivered = await processNotificationOutbox(client);
   const listingsExpired = await processExpiredListings(client);
   const timelineOutbox = await drainTimelineOutbox();
+  const chatOutbox = await drainChatOutbox(client);
   return {
     remindersSent,
     pushesDelivered,
     digestsSent,
     listingsExpired,
     timelineOutbox,
+    chatOutbox,
   };
 }

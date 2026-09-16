@@ -16,6 +16,7 @@ import {
   mapAuthorView,
 } from "../lib/author.js";
 import { resolveAvatarKey } from "../lib/avatar.js";
+import { getOrCreateConversation } from "../lib/conversations.js";
 import {
   loadCirclesForPosts,
   type PostCircleSummary,
@@ -1739,42 +1740,17 @@ async function getOrCreateParentConversation(
   client: PoolClient,
   userId: string,
   peerUserId: string,
-  context?: { circleId?: string; postId?: string }
+  context?: { circleId?: string; postId?: string; threadId?: string }
 ): Promise<string> {
-  const inserted = await client.query(
-    `INSERT INTO conversations (
-       user_a_id, user_b_id, initiated_from_circle_id, initiated_from_post_id
-     )
-     VALUES (
-       LEAST($1::uuid, $2::uuid),
-       GREATEST($1::uuid, $2::uuid),
-       $3,
-       $4
-     )
-     ON CONFLICT (user_a_id, user_b_id)
-     DO UPDATE SET user_a_id = EXCLUDED.user_a_id
-     RETURNING id`,
-    [
-      userId,
-      peerUserId,
-      context?.circleId ?? null,
-      context?.postId ?? null,
-    ]
-  );
-  const conversationId = String(inserted.rows[0].id);
-  await client.query(
-    `INSERT INTO conversation_participants (conversation_id, user_id)
-     VALUES ($1, $2), ($1, $3)
-     ON CONFLICT DO NOTHING`,
-    [conversationId, userId, peerUserId]
-  );
-  await client.query(
-    `UPDATE conversation_participants
-     SET hidden = false
-     WHERE conversation_id = $1 AND user_id = ANY($2::uuid[])`,
-    [conversationId, [userId, peerUserId]]
-  );
-  return conversationId;
+  return getOrCreateConversation(client, {
+    userId,
+    peerUserId,
+    myRole: "parent",
+    peerRole: "parent",
+    initiatedFromCircleId: context?.circleId,
+    initiatedFromPostId: context?.postId,
+    initiatedFromThreadId: context?.threadId,
+  });
 }
 
 export function createConversationsRoutes() {
@@ -1821,11 +1797,13 @@ export function createConversationsRoutes() {
           AND theirs.user_id <> mine.user_id
          JOIN users peer
            ON peer.id = theirs.user_id
-          AND peer.role = 'parent'
+         JOIN user_roles ur
+           ON ur.user_id = peer.id AND ur.role = 'parent'
          JOIN circles c ON c.id = mine.circle_id
          LEFT JOIN conversations conv
            ON conv.user_a_id = LEAST($1::uuid, peer.id)
           AND conv.user_b_id = GREATEST($1::uuid, peer.id)
+          AND conv.context_key = 'parent:parent'
          WHERE mine.user_id = $1
            ${searchClause}
            AND NOT EXISTS (
@@ -2241,7 +2219,10 @@ export function createConversationsRoutes() {
       peerId?: string;
       circleId?: string;
       postId?: string;
+      threadId?: string;
       listingId?: string;
+      myRole?: "parent" | "provider";
+      peerRole?: "parent" | "provider";
     }>();
 
     const peerUserId = body.peerUserId ?? body.peerId;
@@ -2283,12 +2264,17 @@ export function createConversationsRoutes() {
         return c.json({ error: "User not found" }, 404);
       }
 
-      const convId = await getOrCreateParentConversation(
-        client,
+      const myRole = body.myRole === "provider" ? "provider" : "parent";
+      const peerRole = body.peerRole === "provider" ? "provider" : "parent";
+      const convId = await getOrCreateConversation(client, {
         userId,
         peerUserId,
-        { circleId: body.circleId, postId: body.postId }
-      );
+        myRole,
+        peerRole,
+        initiatedFromCircleId: body.circleId,
+        initiatedFromPostId: body.postId,
+        initiatedFromThreadId: body.threadId,
+      });
 
       return c.json({
         id: convId,

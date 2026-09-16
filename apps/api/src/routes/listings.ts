@@ -3,6 +3,10 @@ import { pool } from "@vaara/db";
 import type { PoolClient } from "pg";
 import { isBlocked } from "../lib/author.js";
 import {
+  findConversationByPair,
+  getOrCreateConversation,
+} from "../lib/conversations.js";
+import {
   mediaPublicUrl,
   verifyListingMedia,
 } from "../lib/media-storage.js";
@@ -86,41 +90,17 @@ async function getOrCreateListingConversation(
     return existing.rows[0].conversation_id;
   }
 
-  const [userA, userB] =
-    params.buyerId < params.sellerId
-      ? [params.buyerId, params.sellerId]
-      : [params.sellerId, params.buyerId];
-
-  let convId: string;
-  const conv = await client.query(
-    `SELECT id FROM conversations
-     WHERE user_a_id = LEAST($1::uuid, $2::uuid)
-       AND user_b_id = GREATEST($1::uuid, $2::uuid)`,
-    [params.buyerId, params.sellerId]
-  );
-
-  if (conv.rows.length > 0) {
-    convId = conv.rows[0].id;
-    await client.query(
-      `UPDATE conversation_participants SET hidden = false
-       WHERE conversation_id = $1 AND user_id = ANY($2::uuid[])`,
-      [convId, [params.buyerId, params.sellerId]]
-    );
-  } else {
-    const inserted = await client.query(
-      `INSERT INTO conversations (user_a_id, user_b_id)
-       VALUES (LEAST($1::uuid, $2::uuid), GREATEST($1::uuid, $2::uuid))
-       RETURNING id`,
-      [params.buyerId, params.sellerId]
-    );
-    convId = inserted.rows[0].id;
-    await client.query(
-      `INSERT INTO conversation_participants (conversation_id, user_id)
-       VALUES ($1, $2), ($1, $3)
-       ON CONFLICT DO NOTHING`,
-      [convId, params.buyerId, params.sellerId]
-    );
-  }
+  const convId =
+    (await findConversationByPair(
+      client,
+      params.buyerId,
+      params.sellerId,
+      "parent:parent"
+    )) ??
+    (await getOrCreateConversation(client, {
+      userId: params.buyerId,
+      peerUserId: params.sellerId,
+    }));
 
   await client.query(
     `INSERT INTO listing_interests (listing_id, user_id, conversation_id)

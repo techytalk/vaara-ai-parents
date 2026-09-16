@@ -16,6 +16,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { ChatHomeScreen } from "@/components/chat/ChatHomeScreen";
 import { FeedPostCard } from "@/components/feed/FeedPostCard";
 import { EmptyState, Avatar, ScreenLoader } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
@@ -465,9 +466,9 @@ export default function HomeScreen() {
 
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Create a post"
+        accessibilityLabel="Start a thread"
         disabled={composeLocked}
-        onPress={() => openNewPost()}
+        onPress={() => router.push("/(app)/messages")}
         style={[styles.composeCard, composeLocked && styles.composeLocked]}
       >
         <Avatar
@@ -475,7 +476,7 @@ export default function HomeScreen() {
           avatarKey={user?.avatarKey}
           size={36}
         />
-        <Text style={styles.composePlaceholder}>What&apos;s on your mind?</Text>
+        <Text style={styles.composePlaceholder}>Ask your group</Text>
       </Pressable>
 
       <View style={styles.composeActions}>
@@ -533,103 +534,18 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.screen}>
-      <FlatList
-        data={posts}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
-        ListHeaderComponent={listHeader}
-        refreshControl={
-          <RefreshControl
-            refreshing={feedQuery.isRefetching && !feedQuery.isFetchingNextPage}
-            tintColor={colors.primary}
-            onRefresh={async () => {
-              await Promise.all([
-                feedQuery.refetch(),
-                userQuery.refetch(),
-                circlesQuery.refetch(),
-                notificationsQuery.refetch(),
-                savedQuery.refetch(),
-                childrenQuery.refetch(),
-              ]);
-            }}
-          />
-        }
-        onEndReached={() => {
-          if (feedQuery.hasNextPage && !feedQuery.isFetchingNextPage) {
-            feedQuery.fetchNextPage();
-          }
-        }}
-        onEndReachedThreshold={0.4}
-        viewabilityConfig={viewabilityConfigRef.current}
-        onViewableItemsChanged={onViewableItemsChanged}
-        ListFooterComponent={
-          feedQuery.isFetchingNextPage ? (
-            <ActivityIndicator
-              style={styles.footerLoader}
-              color={colors.primary}
-            />
-          ) : null
-        }
-        ListEmptyComponent={
-          <EmptyState
-            icon="newspaper-outline"
-            title="No posts yet"
-            message={
-              hasCircles
-                ? "Be the first to share something with parents in your circles."
-                : circlesKnown
-                  ? "Complete your profile to join circles. We'll also suggest posts from other parent groups nearby."
-                  : "Posts from your circles will show up here."
-            }
-            actionLabel={
-              hasCircles
-                ? "Create post"
-                : circlesKnown
-                  ? "Complete profile"
-                  : undefined
-            }
-            onAction={
-              hasCircles || circlesKnown ? () => openNewPost() : undefined
-            }
-          />
-        }
-        renderItem={({ item }) => (
-          <FeedPostCard
-            post={item}
-            circleId={item.circleId}
-            circleName={item.circleName}
-            discovery={item.discovery}
-            saved={savedPostIds.has(item.id)}
-            onPress={() => openPost(item)}
-            onComment={() => openPost(item)}
-            onToggleSave={
-              savedQuery.isSuccess ? () => toggleSave(item.id) : undefined
-            }
-            onToggleHelpful={
-              item.discovery ? undefined : () => toggleHelpful(item)
-            }
-            onShare={() => sharePost(item)}
-            onPollVote={
-              item.discovery ? undefined : (optionId) => onPollVote(item, optionId)
-            }
-            onReport={
-              user && (item.authorId ?? item.author.userId) !== user.id
-                ? () => reportPost(item)
-                : undefined
-            }
-          />
-        )}
-      />
+      {listHeader}
+      <ChatHomeScreen />
 
       {primaryCircle && !tour.visible ? (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Create post"
-          onPress={() => openNewPost()}
+          accessibilityLabel="Start a thread"
+          onPress={() => router.push("/(app)/messages")}
           style={styles.fab}
         >
           <Ionicons name="add" size={22} color="#fff" />
-          <Text style={styles.fabText}>Post</Text>
+          <Text style={styles.fabText}>Thread</Text>
         </Pressable>
       ) : null}
 

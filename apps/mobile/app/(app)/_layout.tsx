@@ -114,8 +114,8 @@ export default function AppLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Feed",
-          tabBarLabel: "Feed",
+          title: "Home",
+          tabBarLabel: "Home",
           tabBarIcon: tabIcon("home", "home-outline"),
           href: "/",
         }}
@@ -123,11 +123,9 @@ export default function AppLayout() {
       <Tabs.Screen
         name="circles"
         options={{
+          href: null,
           title: "Circles",
-          tabBarLabel: "Circles",
           headerShown: false,
-          tabBarIcon: tabIcon("people-circle", "people-circle-outline"),
-          href: "/circles",
         }}
       />
       <Tabs.Screen

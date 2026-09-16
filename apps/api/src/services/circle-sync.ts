@@ -22,10 +22,10 @@ export async function syncCircleMembership(
   userId: string
 ): Promise<void> {
   const userResult = await client.query(
-    "SELECT role FROM users WHERE id = $1",
+    `SELECT 1 FROM user_roles WHERE user_id = $1 AND role = 'parent'`,
     [userId]
   );
-  if (userResult.rows.length === 0 || userResult.rows[0].role !== "parent") {
+  if (userResult.rows.length === 0) {
     return;
   }
 
@@ -167,6 +167,12 @@ export async function syncCircleMembership(
   }
 
   if (desired.length === 0) {
+    await client.query(
+      `UPDATE circle_membership_periods
+       SET left_at = now()
+       WHERE user_id = $1 AND left_at IS NULL`,
+      [userId]
+    );
     await client.query("DELETE FROM circle_members WHERE user_id = $1", [userId]);
     return;
   }
@@ -195,20 +201,41 @@ export async function syncCircleMembership(
 
   const circleIds = circlesResult.rows.map((r) => r.id);
 
-  await client.query(
+  const leaving = await client.query(
     `DELETE FROM circle_members
      WHERE user_id = $1
-       AND circle_id NOT IN (SELECT unnest($2::uuid[]))`,
+       AND circle_id NOT IN (SELECT unnest($2::uuid[]))
+     RETURNING circle_id`,
     [userId, circleIds]
   );
 
-  for (const row of circlesResult.rows) {
+  if (leaving.rows.length > 0) {
     await client.query(
+      `UPDATE circle_membership_periods
+       SET left_at = now()
+       WHERE user_id = $1
+         AND left_at IS NULL
+         AND circle_id = ANY($2::uuid[])`,
+      [userId, leaving.rows.map((row) => row.circle_id)]
+    );
+  }
+
+  for (const row of circlesResult.rows) {
+    const inserted = await client.query(
       `INSERT INTO circle_members (circle_id, user_id)
        VALUES ($1, $2)
-       ON CONFLICT DO NOTHING`,
+       ON CONFLICT DO NOTHING
+       RETURNING circle_id`,
       [row.id, userId]
     );
+    if ((inserted.rowCount ?? 0) > 0) {
+      await client.query(
+        `INSERT INTO circle_membership_periods (circle_id, user_id, joined_at, reason)
+         VALUES ($1, $2, now(), 'sync')
+         ON CONFLICT DO NOTHING`,
+        [row.id, userId]
+      );
+    }
   }
 }
 

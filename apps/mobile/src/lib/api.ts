@@ -467,6 +467,84 @@ export type ConversationPreview = {
   unread: boolean;
 };
 
+export type ChatInboxGroup = {
+  kind: "group";
+  id: string;
+  name: string;
+  circleType: string;
+  preview: string | null;
+  lastAt: string | null;
+  unreadCount: number;
+};
+
+export type ChatInboxDm = {
+  kind: "dm";
+  id: string;
+  contextKey: string;
+  myRole: string;
+  peerRole: string;
+  peer: {
+    userId: string;
+    anonymousHandle: string;
+    avatarKey: string | null;
+  };
+  preview: string | null;
+  lastAt: string | null;
+  unreadCount: number;
+};
+
+export type ChatInboxService = {
+  kind: "service";
+  id: string;
+  name: string;
+  preview: string | null;
+  lastAt: string | null;
+  unreadCount: number;
+};
+
+export type ChatInbox = {
+  groups: ChatInboxGroup[];
+  dms: ChatInboxDm[];
+  services: ChatInboxService[];
+};
+
+export type ChatHomeItem = {
+  kind: "thread" | "service";
+  access?: "member" | "discovery";
+  id: string;
+  circleId?: string;
+  circleName?: string;
+  circleType?: string;
+  title?: string | null;
+  body?: string | null;
+  lastMessageAt?: string;
+  replyCount?: number;
+  following?: boolean;
+  providerId?: string;
+  name?: string;
+  preview?: string | null;
+};
+
+export type ChatMessage = {
+  id: string;
+  seq: number;
+  circleId: string;
+  threadId: string | null;
+  body: string | null;
+  status: string;
+  isLegacy: boolean;
+  replyToMessageId: string | null;
+  author: {
+    userId: string;
+    displayName: string;
+    avatarKey: string | null;
+    role: "parent" | "provider";
+    isGuest: boolean;
+  };
+  createdAt: string;
+  editedAt: string | null;
+};
+
 export type MessageableParent = {
   userId: string;
   anonymousHandle: string;
@@ -1400,7 +1478,10 @@ export const api = {
       peerUserId: string;
       circleId?: string;
       postId?: string;
+      threadId?: string;
       listingId?: string;
+      myRole?: "parent" | "provider";
+      peerRole?: "parent" | "provider";
     }
   ) =>
     request<{ id: string; peer: PeerView }>(
@@ -2040,9 +2121,189 @@ export const api = {
       token
     ),
 
-  leaveCarpool: (token: string, arrangementId: string) =>
+  leaveCarpool: (
+    token: string,
+    arrangementId: string
+  ) =>
     request<{ ok: boolean }>(
       `/v1/carpool/arrangements/${arrangementId}/leave`,
+      { method: "POST" },
+      token
+    ),
+
+  getChatInbox: (token: string) =>
+    request<ChatInbox>("/v1/chat/inbox", {}, token),
+
+  getChatHome: (token: string) =>
+    request<{ items: ChatHomeItem[] }>("/v1/chat/home", {}, token),
+
+  recordChatHomeImpressions: (
+    token: string,
+    body: { threadIds?: string[]; updateIds?: string[] }
+  ) =>
+    request<{ ok: boolean }>(
+      "/v1/chat/home/impressions",
+      { method: "POST", body: JSON.stringify(body) },
+      token
+    ),
+
+  getGroupMessages: (
+    token: string,
+    circleId: string,
+    query?: { afterSeq?: number; beforeSeq?: number }
+  ) => {
+    const search = new URLSearchParams();
+    if (query?.afterSeq != null) search.set("afterSeq", String(query.afterSeq));
+    if (query?.beforeSeq != null) search.set("beforeSeq", String(query.beforeSeq));
+    const q = search.toString();
+    return request<{ messages: ChatMessage[]; nextCursor: number | null }>(
+      `/v1/circles/${circleId}/messages${q ? `?${q}` : ""}`,
+      {},
+      token
+    );
+  },
+
+  sendGroupMessage: (
+    token: string,
+    circleId: string,
+    body: { body: string; clientMessageId?: string; replyToMessageId?: string }
+  ) =>
+    request<ChatMessage>(
+      `/v1/circles/${circleId}/messages`,
+      { method: "POST", body: JSON.stringify(body) },
+      token
+    ),
+
+  markGroupChatRead: (
+    token: string,
+    circleId: string,
+    body: { lastReadMessageSeq?: number; lastSeenThreadSeq?: number }
+  ) =>
+    request<{ ok: boolean }>(
+      `/v1/circles/${circleId}/chat-read`,
+      { method: "POST", body: JSON.stringify(body) },
+      token
+    ),
+
+  getGroupThreads: (token: string, circleId: string, scope?: string) => {
+    const search = new URLSearchParams();
+    if (scope) search.set("scope", scope);
+    const q = search.toString();
+    return request<{
+      linear: boolean;
+      threads: Array<{
+        id: string;
+        title: string | null;
+        body: string | null;
+        kind: string;
+        replyCount: number;
+        lastMessageAt: string;
+        following: boolean;
+        unread: boolean;
+      }>;
+    }>(`/v1/circles/${circleId}/threads${q ? `?${q}` : ""}`, {}, token);
+  },
+
+  createGroupThread: (
+    token: string,
+    circleId: string,
+    body: {
+      title: string;
+      body?: string;
+      kind?: string;
+      serviceRepliesAllowed?: boolean;
+    }
+  ) =>
+    request<{ id: string }>(
+      `/v1/circles/${circleId}/threads`,
+      { method: "POST", body: JSON.stringify(body) },
+      token
+    ),
+
+  getThread: (token: string, threadId: string) =>
+    request<{
+      id: string;
+      circleId: string;
+      circleName: string;
+      circleType: string;
+      title: string | null;
+      body: string | null;
+      kind: string;
+      status: string;
+      replyCount: number;
+      lastMessageAt: string;
+      serviceRepliesAllowed: boolean;
+      access: {
+        canReply: boolean;
+        canOpenGroup: boolean;
+        grantRole: string | null;
+      };
+    }>(`/v1/threads/${threadId}`, {}, token),
+
+  getThreadMessages: (
+    token: string,
+    threadId: string,
+    query?: { afterSeq?: number; beforeSeq?: number }
+  ) => {
+    const search = new URLSearchParams();
+    if (query?.afterSeq != null) search.set("afterSeq", String(query.afterSeq));
+    if (query?.beforeSeq != null) search.set("beforeSeq", String(query.beforeSeq));
+    const q = search.toString();
+    return request<{ messages: ChatMessage[]; nextCursor: number | null }>(
+      `/v1/threads/${threadId}/messages${q ? `?${q}` : ""}`,
+      {},
+      token
+    );
+  },
+
+  sendThreadMessage: (
+    token: string,
+    threadId: string,
+    body: { body: string; clientMessageId?: string; asProvider?: boolean }
+  ) =>
+    request<ChatMessage>(
+      `/v1/threads/${threadId}/messages`,
+      { method: "POST", body: JSON.stringify(body) },
+      token
+    ),
+
+  markThreadRead: (token: string, threadId: string, lastReadSeq?: number) =>
+    request<{ ok: boolean }>(
+      `/v1/threads/${threadId}/read`,
+      { method: "POST", body: JSON.stringify({ lastReadSeq }) },
+      token
+    ),
+
+  followThread: (token: string, threadId: string) =>
+    request<{ ok: boolean }>(
+      `/v1/threads/${threadId}/follow`,
+      { method: "POST" },
+      token
+    ),
+
+  messageThreadAuthor: (token: string, threadId: string) =>
+    request<{ conversationId: string }>(
+      `/v1/threads/${threadId}/message-author`,
+      { method: "POST" },
+      token
+    ),
+
+  getProviderChannel: (token: string, providerId: string) =>
+    request<{
+      providerId: string;
+      name: string;
+      status: string;
+      updates: Array<{
+        id: string;
+        title: string;
+        preview: string | null;
+        published_at: string | null;
+      }>;
+    }>(`/v1/provider-channels/${providerId}`, {}, token),
+
+  followProviderChannel: (token: string, providerId: string) =>
+    request<{ ok: boolean }>(
+      `/v1/provider-channels/${providerId}/follow`,
       { method: "POST" },
       token
     ),

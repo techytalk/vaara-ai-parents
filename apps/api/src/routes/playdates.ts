@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { pool } from "@vaara/db";
 import { isBlocked } from "../lib/author.js";
 import { resolveAvatarKey } from "../lib/avatar.js";
+import { getOrCreateConversation } from "../lib/conversations.js";
 import { authMiddleware, type AuthVariables } from "../middleware/auth.js";
 
 const AGE_BANDS = ["0_2", "2_4", "4_6", "6_8", "8_12", "12_plus"] as const;
@@ -164,33 +165,10 @@ export function createPlaydateRoutes() {
         return c.json({ error: "Cannot message this parent" }, 403);
       }
 
-      const [userA, userB] =
-        userId < peerUserId ? [userId, peerUserId] : [peerUserId, userId];
-
-      let convId: string;
-      const conv = await client.query(
-        `SELECT id FROM conversations
-         WHERE user_a_id = $1 AND user_b_id = $2`,
-        [userA, userB]
-      );
-
-      if (conv.rows.length > 0) {
-        convId = conv.rows[0].id;
-      } else {
-        const inserted = await client.query(
-          `INSERT INTO conversations (user_a_id, user_b_id)
-           VALUES ($1, $2)
-           RETURNING id`,
-          [userA, userB]
-        );
-        convId = inserted.rows[0].id;
-        await client.query(
-          `INSERT INTO conversation_participants (conversation_id, user_id)
-           VALUES ($1, $2), ($1, $3)
-           ON CONFLICT DO NOTHING`,
-          [convId, userId, peerUserId]
-        );
-      }
+      const convId = await getOrCreateConversation(client, {
+        userId,
+        peerUserId,
+      });
 
       const peer = await client.query(
         `SELECT anonymous_handle, avatar_key FROM users WHERE id = $1`,

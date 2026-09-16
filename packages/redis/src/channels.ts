@@ -17,3 +17,7 @@ export function topicChannel(slug: string): string {
 export function postChannel(postId: string): string {
   return `post:${postId}`;
 }
+
+export function threadChannel(threadId: string): string {
+  return `thread:${threadId}`;
+}

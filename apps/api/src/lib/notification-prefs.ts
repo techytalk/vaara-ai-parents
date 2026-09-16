@@ -17,6 +17,11 @@ export type NotificationPrefs = {
   carpool?: boolean;
   school_events?: boolean;
   expert_sessions?: boolean;
+  group_messages?: boolean;
+  thread_replies?: boolean;
+  thread_mentions?: boolean;
+  provider_responses?: boolean;
+  service_updates?: boolean;
   quiet_hours?: QuietHoursPrefs;
 };
 
@@ -32,6 +37,11 @@ export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
   carpool: true,
   school_events: true,
   expert_sessions: true,
+  group_messages: true,
+  thread_replies: true,
+  thread_mentions: true,
+  provider_responses: true,
+  service_updates: true,
   quiet_hours: {
     enabled: true,
     start: "22:00",
@@ -52,6 +62,11 @@ export const NOTIFICATION_PREF_KEYS = [
   "carpool",
   "school_events",
   "expert_sessions",
+  "group_messages",
+  "thread_replies",
+  "thread_mentions",
+  "provider_responses",
+  "service_updates",
 ] as const satisfies readonly (keyof NotificationPrefs)[];
 
 export type NotificationPrefKey = (typeof NOTIFICATION_PREF_KEYS)[number];
@@ -72,6 +87,11 @@ export const PREF_KEY_BY_NOTIFICATION_TYPE: Partial<
   carpool_update: "carpool",
   school_event: "school_events",
   expert_session: "expert_sessions",
+  group_message: "group_messages",
+  thread_reply: "thread_replies",
+  thread_mention: "thread_mentions",
+  provider_response: "provider_responses",
+  service_update: "service_updates",
 };
 
 export function mergeNotificationPrefs(

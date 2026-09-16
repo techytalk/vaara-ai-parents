@@ -15,7 +15,7 @@ import { formatPostTime } from "@/components/circles/ui";
 import { Avatar, EmptyState, ScreenLoader } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import { useRealtimeChannel } from "@/hooks/useRealtimeChannel";
-import { api, peerDisplayName, type ConversationPreview } from "@/lib/api";
+import { api, type ChatInbox } from "@/lib/api";
 import { getToken } from "@/lib/session";
 
 function formatInboxTime(iso: string | undefined) {
@@ -42,7 +42,11 @@ function formatInboxTime(iso: string | undefined) {
 export default function MessagesInboxScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [conversations, setConversations] = useState<ConversationPreview[]>([]);
+  const [inbox, setInbox] = useState<ChatInbox>({
+    groups: [],
+    dms: [],
+    services: [],
+  });
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -51,10 +55,10 @@ export default function MessagesInboxScreen() {
     const token = await getToken();
     if (!token) return;
     const [list, me] = await Promise.all([
-      api.getConversations(token),
+      api.getChatInbox(token),
       api.me(token),
     ]);
-    setConversations(list);
+    setInbox(list);
     setUserId(me.id);
   }, []);
 
@@ -104,8 +108,12 @@ export default function MessagesInboxScreen() {
       </View>
 
       <FlatList
-        data={conversations}
-        keyExtractor={(item) => item.id}
+        data={[
+          ...inbox.groups.map((item) => ({ ...item, rowKey: `g:${item.id}` })),
+          ...inbox.dms.map((item) => ({ ...item, rowKey: `d:${item.id}` })),
+          ...inbox.services.map((item) => ({ ...item, rowKey: `s:${item.id}` })),
+        ]}
+        keyExtractor={(item) => item.rowKey}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -115,20 +123,83 @@ export default function MessagesInboxScreen() {
         }
         contentContainerStyle={[
           styles.list,
-          conversations.length === 0 && styles.listEmpty,
+          inbox.groups.length + inbox.dms.length + inbox.services.length === 0 &&
+            styles.listEmpty,
         ]}
         ListEmptyComponent={
           <EmptyState
             icon="chatbubbles-outline"
             title="No messages yet"
-            message="Start with a parent from your circles or connect using their exact anonymous handle."
+            message="Your groups and 1:1 chats live here."
             actionLabel="New message"
             onAction={() => router.push("/(app)/messages/new")}
           />
         }
         renderItem={({ item }) => {
-          const name = peerDisplayName(item.peer);
-          const isSupport = name.toLowerCase().includes("support");
+          if (item.kind === "group") {
+            return (
+              <Pressable
+                style={styles.row}
+                onPress={() =>
+                  router.push({
+                    pathname: "/(app)/messages/groups/[circleId]",
+                    params: { circleId: item.id },
+                  })
+                }
+              >
+                <View style={styles.supportAvatar}>
+                  <Ionicons name="people" size={22} color={colors.primaryDark} />
+                </View>
+                <View style={styles.rowMain}>
+                  <View style={styles.rowTop}>
+                    <Text style={styles.handle} numberOfLines={1}>
+                      {item.name}
+                    </Text>
+                    <Text style={styles.time}>{formatInboxTime(item.lastAt ?? undefined)}</Text>
+                  </View>
+                  <Text style={styles.preview} numberOfLines={1}>
+                    {item.preview ?? "No messages yet"}
+                  </Text>
+                </View>
+                {item.unreadCount > 0 ? (
+                  <View style={styles.unreadBadge}>
+                    <Text style={styles.unreadText}>
+                      {item.unreadCount > 99 ? "99+" : item.unreadCount}
+                    </Text>
+                  </View>
+                ) : null}
+              </Pressable>
+            );
+          }
+          if (item.kind === "service") {
+            return (
+              <Pressable
+                style={styles.row}
+                onPress={() =>
+                  router.push({
+                    pathname: "/(app)/messages/channels/[providerId]",
+                    params: { providerId: item.id },
+                  })
+                }
+              >
+                <View style={styles.supportAvatar}>
+                  <Ionicons name="briefcase-outline" size={22} color={colors.coral} />
+                </View>
+                <View style={styles.rowMain}>
+                  <View style={styles.rowTop}>
+                    <Text style={styles.handle} numberOfLines={1}>
+                      {item.name}
+                    </Text>
+                    <Text style={styles.time}>{formatInboxTime(item.lastAt ?? undefined)}</Text>
+                  </View>
+                  <Text style={styles.preview} numberOfLines={1}>
+                    {item.preview ?? "Tutor"}
+                  </Text>
+                </View>
+              </Pressable>
+            );
+          }
+          const name = item.peer.anonymousHandle;
           return (
             <Pressable
               style={styles.row}
@@ -142,32 +213,17 @@ export default function MessagesInboxScreen() {
                 })
               }
             >
-              {isSupport ? (
-                <View style={styles.supportAvatar}>
-                  <Ionicons
-                    name="shield-checkmark"
-                    size={22}
-                    color={colors.coral}
-                  />
-                </View>
-              ) : (
-                <Avatar
-                  handle={name}
-                  avatarKey={item.peer.avatarKey}
-                  size={48}
-                />
-              )}
+              <Avatar handle={name} avatarKey={item.peer.avatarKey} size={48} />
               <View style={styles.rowMain}>
                 <View style={styles.rowTop}>
                   <Text style={styles.handle} numberOfLines={1}>
                     {name}
+                    {item.peerRole === "provider" ? " · Tutor" : ""}
                   </Text>
-                  <Text style={styles.time}>
-                    {formatInboxTime(item.lastMessage?.createdAt)}
-                  </Text>
+                  <Text style={styles.time}>{formatInboxTime(item.lastAt ?? undefined)}</Text>
                 </View>
                 <Text style={styles.preview} numberOfLines={1}>
-                  {item.lastMessage?.body ?? "Start chatting"}
+                  {item.preview ?? "Start chatting"}
                 </Text>
               </View>
               {item.unreadCount > 0 ? (

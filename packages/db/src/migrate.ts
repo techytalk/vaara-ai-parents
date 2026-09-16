@@ -53,6 +53,31 @@ const MIGRATIONS = [
     version: "041_onboarding_discovery_hardening",
     file: "041_onboarding_discovery_hardening.sql",
   },
+  {
+    version: "042_chat_notification_types",
+    file: "042_chat_notification_types.sql",
+  },
+  {
+    version: "043_multi_role_conversations",
+    file: "043_multi_role_conversations.sql",
+  },
+  {
+    version: "044_circle_threads_and_access",
+    file: "044_circle_threads_and_access.sql",
+  },
+  {
+    version: "045_circle_messages_and_reads",
+    file: "045_circle_messages_and_reads.sql",
+  },
+  { version: "046_provider_channels", file: "046_provider_channels.sql" },
+  {
+    version: "047_chat_outbox_and_moderation",
+    file: "047_chat_outbox_and_moderation.sql",
+  },
+  {
+    version: "048_migrate_posts_to_threads",
+    file: "048_migrate_posts_to_threads.sql",
+  },
 ];
 
 async function isMigrationApplied(

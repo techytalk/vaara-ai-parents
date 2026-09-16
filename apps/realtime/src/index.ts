@@ -21,8 +21,34 @@ const channelRefCounts = new Map<string, number>();
 const subscriber = createRedisConnection();
 
 subscriber.on("message", (channel, message) => {
+  let parsed: { type?: string; userId?: string; circleId?: string; threadId?: string } = {};
+  try {
+    parsed = JSON.parse(message) as {
+      type?: string;
+      userId?: string;
+      circleId?: string;
+      threadId?: string;
+    };
+  } catch {
+    parsed = {};
+  }
+
   for (const [socket, state] of clients) {
     if (socket.readyState !== socket.OPEN) continue;
+    if (
+      parsed.type === "access.revoked" &&
+      parsed.userId === state.userId
+    ) {
+      const drop = new Set<string>();
+      if (parsed.circleId) drop.add(`circle:${parsed.circleId}`);
+      if (parsed.threadId) drop.add(`thread:${parsed.threadId}`);
+      for (const sub of state.subscriptions) {
+        if (drop.has(sub)) {
+          state.subscriptions.delete(sub);
+          void unsubscribeChannel(sub);
+        }
+      }
+    }
     if (!state.subscriptions.has(channel)) continue;
     socket.send(
       JSON.stringify({
@@ -94,6 +120,29 @@ async function canSubscribe(
       return rows.length > 0;
     }
 
+    if (channel.startsWith("thread:")) {
+      const threadId = channel.slice("thread:".length);
+      const { rows } = await client.query(
+        `SELECT 1
+         FROM circle_threads t
+         WHERE t.id = $1
+           AND (
+             EXISTS (
+               SELECT 1 FROM circle_members cm
+               WHERE cm.circle_id = t.circle_id AND cm.user_id = $2
+             )
+             OR EXISTS (
+               SELECT 1 FROM circle_thread_access_grants g
+               WHERE g.thread_id = t.id AND g.user_id = $2
+                 AND g.revoked_at IS NULL
+                 AND (g.expires_at IS NULL OR g.expires_at > now())
+             )
+           )`,
+        [threadId, userId]
+      );
+      return rows.length > 0;
+    }
+
     if (channel.startsWith("post:")) {
       const postId = channel.slice("post:".length);
       const { rows } = await client.query(
@@ -146,6 +195,29 @@ setInterval(() => {
     socket.ping();
   }
 }, HEARTBEAT_MS).unref();
+
+const REAUTH_MS = 60_000;
+setInterval(() => {
+  void (async () => {
+    for (const [socket, state] of clients) {
+      if (socket.readyState !== socket.OPEN) continue;
+      for (const channel of [...state.subscriptions]) {
+        const allowed = await canSubscribe(state.userId, channel);
+        if (!allowed) {
+          state.subscriptions.delete(channel);
+          await unsubscribeChannel(channel);
+          socket.send(
+            JSON.stringify({
+              type: "unsubscribed",
+              channel,
+              reason: "access.revoked",
+            })
+          );
+        }
+      }
+    }
+  })();
+}, REAUTH_MS).unref();
 
 wss.on("connection", async (socket, req) => {
   const url = new URL(req.url ?? "/", `http://${req.headers.host}`);

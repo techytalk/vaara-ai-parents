@@ -3,4 +3,5 @@ export const FEATURE_FLAGS = {
   showDoctors: true,
   showPlaydates: true,
   showCarpool: true,
+  chatFirst: true,
 } as const;

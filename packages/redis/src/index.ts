@@ -7,6 +7,7 @@ export {
   circleChannel,
   conversationChannel,
   postChannel,
+  threadChannel,
   topicChannel,
   userInboxChannel,
 } from "./channels.js";
@@ -22,6 +23,7 @@ export {
   publishCircleEvent,
   publishConversationEvent,
   publishPostEvent,
+  publishThreadEvent,
   publishTopicEvent,
   publishUserInboxEvent,
   type RealtimeEvent,
