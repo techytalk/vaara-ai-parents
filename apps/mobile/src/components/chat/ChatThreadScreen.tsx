@@ -863,7 +863,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(13,27,42,0.45)",
     justifyContent: "center",
     padding: spacing.lg,
-  },,
+  },
   sheet: {
     backgroundColor: colors.card,
     borderRadius: radii.xl,
