@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow" />
+    <title>Vaara — QR codes</title>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+        --teal: #0e9a8a;
+        --teal-dark: #08786d;
+        --bg: #fffcf7;
+        --card: #fff;
+        --text: #0d1b2a;
+        --muted: #5e6974;
+        --border: #e8e3db;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: var(--bg);
+        color: var(--text);
+      }
+      h1 { font-size: 1.45rem; margin: 0 0 6px; }
+      .muted { color: var(--muted); font-size: 0.9rem; margin: 0 0 18px; }
+      a { color: var(--teal-dark); }
+      label { display: block; font-size: 0.85rem; margin: 0 0 4px; color: var(--muted); }
+      input, select, button {
+        font: inherit;
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+      }
+      input[type="url"], input[type="text"] { min-width: min(100%, 420px); }
+      button {
+        background: var(--teal);
+        color: #fff;
+        border: none;
+        cursor: pointer;
+        margin-right: 8px;
+      }
+      button.secondary { background: #44403c; }
+      button:disabled { opacity: 0.55; cursor: not-allowed; }
+      .nav { margin-bottom: 14px; font-size: 0.9rem; }
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(280px, 420px) 1fr;
+        gap: 20px;
+        align-items: start;
+      }
+      @media (max-width: 800px) {
+        body { padding: 14px; }
+        .layout { grid-template-columns: 1fr; }
+      }
+      .panel {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 16px;
+      }
+      .field { margin-bottom: 14px; }
+      .targets {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .target {
+        background: transparent;
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 7px 14px;
+        margin: 0;
+        font-size: 0.88rem;
+      }
+      .target.active {
+        background: #eaf8f6;
+        border-color: var(--teal);
+        color: var(--teal-dark);
+        font-weight: 600;
+      }
+      .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+      .preview-wrap {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+        padding: 20px;
+      }
+      #canvas {
+        width: min(100%, 360px);
+        height: auto;
+        background: #fff;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+      }
+      .url-preview {
+        font-size: 0.85rem;
+        color: var(--muted);
+        word-break: break-all;
+        text-align: center;
+        max-width: 420px;
+      }
+      .hint {
+        font-size: 0.82rem;
+        color: var(--muted);
+        margin-top: 8px;
+        line-height: 1.4;
+      }
+      .err {
+        color: #b91c1c;
+        background: #feecec;
+        border-radius: 10px;
+        padding: 10px 12px;
+        margin-bottom: 12px;
+        display: none;
+      }
+      .toast {
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #1c1917;
+        color: #fff;
+        padding: 10px 16px;
+        border-radius: 999px;
+        font-size: 0.88rem;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s;
+        z-index: 20;
+      }
+      .toast.show { opacity: 1; }
+    </style>
+  </head>
+  <body>
+    <div class="nav">
+      <strong>Admin</strong> · QR codes ·
+      <a href="/internal/admin/">Parent signups</a> ·
+      <a href="/internal/admin/directory.html">School directory</a> ·
+      <a href="/internal/admin/schools.html">School tools</a>
+    </div>
+    <h1>QR codes</h1>
+    <p class="muted">
+      Generate print-ready QR codes for pamphlets and banners. Scan opens the selected URL.
+    </p>
+
+    <div id="err" class="err"></div>
+
+    <div class="layout">
+      <div class="panel">
+        <div class="field">
+          <label>Destination</label>
+          <div class="targets" role="group" aria-label="Destination">
+            <button type="button" class="target active" data-target="website">Website</button>
+            <button type="button" class="target" data-target="android">Android</button>
+            <button type="button" class="target" data-target="ios">iOS</button>
+            <button type="button" class="target" data-target="custom">Custom</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="url">URL</label>
+          <input id="url" type="url" spellcheck="false" autocomplete="off" />
+        </div>
+
+        <div class="field">
+          <label for="size">Print size (px)</label>
+          <select id="size">
+            <option value="512">512 — small flyer</option>
+            <option value="1024" selected>1024 — pamphlet / A5</option>
+            <option value="2048">2048 — banner / large print</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="label">Download filename label (optional)</label>
+          <input id="label" type="text" placeholder="e.g. school-open-day" spellcheck="false" />
+        </div>
+
+        <div class="actions">
+          <button id="download" type="button">Download PNG</button>
+          <button id="copyUrl" class="secondary" type="button">Copy URL</button>
+        </div>
+        <p class="hint">
+          Defaults: website <code>https://vaara.ai</code>, Android Play Store, iOS App Store.
+          Use Custom for campaign-specific links.
+        </p>
+      </div>
+
+      <div class="panel preview-wrap">
+        <canvas id="canvas" width="360" height="360" aria-label="QR preview"></canvas>
+        <div id="urlPreview" class="url-preview"></div>
+      </div>
+    </div>
+
+    <div id="toast" class="toast" role="status"></div>
+
+    <script>
+      const PRESETS = {
+        website: "https://vaara.ai",
+        android:
+          "https://play.google.com/store/apps/details?id=com.vaara.parents",
+        ios: "https://apps.apple.com/app/vaara-parents",
+        custom: "",
+      };
+
+      const urlInput = document.getElementById("url");
+      const sizeSelect = document.getElementById("size");
+      const labelInput = document.getElementById("label");
+      const canvas = document.getElementById("canvas");
+      const urlPreview = document.getElementById("urlPreview");
+      const errEl = document.getElementById("err");
+      const toastEl = document.getElementById("toast");
+      const downloadBtn = document.getElementById("download");
+      const copyBtn = document.getElementById("copyUrl");
+
+      let currentTarget = "website";
+      let renderTimer = null;
+
+      function showError(msg) {
+        errEl.textContent = msg || "";
+        errEl.style.display = msg ? "block" : "none";
+      }
+
+      function toast(msg) {
+        toastEl.textContent = msg;
+        toastEl.classList.add("show");
+        clearTimeout(toast._t);
+        toast._t = setTimeout(() => toastEl.classList.remove("show"), 1600);
+      }
+
+      function normalizeUrl(raw) {
+        const value = (raw || "").trim();
+        if (!value) return "";
+        try {
+          const u = new URL(value.includes("://") ? value : `https://${value}`);
+          return u.toString();
+        } catch {
+          return "";
+        }
+      }
+
+      function slugify(value) {
+        return (value || "")
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "")
+          .slice(0, 40);
+      }
+
+      async function renderQr() {
+        const url = normalizeUrl(urlInput.value);
+        urlPreview.textContent = url || "Enter a valid URL to generate a QR code.";
+        if (!url) {
+          showError("Enter a valid URL.");
+          downloadBtn.disabled = true;
+          const ctx = canvas.getContext("2d");
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          return;
+        }
+        showError("");
+        downloadBtn.disabled = false;
+        try {
+          await QRCode.toCanvas(canvas, url, {
+            width: 360,
+            margin: 2,
+            errorCorrectionLevel: "H",
+            color: { dark: "#0d1b2a", light: "#ffffff" },
+          });
+        } catch (e) {
+          showError(e.message || "Could not generate QR code.");
+          downloadBtn.disabled = true;
+        }
+      }
+
+      function scheduleRender() {
+        clearTimeout(renderTimer);
+        renderTimer = setTimeout(renderQr, 120);
+      }
+
+      function setTarget(target) {
+        currentTarget = target;
+        document.querySelectorAll(".target").forEach((btn) => {
+          btn.classList.toggle("active", btn.dataset.target === target);
+        });
+        if (target !== "custom") {
+          urlInput.value = PRESETS[target];
+          urlInput.readOnly = false;
+        } else if (!urlInput.value || Object.values(PRESETS).includes(urlInput.value)) {
+          urlInput.value = "";
+          urlInput.focus();
+        }
+        scheduleRender();
+      }
+
+      document.querySelectorAll(".target").forEach((btn) => {
+        btn.addEventListener("click", () => setTarget(btn.dataset.target));
+      });
+
+      urlInput.addEventListener("input", () => {
+        if (currentTarget !== "custom") {
+          const preset = PRESETS[currentTarget];
+          if (urlInput.value.trim() !== preset) {
+            currentTarget = "custom";
+            document.querySelectorAll(".target").forEach((btn) => {
+              btn.classList.toggle("active", btn.dataset.target === "custom");
+            });
+          }
+        }
+        scheduleRender();
+      });
+
+      sizeSelect.addEventListener("change", () => {});
+
+      copyBtn.addEventListener("click", async () => {
+        const url = normalizeUrl(urlInput.value);
+        if (!url) return;
+        try {
+          await navigator.clipboard.writeText(url);
+          toast("URL copied");
+        } catch {
+          toast("Could not copy");
+        }
+      });
+
+      downloadBtn.addEventListener("click", async () => {
+        const url = normalizeUrl(urlInput.value);
+        if (!url) return;
+        const size = Number(sizeSelect.value) || 1024;
+        try {
+          const dataUrl = await QRCode.toDataURL(url, {
+            width: size,
+            margin: 2,
+            errorCorrectionLevel: "H",
+            color: { dark: "#0d1b2a", light: "#ffffff" },
+          });
+          const tag =
+            slugify(labelInput.value) ||
+            (currentTarget !== "custom" ? currentTarget : "custom");
+          const a = document.createElement("a");
+          a.href = dataUrl;
+          a.download = `vaara-qr-${tag}-${size}.png`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          toast("PNG downloaded");
+        } catch (e) {
+          showError(e.message || "Download failed.");
+        }
+      });
+
+      setTarget("website");
+    </script>
+  </body>
+</html>
