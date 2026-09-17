@@ -53,3 +53,18 @@ Paste these when they exist (never invent `G-` / `AW-` values):
 | Ads conversion action for site store clicks | label → `VITE_GOOGLE_ADS_CONVERSION_LABEL` |
 
 App conversions do not need Ads IDs in the APK; they flow Firebase → GA4 → Google Ads after the link above.
+
+## Preschool onboarding events (GA4 / Firebase)
+
+Fired on the preschool path in addition to the shared funnel. Non-PII only.
+
+| Event | When | Properties |
+| --- | --- | --- |
+| `onboarding_track_selected` | Parent picks Preschool or School | `track` |
+| `preschool_selected` | Preschool campus chosen | `school_kind` |
+| `onboarding_school_complete` | Campus chosen (both tracks) | `track`, `school_kind`, `offers_preschool`, `school_verified` |
+| `onboarding_age_view` | Age circle screen shown | — |
+| `onboarding_age_complete` | 3 or 4 chosen and child created | `age_years` |
+| `age_circle_selected` | Same moment as age complete | `age_years` |
+
+`onboarding_completed` / `tutorial_complete` still fire on Ready for both paths.

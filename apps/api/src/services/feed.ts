@@ -252,15 +252,17 @@ const MEMBER_HOME_FEED_SQL = `
       mc.metadata AS circle_metadata,
       ROW_NUMBER() OVER (
         PARTITION BY p.id
-        ORDER BY CASE mc.circle_type
-          WHEN 'school_class' THEN 1
-          WHEN 'class' THEN 2
-          WHEN 'school' THEN 3
-          WHEN 'community' THEN 4
-          WHEN 'locality' THEN 5
-          WHEN 'curriculum' THEN 6
-          ELSE 7
-        END,
+        ORDER BY           CASE mc.circle_type
+            WHEN 'school_class' THEN 1
+            WHEN 'school_age' THEN 1
+            WHEN 'class' THEN 2
+            WHEN 'school' THEN 3
+            WHEN 'age_locality' THEN 4
+            WHEN 'community' THEN 5
+            WHEN 'locality' THEN 6
+            WHEN 'curriculum' THEN 7
+            ELSE 8
+          END,
         mc.id
       ) AS rn
     FROM circle_posts p
@@ -388,12 +390,14 @@ const DISCOVERY_HOME_FEED_SQL = `
         ORDER BY relevance ASC,
           CASE circle_type
             WHEN 'school_class' THEN 1
+            WHEN 'school_age' THEN 1
             WHEN 'class' THEN 2
             WHEN 'school' THEN 3
-            WHEN 'community' THEN 4
-            WHEN 'locality' THEN 5
-            WHEN 'curriculum' THEN 6
-            ELSE 7
+            WHEN 'age_locality' THEN 4
+            WHEN 'community' THEN 5
+            WHEN 'locality' THEN 6
+            WHEN 'curriculum' THEN 7
+            ELSE 8
           END,
           circle_id
       ) AS rn

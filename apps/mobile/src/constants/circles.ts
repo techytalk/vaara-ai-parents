@@ -8,6 +8,8 @@ export const CIRCLE_TYPE_LABELS: Record<Circle["circleType"], string> = {
   class: "Class",
   school: "School",
   school_class: "School class",
+  school_age: "School · age",
+  age_locality: "Age · area",
   community: "Community",
 };
 

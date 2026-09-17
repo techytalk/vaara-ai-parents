@@ -38,6 +38,8 @@ export function mapSchoolRow(row: Record<string, unknown>) {
     aliases: Array.isArray(row.aliases) ? row.aliases : [],
     verified: row.verified,
     redirectToSchoolId: row.redirect_to_school_id ?? null,
+    kind: row.kind === "preschool" ? "preschool" : "school",
+    offersPreschool: Boolean(row.offers_preschool),
     displayLabel: formatSchoolLabel(
       String(row.name),
       row.branch as string | null,

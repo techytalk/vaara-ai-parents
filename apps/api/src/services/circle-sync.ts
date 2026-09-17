@@ -12,11 +12,203 @@ type DesiredCircle = {
     | "class"
     | "school"
     | "school_class"
+    | "school_age"
+    | "age_locality"
     | "community";
   key: string;
   displayName: string;
   metadata: Record<string, unknown>;
 };
+
+type ChildRow = {
+  id: string;
+  track: string;
+  age_years: number | null;
+  experienced_age_years: number | null;
+  age_circle_until: Date | string | null;
+  curriculum_code: string | null;
+  curriculum_name: string | null;
+  curriculum_id: string | null;
+  grade_id: string | null;
+  grade_code: string | null;
+  grade_label: string | null;
+  school_id: string;
+  school_normalized_key: string | null;
+  school_name: string;
+  school_branch: string | null;
+  school_city: string;
+};
+
+function ageBandLabel(years: number): string {
+  return `${years} years`;
+}
+
+function ageKeySuffix(years: number): string {
+  return `Y${years}`;
+}
+
+function pushCircle(
+  desired: DesiredCircle[],
+  seenKeys: Set<string>,
+  circle: DesiredCircle
+) {
+  if (seenKeys.has(circle.key)) return;
+  seenKeys.add(circle.key);
+  desired.push(circle);
+}
+
+function effectiveAgeYears(child: ChildRow): number | null {
+  if (child.track === "preschool" && child.age_years != null) {
+    return child.age_years;
+  }
+  if (
+    child.experienced_age_years != null &&
+    child.age_circle_until != null &&
+    new Date(child.age_circle_until).getTime() > Date.now()
+  ) {
+    return child.experienced_age_years;
+  }
+  return null;
+}
+
+function addSchoolCircles(
+  desired: DesiredCircle[],
+  seenKeys: Set<string>,
+  child: ChildRow
+) {
+  if (
+    !child.school_normalized_key ||
+    child.school_normalized_key === PLACEHOLDER_SCHOOL_KEY
+  ) {
+    return;
+  }
+
+  const schoolLabel = formatSchoolLabel(
+    child.school_name,
+    child.school_branch,
+    child.school_city
+  );
+
+  pushCircle(desired, seenKeys, {
+    circleType: "school",
+    key: `SCHOOL_${child.school_normalized_key}`,
+    displayName: schoolLabel,
+    metadata: {
+      school_id: child.school_id,
+      normalized_key: child.school_normalized_key,
+    },
+  });
+
+  if (
+    child.track === "school" &&
+    child.curriculum_code &&
+    child.grade_code &&
+    child.curriculum_id &&
+    child.grade_id
+  ) {
+    pushCircle(desired, seenKeys, {
+      circleType: "school_class",
+      key:
+        `SCHOOL_CLASS_${child.school_normalized_key}` +
+        `_${child.curriculum_code}_${child.grade_code}`,
+      displayName: `${schoolLabel} · ${child.curriculum_name} · ${child.grade_label}`,
+      metadata: {
+        school_id: child.school_id,
+        normalized_key: child.school_normalized_key,
+        curriculum_id: child.curriculum_id,
+        grade_id: child.grade_id,
+        code: child.curriculum_code,
+        grade_code: child.grade_code,
+      },
+    });
+  }
+
+  const ageYears = effectiveAgeYears(child);
+  if (ageYears != null) {
+    const suffix = ageKeySuffix(ageYears);
+    pushCircle(desired, seenKeys, {
+      circleType: "school_age",
+      key: `SCHOOL_AGE_${child.school_normalized_key}_${suffix}`,
+      displayName: `${schoolLabel} · ${ageBandLabel(ageYears)}`,
+      metadata: {
+        school_id: child.school_id,
+        normalized_key: child.school_normalized_key,
+        age_years: ageYears,
+        experienced: child.track === "school",
+      },
+    });
+  }
+}
+
+function addSchoolAgeBoardCircles(
+  desired: DesiredCircle[],
+  seenKeys: Set<string>,
+  child: ChildRow
+) {
+  if (
+    child.track !== "school" ||
+    !child.curriculum_code ||
+    !child.curriculum_id ||
+    !child.grade_code ||
+    !child.grade_id
+  ) {
+    return;
+  }
+
+  pushCircle(desired, seenKeys, {
+    circleType: "curriculum",
+    key: `CURR_${child.curriculum_code}`,
+    displayName: `${child.curriculum_name} Parents`,
+    metadata: {
+      curriculum_id: child.curriculum_id,
+      code: child.curriculum_code,
+    },
+  });
+
+  pushCircle(desired, seenKeys, {
+    circleType: "class",
+    key: `CLASS_${child.curriculum_code}_${child.grade_code}`,
+    displayName: `${child.curriculum_name} · ${child.grade_label}`,
+    metadata: {
+      curriculum_id: child.curriculum_id,
+      grade_id: child.grade_id,
+      code: child.curriculum_code,
+      grade_code: child.grade_code,
+    },
+  });
+}
+
+function addAgeLocalityCircles(
+  desired: DesiredCircle[],
+  seenKeys: Set<string>,
+  children: ChildRow[],
+  loc: {
+    country_code: string | null;
+    pin_code: string;
+    locality: string | null;
+  }
+) {
+  const country = (loc.country_code ?? "IN").trim().toUpperCase() || "IN";
+  const pin = loc.pin_code;
+  for (const child of children) {
+    const ageYears = effectiveAgeYears(child);
+    if (ageYears == null) continue;
+    const suffix = ageKeySuffix(ageYears);
+    pushCircle(desired, seenKeys, {
+      circleType: "age_locality",
+      key: `AGE_POSTAL_${country}_${pin}_${suffix}`,
+      displayName: loc.locality
+        ? `${ageBandLabel(ageYears)} · ${pin} · ${loc.locality}`
+        : `${ageBandLabel(ageYears)} · ${pin}`,
+      metadata: {
+        country_code: country,
+        pin_code: pin,
+        age_years: ageYears,
+        experienced: child.track === "school",
+      },
+    });
+  }
+}
 
 export async function syncCircleMembership(
   client: PoolClient,
@@ -31,121 +223,50 @@ export async function syncCircleMembership(
   }
 
   const childrenResult = await client.query(
-    `SELECT ch.id, cur.code AS curriculum_code, cur.name AS curriculum_name, cur.id AS curriculum_id,
+    `SELECT ch.id, ch.track, ch.age_years, ch.experienced_age_years, ch.age_circle_until,
+            cur.code AS curriculum_code, cur.name AS curriculum_name, cur.id AS curriculum_id,
             g.id AS grade_id, g.code AS grade_code, g.label AS grade_label,
             s.id AS school_id, s.normalized_key AS school_normalized_key,
             s.name AS school_name, s.branch AS school_branch, s.city AS school_city
      FROM children ch
-     JOIN curricula cur ON cur.id = ch.curriculum_id
-     JOIN curriculum_grades g ON g.id = ch.grade_id
+     LEFT JOIN curricula cur ON cur.id = ch.curriculum_id
+     LEFT JOIN curriculum_grades g ON g.id = ch.grade_id
      JOIN schools s ON s.id = ch.school_id
      WHERE ch.user_id = $1`,
     [userId]
   );
 
   const locationResult = await client.query(
-    `SELECT pin_code, locality, community_name, community_key
+    `SELECT country_code, pin_code, locality, community_name, community_key
      FROM user_locations WHERE user_id = $1`,
     [userId]
   );
 
   const desired: DesiredCircle[] = [];
   const seenKeys = new Set<string>();
+  const children = childrenResult.rows as ChildRow[];
 
-  for (const child of childrenResult.rows) {
-    const key = `CURR_${child.curriculum_code}`;
-    if (!seenKeys.has(key)) {
-      seenKeys.add(key);
-      desired.push({
-        circleType: "curriculum",
-        key,
-        displayName: `${child.curriculum_name} Parents`,
-        metadata: {
-          curriculum_id: child.curriculum_id,
-          code: child.curriculum_code,
-        },
-      });
-    }
-
-    const classKey = `CLASS_${child.curriculum_code}_${child.grade_code}`;
-    if (!seenKeys.has(classKey)) {
-      seenKeys.add(classKey);
-      desired.push({
-        circleType: "class",
-        key: classKey,
-        displayName: `${child.curriculum_name} · ${child.grade_label}`,
-        metadata: {
-          curriculum_id: child.curriculum_id,
-          grade_id: child.grade_id,
-          code: child.curriculum_code,
-          grade_code: child.grade_code,
-        },
-      });
-    }
-
-    if (
-      child.school_normalized_key &&
-      child.school_normalized_key !== PLACEHOLDER_SCHOOL_KEY
-    ) {
-      const schoolKey = `SCHOOL_${child.school_normalized_key}`;
-      if (!seenKeys.has(schoolKey)) {
-        seenKeys.add(schoolKey);
-        desired.push({
-          circleType: "school",
-          key: schoolKey,
-          displayName: formatSchoolLabel(
-            child.school_name,
-            child.school_branch,
-            child.school_city
-          ),
-          metadata: {
-            school_id: child.school_id,
-            normalized_key: child.school_normalized_key,
-          },
-        });
-      }
-
-      const schoolClassKey =
-        `SCHOOL_CLASS_${child.school_normalized_key}` +
-        `_${child.curriculum_code}_${child.grade_code}`;
-      if (!seenKeys.has(schoolClassKey)) {
-        seenKeys.add(schoolClassKey);
-        desired.push({
-          circleType: "school_class",
-          key: schoolClassKey,
-          displayName:
-            `${formatSchoolLabel(
-              child.school_name,
-              child.school_branch,
-              child.school_city
-            )} · ${child.curriculum_name} · ${child.grade_label}`,
-          metadata: {
-            school_id: child.school_id,
-            normalized_key: child.school_normalized_key,
-            curriculum_id: child.curriculum_id,
-            grade_id: child.grade_id,
-            code: child.curriculum_code,
-            grade_code: child.grade_code,
-          },
-        });
-      }
-    }
+  for (const child of children) {
+    addSchoolAgeBoardCircles(desired, seenKeys, child);
+    addSchoolCircles(desired, seenKeys, child);
   }
 
   if (locationResult.rows.length > 0) {
     const loc = locationResult.rows[0];
+    addAgeLocalityCircles(desired, seenKeys, children, loc);
+
     const pinKey = `PIN_${loc.pin_code}`;
-    if (!seenKeys.has(pinKey)) {
-      seenKeys.add(pinKey);
-      desired.push({
-        circleType: "locality",
-        key: pinKey,
-        displayName: loc.locality
-          ? `${loc.pin_code} · ${loc.locality}`
-          : loc.pin_code,
-        metadata: { pin_code: loc.pin_code },
-      });
-    }
+    pushCircle(desired, seenKeys, {
+      circleType: "locality",
+      key: pinKey,
+      displayName: loc.locality
+        ? `${loc.pin_code} · ${loc.locality}`
+        : loc.pin_code,
+      metadata: {
+        pin_code: loc.pin_code,
+        country_code: loc.country_code ?? "IN",
+      },
+    });
 
     const communityKey =
       loc.community_key ??
@@ -154,16 +275,12 @@ export async function syncCircleMembership(
         : null);
 
     if (communityKey) {
-      const commKey = `COMM_${communityKey}`;
-      if (!seenKeys.has(commKey)) {
-        seenKeys.add(commKey);
-        desired.push({
-          circleType: "community",
-          key: commKey,
-          displayName: loc.community_name ?? communityKey,
-          metadata: { community_key: communityKey },
-        });
-      }
+      pushCircle(desired, seenKeys, {
+        circleType: "community",
+        key: `COMM_${communityKey}`,
+        displayName: loc.community_name ?? communityKey,
+        metadata: { community_key: communityKey },
+      });
     }
   }
 

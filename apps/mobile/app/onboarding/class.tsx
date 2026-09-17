@@ -15,15 +15,16 @@ import { api, type Curriculum, type School } from "@/lib/api";
 import { trackEvent } from "@/lib/analytics";
 import { getToken, saveSession } from "@/lib/session";
 import {
+  ensureOnboardingAttemptId,
   getOnboardingClassSelection,
   getOnboardingSchool,
   hydrateOnboardingDraft,
   setOnboardingChildren,
   setOnboardingCircles,
   setOnboardingClassSelection,
+  setOnboardingTrack,
   setOnboardingUser,
   setOnboardingStep,
-  ensureOnboardingAttemptId,
 } from "@/lib/onboarding-draft";
 import { getCurriculaCached } from "@/lib/reference-cache";
 import {
@@ -154,6 +155,7 @@ export default function OnboardingClassScreen() {
       const result = await api.addChild(
         token,
         {
+          track: "school",
           schoolId: school.id,
           curriculumId,
           gradeId,
@@ -163,6 +165,7 @@ export default function OnboardingClassScreen() {
         { idempotencyKey: ensureOnboardingAttemptId() }
       );
       await saveSession(token, result.user);
+      setOnboardingTrack("school");
       setOnboardingUser(result.user);
       setOnboardingCircles(result.circles);
       setOnboardingChildren([result.child]);

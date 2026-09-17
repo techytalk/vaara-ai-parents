@@ -3,8 +3,10 @@ import { CIRCLE_TYPE_LABELS } from "@/constants/circles";
 
 const circlePriority: Circle["circleType"][] = [
   "school_class",
+  "school_age",
   "class",
   "school",
+  "age_locality",
   "community",
   "locality",
   "curriculum",
@@ -21,7 +23,7 @@ function metaString(meta: Record<string, unknown>, key: string): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
-/** Whether this circle is derived from the given child's school / board / class. */
+/** Whether this circle is derived from the given child's school / board / class / age. */
 export function circleBelongsToChild(circle: Circle, child: Child): boolean {
   const meta = circle.metadata ?? {};
   switch (circle.circleType) {
@@ -32,6 +34,17 @@ export function circleBelongsToChild(circle: Circle, child: Child): boolean {
         metaString(meta, "school_id") === child.schoolId &&
         metaString(meta, "curriculum_id") === child.curriculumId &&
         metaString(meta, "grade_id") === child.gradeId
+      );
+    case "school_age":
+      return (
+        metaString(meta, "school_id") === child.schoolId &&
+        (Number(meta.age_years) === child.ageYears ||
+          Number(meta.age_years) === child.experiencedAgeYears)
+      );
+    case "age_locality":
+      return (
+        Number(meta.age_years) === child.ageYears ||
+        Number(meta.age_years) === child.experiencedAgeYears
       );
     case "class":
       return (
@@ -97,7 +110,11 @@ export function groupCirclesForDisplay(
     if (items.length > 0) {
       const label =
         child.nickname?.trim() ||
-        `${child.curriculum.name} · ${child.grade.label}`;
+        (child.track === "preschool" && child.ageYears
+          ? `${child.ageYears} years`
+          : child.curriculum && child.grade
+            ? `${child.curriculum.name} · ${child.grade.label}`
+            : child.school.displayLabel);
       groups.push({
         key: `child-${child.id}`,
         title: label,

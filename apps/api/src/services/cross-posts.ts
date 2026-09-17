@@ -186,12 +186,14 @@ export async function searchCircleDirectory(
      ORDER BY
        CASE c.circle_type
          WHEN 'school_class' THEN 1
+         WHEN 'school_age' THEN 1
          WHEN 'class' THEN 2
          WHEN 'school' THEN 3
-         WHEN 'curriculum' THEN 4
-         WHEN 'community' THEN 5
-         WHEN 'locality' THEN 6
-         ELSE 7
+         WHEN 'age_locality' THEN 4
+         WHEN 'curriculum' THEN 5
+         WHEN 'community' THEN 6
+         WHEN 'locality' THEN 7
+         ELSE 8
        END,
        c.display_name
      LIMIT $${sqlParams.length}`,

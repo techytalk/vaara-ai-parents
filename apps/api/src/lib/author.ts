@@ -35,12 +35,15 @@ type CircleRow = {
 };
 
 type ChildRow = {
-  curriculum_id: string;
-  curriculum_code: string;
-  curriculum_name: string;
-  grade_id: string;
-  grade_code: string;
-  grade_label: string;
+  track: string;
+  age_years: number | null;
+  experienced_age_years: number | null;
+  curriculum_id: string | null;
+  curriculum_code: string | null;
+  curriculum_name: string | null;
+  grade_id: string | null;
+  grade_code: string | null;
+  grade_label: string | null;
 };
 
 export async function getAuthorContextForCircle(
@@ -49,12 +52,13 @@ export async function getAuthorContextForCircle(
   circle: CircleRow
 ): Promise<string> {
   const { rows } = await client.query(
-    `SELECT cur.id AS curriculum_id, cur.code AS curriculum_code,
+    `SELECT ch.track, ch.age_years, ch.experienced_age_years,
+            cur.id AS curriculum_id, cur.code AS curriculum_code,
             cur.name AS curriculum_name, g.id AS grade_id,
             g.code AS grade_code, g.label AS grade_label
      FROM children ch
-     JOIN curricula cur ON cur.id = ch.curriculum_id
-     JOIN curriculum_grades g ON g.id = ch.grade_id
+     LEFT JOIN curricula cur ON cur.id = ch.curriculum_id
+     LEFT JOIN curriculum_grades g ON g.id = ch.grade_id
      WHERE ch.user_id = $1
      ORDER BY ch.created_at`,
     [userId]
@@ -99,11 +103,40 @@ function authorPairKey(userId: string, circleId: string): string {
   return `${userId}:${circleId}`;
 }
 
+function childAgeLabel(child: ChildRow): string | null {
+  const years =
+    child.age_years ??
+    (child.experienced_age_years != null ? child.experienced_age_years : null);
+  if (years == null) return null;
+  return `${years} years`;
+}
+
 function contextLabelFromChildren(
   children: ChildRow[],
   circle: CircleRow
 ): string {
   if (children.length === 0) return "";
+
+  if (
+    circle.circle_type === "age_locality" ||
+    circle.circle_type === "school_age"
+  ) {
+    const ageYears = circle.metadata?.age_years as number | undefined;
+    const match =
+      (ageYears != null
+        ? children.find(
+            (c) =>
+              c.age_years === ageYears || c.experienced_age_years === ageYears
+          )
+        : null) ??
+      children.find((c) => c.track === "preschool") ??
+      children[0];
+    const label = childAgeLabel(match);
+    if (label && circle.metadata?.experienced) {
+      return `${label} · Experienced`;
+    }
+    return label ?? "";
+  }
 
   if (circle.circle_type === "curriculum") {
     const curriculumId = circle.metadata?.curriculum_id as string | undefined;
@@ -111,7 +144,11 @@ function contextLabelFromChildren(
     const match =
       children.find((c) => c.curriculum_id === curriculumId) ??
       children.find((c) => c.curriculum_code === code) ??
+      children.find((c) => c.curriculum_id != null) ??
       children[0];
+    if (!match.curriculum_name || !match.grade_label) {
+      return childAgeLabel(match) ?? "";
+    }
     return `${match.curriculum_name} · ${match.grade_label}`;
   }
 
@@ -129,12 +166,20 @@ function contextLabelFromChildren(
       ) ??
       children.find((c) => c.grade_id === gradeId) ??
       children.find((c) => c.grade_code === gradeCode) ??
+      children.find((c) => c.curriculum_id != null) ??
       children[0];
+    if (!match.curriculum_name || !match.grade_label) {
+      return childAgeLabel(match) ?? "";
+    }
     return `${match.curriculum_name} · ${match.grade_label}`;
   }
 
-  const primary = children[0];
-  return `${primary.curriculum_name} · ${primary.grade_label}`;
+  const primary =
+    children.find((c) => c.curriculum_id != null) ?? children[0];
+  if (primary.curriculum_name && primary.grade_label) {
+    return `${primary.curriculum_name} · ${primary.grade_label}`;
+  }
+  return childAgeLabel(primary) ?? "";
 }
 
 /**
@@ -168,13 +213,13 @@ export async function buildAuthorViewsForCircleAccess(
   );
 
   const { rows: childRows } = await client.query(
-    `SELECT ch.user_id,
+    `SELECT ch.user_id, ch.track, ch.age_years, ch.experienced_age_years,
             cur.id AS curriculum_id, cur.code AS curriculum_code,
             cur.name AS curriculum_name, g.id AS grade_id,
             g.code AS grade_code, g.label AS grade_label
      FROM children ch
-     JOIN curricula cur ON cur.id = ch.curriculum_id
-     JOIN curriculum_grades g ON g.id = ch.grade_id
+     LEFT JOIN curricula cur ON cur.id = ch.curriculum_id
+     LEFT JOIN curriculum_grades g ON g.id = ch.grade_id
      WHERE ch.user_id = ANY($1::uuid[])
      ORDER BY ch.created_at`,
     [userIds]
@@ -184,6 +229,12 @@ export async function buildAuthorViewsForCircleAccess(
   for (const row of childRows) {
     const list = childrenByUser.get(row.user_id) ?? [];
     list.push({
+      track: row.track ?? "school",
+      age_years: row.age_years == null ? null : Number(row.age_years),
+      experienced_age_years:
+        row.experienced_age_years == null
+          ? null
+          : Number(row.experienced_age_years),
       curriculum_id: row.curriculum_id,
       curriculum_code: row.curriculum_code,
       curriculum_name: row.curriculum_name,
@@ -222,28 +273,38 @@ export async function buildReviewAuthorView(
   storedAvatarKey?: string | null
 ): Promise<AuthorView> {
   const { rows } = await client.query(
-    `SELECT cur.name AS curriculum_name, g.label AS grade_label
+    `SELECT ch.track, ch.age_years, ch.experienced_age_years,
+            cur.name AS curriculum_name, g.label AS grade_label
      FROM children ch
-     JOIN curricula cur ON cur.id = ch.curriculum_id
-     JOIN curriculum_grades g ON g.id = ch.grade_id
+     LEFT JOIN curricula cur ON cur.id = ch.curriculum_id
+     LEFT JOIN curriculum_grades g ON g.id = ch.grade_id
      WHERE ch.user_id = $1
      ORDER BY ch.created_at
      LIMIT 1`,
     [userId]
   );
 
-  const contextLabel =
-    rows.length > 0
-      ? `${rows[0].curriculum_name} · ${rows[0].grade_label}`
-      : "";
+  let contextLabel = "";
+  if (rows.length > 0) {
+    const row = rows[0];
+    if (row.curriculum_name && row.grade_label) {
+      contextLabel = `${row.curriculum_name} · ${row.grade_label}`;
+    } else {
+      const years =
+        row.age_years ?? row.experienced_age_years ?? null;
+      if (years != null) contextLabel = `${years} years`;
+    }
+  }
 
   return mapAuthorView(userId, anonymousHandle, contextLabel, storedAvatarKey);
 }
 
 const CIRCLE_TYPE_RANK: Record<string, number> = {
-  school_class: 6,
-  class: 5,
-  school: 4,
+  school_class: 7,
+  school_age: 7,
+  class: 6,
+  school: 5,
+  age_locality: 4,
   community: 3,
   locality: 2,
   curriculum: 1,

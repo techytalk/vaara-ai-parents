@@ -8,6 +8,10 @@ the reference for UX detail and cache reasoning.
 
 Onboarding asks for four things: **PIN, area, school, class.** Nothing else.
 
+Preschool parents (3 and 4 years) are specified separately in
+[`PRESCHOOL_ONBOARDING.md`](./PRESCHOOL_ONBOARDING.md). This document remains
+the school-age path.
+
 **Status:** decisions agreed; one coordinated implementation, with ordered
 activation and validation gates.
 **Date:** 15 September 2026.

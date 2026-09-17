@@ -54,8 +54,10 @@ type CirclePlaceholder = {
 
 const circleIconColors: Record<Circle["circleType"], string> = {
   school_class: colors.lavender,
+  school_age: colors.lavender,
   class: colors.coral,
   school: colors.amber,
+  age_locality: colors.primaryDark,
   community: colors.teal,
   locality: colors.primaryDark,
   curriculum: colors.lavender,
@@ -67,10 +69,12 @@ function iconForType(type: Circle["circleType"]) {
   const icons: Record<Circle["circleType"], keyof typeof Ionicons.glyphMap> = {
     curriculum: "library-outline",
     locality: "location-outline",
+    age_locality: "people-outline",
     community: "home-outline",
     school: "school-outline",
     class: "people-outline",
     school_class: "shield-checkmark-outline",
+    school_age: "happy-outline",
   };
   return icons[type];
 }

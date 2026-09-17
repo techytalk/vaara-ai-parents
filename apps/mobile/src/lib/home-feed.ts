@@ -2,8 +2,10 @@ import type { Circle } from "@/lib/api";
 
 const circlePriority: Circle["circleType"][] = [
   "school_class",
+  "school_age",
   "class",
   "school",
+  "age_locality",
   "community",
   "locality",
   "curriculum",

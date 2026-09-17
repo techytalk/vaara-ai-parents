@@ -40,6 +40,9 @@ type Props = {
   identityOptional?: boolean;
   /** School → board → class first; identity fields last. */
   schoolFirst?: boolean;
+  /** Hide board/class chips (preschool path). */
+  showBoardAndClass?: boolean;
+  list?: "preschool" | "school" | "preschool_campus";
 };
 
 export function ChildFormFields({
@@ -64,6 +67,8 @@ export function ChildFormFields({
   defaultCountry = "IN",
   identityOptional = true,
   schoolFirst = false,
+  showBoardAndClass = true,
+  list,
 }: Props) {
   const selectedCurriculum = curricula.find((c) => c.id === curriculumId);
   const dobBounds = childDobBounds();
@@ -112,6 +117,8 @@ export function ChildFormFields({
         defaultState={defaultState}
         defaultLocality={defaultLocality}
         defaultCountry={defaultCountry}
+        list={list}
+        createLabel={list === "preschool" ? "Add preschool" : undefined}
       />
 
       <FieldLabel>Gender *</FieldLabel>
@@ -126,31 +133,34 @@ export function ChildFormFields({
         ))}
       </View>
 
-      <FieldLabel>Curriculum *</FieldLabel>
-      <Text style={styles.curriculumHint}>
-        For nursery through 12th, choose CBSE, SSC, or IGCSE.
-      </Text>
-      {!curriculumId ? (
-        <Text style={styles.curriculumHint}>Pick a board first.</Text>
+      {showBoardAndClass ? (
+        <>
+          <FieldLabel>Curriculum *</FieldLabel>
+          <Text style={styles.curriculumHint}>
+            For nursery through 12th, choose CBSE, SSC, or IGCSE.
+          </Text>
+          {!curriculumId ? (
+            <Text style={styles.curriculumHint}>Pick a board first.</Text>
+          ) : null}
+          <FlatList
+            horizontal
+            data={curricula}
+            keyExtractor={(item) => item.id}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chipScrollRow}
+            renderItem={({ item }) => (
+              <View style={styles.chipWrap}>
+                <Chip
+                  label={curriculumChipLabel(item)}
+                  selected={curriculumId === item.id}
+                  onPress={() => onCurriculumChange(item.id)}
+                />
+              </View>
+            )}
+          />
+        </>
       ) : null}
-      <FlatList
-        horizontal
-        data={curricula}
-        keyExtractor={(item) => item.id}
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.chipScrollRow}
-        renderItem={({ item }) => (
-          <View style={styles.chipWrap}>
-            <Chip
-              label={curriculumChipLabel(item)}
-              selected={curriculumId === item.id}
-              onPress={() => onCurriculumChange(item.id)}
-            />
-          </View>
-        )}
-      />
-
-      {selectedCurriculum ? (
+      {showBoardAndClass && selectedCurriculum ? (
         <>
           {isLimitedCurriculum(selectedCurriculum) ? (
             <InfoCard>

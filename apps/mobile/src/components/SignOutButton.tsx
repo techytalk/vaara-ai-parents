@@ -31,7 +31,7 @@ function compactEmail(email: string): string {
 export function OnboardingAccountSwitch({
   step,
 }: {
-  step: "location" | "school" | "class";
+  step: "location" | "school" | "age" | "class";
 }) {
   const router = useRouter();
   const [email, setEmail] = useState("");

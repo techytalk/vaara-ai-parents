@@ -250,6 +250,13 @@ export function createReferenceRoutes() {
       const pin = c.req.query("pin")?.trim() ?? "";
       const locality = c.req.query("locality")?.trim() || null;
       const region = c.req.query("region")?.trim() || null;
+      const listRaw = c.req.query("list")?.trim();
+      const list =
+        listRaw === "preschool" ||
+        listRaw === "school" ||
+        listRaw === "preschool_campus"
+          ? listRaw
+          : undefined;
       if (!pin) return c.json({ error: "pin is required" }, 400);
 
       const client = await pool.connect();
@@ -259,6 +266,7 @@ export function createReferenceRoutes() {
           pinCode: pin,
           locality,
           region,
+          list,
         });
         c.header("Cache-Control", SHORTLIST_CACHE);
         return c.json(schools);

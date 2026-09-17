@@ -160,11 +160,13 @@ export function createCirclesRoutes() {
          ORDER BY
            CASE c.circle_type
              WHEN 'school_class' THEN 1
+             WHEN 'school_age' THEN 1
              WHEN 'class' THEN 2
              WHEN 'school' THEN 3
-             WHEN 'community' THEN 4
-             WHEN 'locality' THEN 5
-             WHEN 'curriculum' THEN 6
+             WHEN 'age_locality' THEN 4
+             WHEN 'community' THEN 5
+             WHEN 'locality' THEN 6
+             WHEN 'curriculum' THEN 7
            END,
            c.display_name`,
         [userId]
@@ -1814,11 +1816,13 @@ export function createConversationsRoutes() {
          ORDER BY peer.id,
            CASE c.circle_type
              WHEN 'school_class' THEN 1
+             WHEN 'school_age' THEN 1
              WHEN 'class' THEN 2
              WHEN 'school' THEN 3
-             WHEN 'community' THEN 4
-             WHEN 'locality' THEN 5
-             WHEN 'curriculum' THEN 6
+             WHEN 'age_locality' THEN 4
+             WHEN 'community' THEN 5
+             WHEN 'locality' THEN 6
+             WHEN 'curriculum' THEN 7
            END
          LIMIT $2`,
         params

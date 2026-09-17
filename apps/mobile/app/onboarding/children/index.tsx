@@ -21,7 +21,13 @@ import { radii, shadows, spacing, typography } from "@/constants/theme";
 import { trackEvent } from "@/lib/analytics";
 
 function childBoardGrade(child: Child): string {
-  return `${child.curriculum.name} · ${child.grade.label}`;
+  if (child.track === "preschool" && child.ageYears) {
+    return `${child.ageYears} years`;
+  }
+  if (child.curriculum && child.grade) {
+    return `${child.curriculum.name} · ${child.grade.label}`;
+  }
+  return child.school.displayLabel;
 }
 
 function ChildCard({

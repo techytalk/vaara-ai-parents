@@ -11,6 +11,8 @@ export function circleCardSubtitle(circle: Circle): string {
         return parts[0];
       }
       return CIRCLE_TYPE_LABELS.school_class;
+    case "school_age":
+      return CIRCLE_TYPE_LABELS.school_age;
     case "school":
       if (typeof meta.code === "string") {
         return meta.code;
@@ -24,6 +26,11 @@ export function circleCardSubtitle(circle: Circle): string {
         return parts[parts.length - 1];
       }
       return CIRCLE_TYPE_LABELS.class;
+    case "age_locality":
+      if (typeof meta.pin_code === "string") {
+        return String(meta.pin_code);
+      }
+      return CIRCLE_TYPE_LABELS.age_locality;
     case "locality":
       if (typeof meta.pin_code === "string") {
         return String(meta.pin_code);

@@ -100,6 +100,16 @@ export function createSchoolsRoutes() {
     const pin = c.req.query("pin")?.trim();
     const sort = c.req.query("sort") === "rating" ? "rating" : "relevance";
     const limit = Math.min(Number(c.req.query("limit") ?? 15), 30);
+    const list = c.req.query("list")?.trim();
+    // list=preschool | school | preschool_campus
+    const kindClause =
+      list === "preschool"
+        ? `AND s.kind = 'preschool'`
+        : list === "preschool_campus"
+          ? `AND s.kind = 'school' AND s.offers_preschool = true`
+          : list === "school"
+            ? `AND s.kind = 'school'`
+            : "";
 
     if (q.length < 2) {
       return c.json([]);
@@ -129,6 +139,7 @@ export function createSchoolsRoutes() {
       const { rows } = await client.query(
         `SELECT s.id, s.name, s.branch, s.city, s.state, s.pin_code, s.verified,
                 s.rating_avg, s.rating_count, s.board_codes, s.locality, s.region, s.aliases,
+                s.kind, s.offers_preschool,
                 CASE
                   WHEN s.name ILIKE $2 THEN 0
                   WHEN s.search_text ILIKE $2 THEN 1
@@ -140,6 +151,7 @@ export function createSchoolsRoutes() {
          WHERE s.normalized_key <> 'school_not_specified||unknown'
            AND ${notRedirected}
            AND ${visible}
+           ${kindClause}
            AND (
              s.search_text ILIKE $1
              OR s.search_text % $3
@@ -156,6 +168,7 @@ export function createSchoolsRoutes() {
           ms: Date.now() - started,
           results: rows.length,
           qLen: q.length,
+          list: list ?? null,
         })
       );
       return c.json(rows.map(mapSchoolListRow));
@@ -361,6 +374,8 @@ export function createSchoolsRoutes() {
         state?: string;
         pinCode?: string;
         locality?: string;
+        kind?: "preschool" | "school";
+        offersPreschool?: boolean;
         confirmCreateToken?: string;
       }>();
 
@@ -371,6 +386,9 @@ export function createSchoolsRoutes() {
       const pinCode = body.pinCode?.trim() || null;
       const locality = body.locality?.trim() || branch;
       const confirmCreateToken = body.confirmCreateToken?.trim() || null;
+      const kind = body.kind === "preschool" ? "preschool" : "school";
+      const offersPreschool =
+        kind === "preschool" ? true : Boolean(body.offersPreschool);
 
       if (!name || !city) {
         return c.json({ error: "name and city are required" }, 400);
@@ -540,10 +558,23 @@ export function createSchoolsRoutes() {
 
           const { rows } = await client.query(
             `INSERT INTO schools
-               (name, branch, city, state, pin_code, locality, normalized_key, created_by_user_id, verified)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, false)
-             RETURNING id, name, branch, city, state, pin_code, verified, locality, region, aliases`,
-            [name, branch, city, state, pinCode, locality, normalizedKey, userId]
+               (name, branch, city, state, pin_code, locality, normalized_key,
+                created_by_user_id, verified, kind, offers_preschool)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, false, $9, $10)
+             RETURNING id, name, branch, city, state, pin_code, verified, locality, region, aliases,
+                       kind, offers_preschool`,
+            [
+              name,
+              branch,
+              city,
+              state,
+              pinCode,
+              locality,
+              normalizedKey,
+              userId,
+              kind,
+              offersPreschool,
+            ]
           );
 
           const mapped = mapSchoolRow(rows[0]);

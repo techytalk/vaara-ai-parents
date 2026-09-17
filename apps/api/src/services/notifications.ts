@@ -48,9 +48,11 @@ const DIGEST_MIN_AGE_MS = Number(
 );
 
 const CIRCLE_TYPE_RANK: Record<string, number> = {
-  school_class: 6,
-  class: 5,
-  school: 4,
+  school_class: 7,
+  school_age: 7,
+  class: 6,
+  school: 5,
+  age_locality: 4,
   community: 3,
   locality: 2,
   curriculum: 1,

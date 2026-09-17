@@ -41,11 +41,13 @@ import { applyTimelineWrites } from "./timeline-outbox.js";
 
 const CIRCLE_RANK: Record<string, number> = {
   school_class: 1,
+  school_age: 1,
   class: 2,
   school: 3,
-  community: 4,
-  locality: 5,
-  curriculum: 6,
+  age_locality: 4,
+  community: 5,
+  locality: 6,
+  curriculum: 7,
 };
 
 function circleRank(type: string) {

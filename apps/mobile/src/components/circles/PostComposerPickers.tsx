@@ -46,8 +46,12 @@ function circleTypeLabel(circleType: string): string {
   switch (circleType) {
     case "school_class":
       return "Class";
+    case "school_age":
+      return "Age";
     case "class":
       return "Grade";
+    case "age_locality":
+      return "Age · area";
     case "locality":
       return "Area";
     case "curriculum":

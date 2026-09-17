@@ -16,6 +16,11 @@ This note captures the flow and product locks agreed in product discussion so th
 
 **Current product stays as-is:** sign-up still requires at least one child (school + curriculum + grade) and a location.
 
+Preschool (born 3- and 4-year-olds, campus + age circles, no board) is a
+different track and is specified in
+[`PRESCHOOL_ONBOARDING.md`](./PRESCHOOL_ONBOARDING.md). Do not fold pregnancy
+into that work.
+
 ---
 
 ## What we have today (do not change)

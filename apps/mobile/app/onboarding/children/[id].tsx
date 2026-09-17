@@ -64,10 +64,10 @@ export default function ChildDetailScreen() {
   );
 
   const curriculumFullName =
-    child && curricula.length > 0
-      ? curricula.find((c) => c.code === child.curriculum.code)?.name ??
+    child && child.curriculum && curricula.length > 0
+      ? curricula.find((c) => c.code === child.curriculum?.code)?.name ??
         child.curriculum.name
-      : child?.curriculum.name ?? "";
+      : child?.curriculum?.name ?? "";
 
   function onRemove() {
     Alert.alert(
@@ -114,7 +114,12 @@ export default function ChildDetailScreen() {
     );
   }
 
-  const boardGrade = `${child.curriculum.name} · ${child.grade.label}`;
+  const boardGrade =
+    child.track === "preschool" && child.ageYears
+      ? `${child.ageYears} years`
+      : child.curriculum && child.grade
+        ? `${child.curriculum.name} · ${child.grade.label}`
+        : child.school.displayLabel;
   const openIdentity = (focus: "identity" = "identity") => {
     router.push({
       pathname: "/onboarding/children/edit/[id]",
@@ -156,8 +161,20 @@ export default function ChildDetailScreen() {
             child.dateOfBirth ? undefined : () => openIdentity("identity")
           }
         />
-        <DetailRow label="Curriculum" value={curriculumFullName} />
-        <DetailRow label="Class / grade" value={child.grade.label} />
+        <DetailRow
+          label={child.track === "preschool" ? "Age" : "Curriculum"}
+          value={
+            child.track === "preschool" && child.ageYears
+              ? `${child.ageYears} years`
+              : curriculumFullName || "—"
+          }
+        />
+        {child.track === "preschool" ? null : (
+          <DetailRow
+            label="Class / grade"
+            value={child.grade?.label ?? "—"}
+          />
+        )}
         <DetailRow label="School" value={child.school.displayLabel} />
       </View>
 

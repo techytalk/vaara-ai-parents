@@ -43,6 +43,8 @@ export type School = {
   normalizedKey?: string;
   displayLabel: string;
   boardCodes?: string[];
+  kind?: "preschool" | "school";
+  offersPreschool?: boolean;
 };
 
 export type SchoolListItem = School & {
@@ -56,11 +58,16 @@ export type Child = {
   nickname: string | null;
   gender: string;
   dateOfBirth: string | null;
-  curriculumId: string;
-  gradeId: string;
+  track: "school" | "preschool";
+  ageYears: number | null;
+  ageConfirmedAt?: string | null;
+  experiencedAgeYears?: number | null;
+  ageCircleUntil?: string | null;
+  curriculumId: string | null;
+  gradeId: string | null;
   schoolId: string;
-  curriculum: { code: string; name: string };
-  grade: { code: string; label: string };
+  curriculum: { code: string; name: string } | null;
+  grade: { code: string; label: string } | null;
   school: School;
 };
 
@@ -141,6 +148,8 @@ export type Circle = {
     | "class"
     | "school"
     | "school_class"
+    | "school_age"
+    | "age_locality"
     | "community";
   key: string;
   displayName: string;
@@ -938,11 +947,13 @@ export const api = {
     pin: string;
     locality?: string;
     region?: string;
+    list?: "preschool" | "school" | "preschool_campus";
   }) => {
     const search = new URLSearchParams({ pin: params.pin });
     if (params.country) search.set("country", params.country);
     if (params.locality) search.set("locality", params.locality);
     if (params.region) search.set("region", params.region);
+    if (params.list) search.set("list", params.list);
     return request<SchoolListItem[]>(
       `/v1/reference/schools/shortlist?${search}`
     );
@@ -974,6 +985,7 @@ export const api = {
       pin?: string;
       sort?: "relevance" | "rating";
       limit?: number;
+      list?: "preschool" | "school" | "preschool_campus";
     },
     options?: { signal?: AbortSignal }
   ) => {
@@ -982,6 +994,7 @@ export const api = {
     if (params.pin) search.set("pin", params.pin);
     if (params.sort) search.set("sort", params.sort);
     if (params.limit) search.set("limit", String(params.limit));
+    if (params.list) search.set("list", params.list);
     return request<SchoolListItem[]>(
       `/v1/schools/search?${search}`,
       { signal: options?.signal },
@@ -1020,6 +1033,8 @@ export const api = {
       state?: string;
       pinCode?: string;
       locality?: string;
+      kind?: "preschool" | "school";
+      offersPreschool?: boolean;
       confirmCreateToken?: string;
     },
     options?: { idempotencyKey?: string }
@@ -1045,8 +1060,10 @@ export const api = {
       nickname?: string;
       gender?: string;
       dateOfBirth?: string;
-      curriculumId: string;
-      gradeId: string;
+      track?: "school" | "preschool";
+      ageYears?: number;
+      curriculumId?: string;
+      gradeId?: string;
       schoolId: string;
       onboardingAttemptId?: string;
     },
@@ -1076,8 +1093,10 @@ export const api = {
       nickname?: string | null;
       gender?: string;
       dateOfBirth?: string | null;
-      curriculumId?: string;
-      gradeId?: string;
+      track?: "school" | "preschool";
+      ageYears?: number | null;
+      curriculumId?: string | null;
+      gradeId?: string | null;
       schoolId?: string;
     }
   ) =>

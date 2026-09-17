@@ -9,6 +9,8 @@ Related:
 
 - **Consolidated build plan** for Steps 1–2 and child identity —
   [`ONBOARDING_DISCOVERY_PLAN.md`](./ONBOARDING_DISCOVERY_PLAN.md)
+- **Preschool (3 / 4 years) onboarding** —
+  [`PRESCHOOL_ONBOARDING.md`](./PRESCHOOL_ONBOARDING.md)
 - Location Step 1 locality UX (hide city/state; server-fill from PIN) —
   [`ONBOARDING_LOCATION_LOCALITY.md`](./ONBOARDING_LOCATION_LOCALITY.md)
 - School Step 2 search speed (Redis / client cache; CDN only if public) —

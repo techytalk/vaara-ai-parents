@@ -77,11 +77,13 @@ export default function AddChildScreen() {
       const body: {
         nickname?: string;
         dateOfBirth?: string;
+        track: "school";
         schoolId: string;
         gender: string;
         curriculumId: string;
         gradeId: string;
       } = {
+        track: "school",
         schoolId: selectedSchool.id,
         gender,
         curriculumId,

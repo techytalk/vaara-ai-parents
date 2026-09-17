@@ -31,14 +31,15 @@ export function resolveChildFormState(
   child: Child,
   curricula: Curriculum[]
 ): { curriculumId: string; gradeId: string | null } | null {
+  if (!child.curriculumId || !child.curriculum || !child.grade) return null;
   const curriculum =
     curricula.find((c) => c.id === child.curriculumId) ??
-    curricula.find((c) => c.code === child.curriculum.code);
+    curricula.find((c) => c.code === child.curriculum?.code);
   if (!curriculum) return null;
 
   const grade =
     curriculum.grades.find((g) => g.id === child.gradeId) ??
-    curriculum.grades.find((g) => g.code === child.grade.code);
+    curriculum.grades.find((g) => g.code === child.grade?.code);
 
   return {
     curriculumId: curriculum.id,

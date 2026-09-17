@@ -34,6 +34,9 @@ type Props = {
   defaultLocality?: string;
   defaultCountry?: string;
   onCreateModeChange?: (open: boolean) => void;
+  /** Filters shortlist/search/create for preschool onboarding. */
+  list?: "preschool" | "school" | "preschool_campus";
+  createLabel?: string;
 };
 
 function toSchool(item: SchoolListItem): School {
@@ -60,6 +63,8 @@ export function SchoolPicker({
   defaultLocality = "",
   defaultCountry = "IN",
   onCreateModeChange,
+  list,
+  createLabel,
 }: Props) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SchoolListItem[]>([]);
@@ -109,15 +114,16 @@ export function SchoolPicker({
         country: defaultCountry,
         pin: defaultPin,
         locality: defaultLocality || undefined,
+        list,
       }).catch(() => [] as SchoolListItem[]),
       ensureSchoolCatalog().catch(() => null),
-    ]).then(([list]) => {
+    ]).then(([listRows]) => {
       if (cancelled) return;
-      setShortlist(list);
+      setShortlist(listRows);
       setShortlistReady(true);
       // Re-run local filter if the user already typed while catalogue loaded.
       const q = query.trim();
-      if (q.length > 0 && q.length < 3) {
+      if (q.length > 0 && q.length < 3 && !list) {
         setResults(filterLocalCatalog(q, 20));
         setSearchSettled(true);
       }
@@ -125,9 +131,9 @@ export function SchoolPicker({
     return () => {
       cancelled = true;
     };
-  }, [defaultCountry, defaultPin, defaultLocality]);
+  }, [defaultCountry, defaultPin, defaultLocality, list]);
 
-  // Typed search: local first, remote after 3 chars with abort
+  // Typed search: local first (unless list filter), remote after 3 chars with abort
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     abortRef.current?.abort();
@@ -146,7 +152,7 @@ export function SchoolPicker({
     }
 
     setSearchSettled(false);
-    const local = filterLocalCatalog(q, 20);
+    const local = list ? [] : filterLocalCatalog(q, 20);
     setResults(local);
     trackEvent("school_query", {
       ms: 0,
@@ -169,13 +175,27 @@ export function SchoolPicker({
       setError(null);
       const started = Date.now();
       try {
-        const remote = await api.searchSchoolsPublic(
-          { q, limit: 20 },
-          { signal: controller.signal }
-        );
+        const remote = list
+          ? await api.searchSchools(
+              token,
+              {
+                q,
+                limit: 20,
+                city: defaultCity || undefined,
+                pin: defaultPin || undefined,
+                list,
+              },
+              { signal: controller.signal }
+            )
+          : await api.searchSchoolsPublic(
+              { q, limit: 20 },
+              { signal: controller.signal }
+            );
         if (requestId !== requestIdRef.current) return;
         const byId = new Map<string, SchoolListItem>();
-        for (const item of filterLocalCatalog(q, 20)) byId.set(item.id, item);
+        if (!list) {
+          for (const item of filterLocalCatalog(q, 20)) byId.set(item.id, item);
+        }
         for (const item of remote) byId.set(item.id, item);
         const merged = Array.from(byId.values());
         setResults(merged);
@@ -203,10 +223,21 @@ export function SchoolPicker({
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [query, selected?.id, selected?.displayLabel]);
+  }, [
+    query,
+    selected?.id,
+    selected?.displayLabel,
+    list,
+    token,
+    defaultCity,
+    defaultPin,
+  ]);
 
   function openCreateForm() {
-    trackEvent("school_create_opened");
+    trackEvent("school_create_opened", {
+      track: list === "preschool" ? "preschool" : "school",
+      school_kind: list === "preschool" ? "preschool" : "school",
+    });
     setShowAddNew(true);
     setAddName(query.trim());
     setCandidates([]);
@@ -232,6 +263,11 @@ export function SchoolPicker({
           state: addState.trim() || defaultState || undefined,
           pinCode: addPin.trim() || defaultPin || undefined,
           locality: defaultLocality || addBranch.trim() || undefined,
+          kind: list === "preschool" ? "preschool" : "school",
+          offersPreschool:
+            list === "preschool" || list === "preschool_campus"
+              ? true
+              : undefined,
           ...(confirmToken ? { confirmCreateToken: confirmToken } : {}),
         },
         {
@@ -241,7 +277,9 @@ export function SchoolPicker({
             : undefined,
         }
       );
-      trackEvent("school_created");
+      trackEvent("school_created", {
+        school_kind: school.kind ?? (list === "preschool" ? "preschool" : "school"),
+      });
       trackEvent("school_selected", { source: "created" });
       onSelect(school);
       setShowAddNew(false);
@@ -378,7 +416,9 @@ export function SchoolPicker({
           {showOther ? (
             <Pressable style={styles.otherRow} onPress={openCreateForm}>
               <Text style={styles.otherTitle}>Not here / Other</Text>
-              <Text style={styles.otherMeta}>Add your school</Text>
+              <Text style={styles.otherMeta}>
+                {createLabel ?? "Add your school"}
+              </Text>
             </Pressable>
           ) : null}
         </View>
@@ -387,7 +427,9 @@ export function SchoolPicker({
       {showAddNew ? (
         <View style={styles.addForm}>
           <View style={styles.addFormHeader}>
-            <Text style={styles.addFormTitle}>New school details</Text>
+            <Text style={styles.addFormTitle}>
+              {createLabel ?? "New school details"}
+            </Text>
             <Pressable
               onPress={() => {
                 setShowAddNew(false);

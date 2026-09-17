@@ -273,8 +273,9 @@ export async function getSchoolShortlistCached(params: {
   country?: string;
   pin: string;
   locality?: string;
+  list?: "preschool" | "school" | "preschool_campus";
 }): Promise<SchoolListItem[]> {
-  const key = `${params.country ?? "IN"}:${params.pin}:${params.locality ?? ""}`;
+  const key = `${params.country ?? "IN"}:${params.pin}:${params.locality ?? ""}:${params.list ?? ""}`;
   if (
     memoryShortlist &&
     memoryShortlist.key === key &&

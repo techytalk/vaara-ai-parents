@@ -39,7 +39,13 @@ const KIND_PRIORITY: CompletionPromptKind[] = [
 ];
 
 function boardGradeLabel(child: Child): string {
-  return `${child.curriculum.name} · ${child.grade.label}`;
+  if (child.track === "preschool" && child.ageYears) {
+    return `${child.ageYears} years`;
+  }
+  if (child.curriculum && child.grade) {
+    return `${child.curriculum.name} · ${child.grade.label}`;
+  }
+  return child.school.displayLabel;
 }
 
 /**

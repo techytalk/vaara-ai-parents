@@ -34,34 +34,58 @@ import { lookupPostalCode } from "../lib/postal-code/index.js";
 
 const CHILD_SELECT = `
   ch.id, ch.nickname, ch.gender, ch.date_of_birth, ch.curriculum_id, ch.grade_id, ch.school_id,
+  ch.track, ch.age_years, ch.age_confirmed_at, ch.experienced_age_years, ch.age_circle_until,
   cur.code AS curriculum_code, cur.name AS curriculum_name,
   g.code AS grade_code, g.label AS grade_label,
   s.name AS school_name, s.branch AS school_branch, s.city AS school_city,
   s.state AS school_state, s.pin_code AS school_pin_code, s.verified AS school_verified,
-  s.normalized_key AS school_normalized_key
+  s.normalized_key AS school_normalized_key, s.kind AS school_kind,
+  s.offers_preschool AS school_offers_preschool
 `;
 
 function mapChild(row: Record<string, unknown>) {
   const schoolName = row.school_name as string;
   const schoolCity = row.school_city as string;
   const schoolBranch = row.school_branch as string | null;
+  const track = (row.track as string) === "preschool" ? "preschool" : "school";
+  const ageYears =
+    row.age_years == null ? null : Number(row.age_years);
+  const experiencedAgeYears =
+    row.experienced_age_years == null
+      ? null
+      : Number(row.experienced_age_years);
 
   return {
     id: row.id,
     nickname: row.nickname,
     gender: row.gender,
     dateOfBirth: formatChildDateOfBirth(row.date_of_birth),
+    track,
+    ageYears,
+    ageConfirmedAt: row.age_confirmed_at
+      ? new Date(row.age_confirmed_at as string | Date).toISOString()
+      : null,
+    experiencedAgeYears,
+    ageCircleUntil: row.age_circle_until
+      ? new Date(row.age_circle_until as string | Date).toISOString()
+      : null,
     curriculumId: row.curriculum_id,
     gradeId: row.grade_id,
     schoolId: row.school_id,
-    curriculum: {
-      code: row.curriculum_code,
-      name: row.curriculum_name,
-    },
-    grade: {
-      code: row.grade_code,
-      label: row.grade_label,
-    },
+    curriculum:
+      row.curriculum_code != null
+        ? {
+            code: row.curriculum_code,
+            name: row.curriculum_name,
+          }
+        : null,
+    grade:
+      row.grade_code != null
+        ? {
+            code: row.grade_code,
+            label: row.grade_label,
+          }
+        : null,
     school: {
       id: row.school_id,
       name: schoolName,
@@ -71,6 +95,8 @@ function mapChild(row: Record<string, unknown>) {
       pinCode: row.school_pin_code,
       verified: row.school_verified,
       normalizedKey: row.school_normalized_key,
+      kind: row.school_kind ?? "school",
+      offersPreschool: Boolean(row.school_offers_preschool),
       displayLabel: formatSchoolLabel(schoolName, schoolBranch, schoolCity),
     },
   };
@@ -83,8 +109,8 @@ async function fetchChildById(
   const { rows } = await client.query(
     `SELECT ${CHILD_SELECT}
      FROM children ch
-     JOIN curricula cur ON cur.id = ch.curriculum_id
-     JOIN curriculum_grades g ON g.id = ch.grade_id
+     LEFT JOIN curricula cur ON cur.id = ch.curriculum_id
+     LEFT JOIN curriculum_grades g ON g.id = ch.grade_id
      JOIN schools s ON s.id = ch.school_id
      WHERE ch.id = $1`,
     [childId]
@@ -138,11 +164,13 @@ async function fetchUserCircles(
      ORDER BY
        CASE c.circle_type
          WHEN 'school_class' THEN 1
+         WHEN 'school_age' THEN 1
          WHEN 'class' THEN 2
          WHEN 'school' THEN 3
-         WHEN 'community' THEN 4
-         WHEN 'locality' THEN 5
-         WHEN 'curriculum' THEN 6
+         WHEN 'age_locality' THEN 4
+         WHEN 'community' THEN 5
+         WHEN 'locality' THEN 6
+         WHEN 'curriculum' THEN 7
        END,
        c.display_name`,
     [userId]
@@ -240,8 +268,8 @@ export function createMeRoutes() {
       const { rows } = await client.query(
         `SELECT ${CHILD_SELECT}
          FROM children ch
-         JOIN curricula cur ON cur.id = ch.curriculum_id
-         JOIN curriculum_grades g ON g.id = ch.grade_id
+         LEFT JOIN curricula cur ON cur.id = ch.curriculum_id
+         LEFT JOIN curriculum_grades g ON g.id = ch.grade_id
          JOIN schools s ON s.id = ch.school_id
          WHERE ch.user_id = $1
          ORDER BY ch.created_at`,
@@ -264,6 +292,8 @@ export function createMeRoutes() {
       nickname?: string;
       gender?: string;
       dateOfBirth?: string;
+      track?: "school" | "preschool";
+      ageYears?: number;
       curriculumId?: string;
       gradeId?: string;
       schoolId?: string;
@@ -271,6 +301,7 @@ export function createMeRoutes() {
     }>();
 
     const effectiveKey = idempotencyKey || body.onboardingAttemptId?.trim() || null;
+    const track = body.track === "preschool" ? "preschool" : "school";
 
     const nickname = body.nickname?.trim() || null;
     let dateOfBirth: string | null = null;
@@ -283,11 +314,27 @@ export function createMeRoutes() {
         );
       }
     }
-    if (!body.curriculumId || !body.gradeId) {
-      return c.json({ error: "curriculumId and gradeId are required" }, 400);
-    }
     if (!body.schoolId) {
       return c.json({ error: "schoolId is required" }, 400);
+    }
+
+    if (track === "preschool") {
+      if (body.ageYears !== 3 && body.ageYears !== 4) {
+        return c.json({ error: "ageYears must be 3 or 4 for preschool" }, 400);
+      }
+      if (body.curriculumId || body.gradeId) {
+        return c.json(
+          { error: "curriculumId and gradeId are not allowed for preschool" },
+          400
+        );
+      }
+    } else {
+      if (!body.curriculumId || !body.gradeId) {
+        return c.json({ error: "curriculumId and gradeId are required" }, 400);
+      }
+      if (body.ageYears != null) {
+        return c.json({ error: "ageYears is not allowed for school track" }, 400);
+      }
     }
 
     const gender = body.gender ?? "unspecified";
@@ -341,27 +388,36 @@ export function createMeRoutes() {
         return c.json({ error: "School not found" }, 404);
       }
 
-      const gradeCheck = await client.query(
-        `SELECT g.id FROM curriculum_grades g
-         WHERE g.id = $1 AND g.curriculum_id = $2`,
-        [body.gradeId, body.curriculumId]
-      );
-      if (gradeCheck.rows.length === 0) {
-        await client.query("ROLLBACK");
-        return c.json({ error: "Grade does not match curriculum" }, 400);
+      if (track === "school") {
+        const gradeCheck = await client.query(
+          `SELECT g.id FROM curriculum_grades g
+           WHERE g.id = $1 AND g.curriculum_id = $2`,
+          [body.gradeId, body.curriculumId]
+        );
+        if (gradeCheck.rows.length === 0) {
+          await client.query("ROLLBACK");
+          return c.json({ error: "Grade does not match curriculum" }, 400);
+        }
       }
 
       const { rows } = await client.query(
-        `INSERT INTO children (user_id, nickname, gender, date_of_birth, curriculum_id, grade_id, school_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `INSERT INTO children (
+           user_id, nickname, gender, date_of_birth,
+           track, age_years, age_confirmed_at,
+           curriculum_id, grade_id, school_id
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          RETURNING id`,
         [
           userId,
           nickname,
           gender,
           dateOfBirth,
-          body.curriculumId,
-          body.gradeId,
+          track,
+          track === "preschool" ? body.ageYears : null,
+          track === "preschool" ? new Date() : null,
+          track === "school" ? body.curriculumId : null,
+          track === "school" ? body.gradeId : null,
           body.schoolId,
         ]
       );
@@ -408,8 +464,10 @@ export function createMeRoutes() {
       nickname?: string;
       gender?: string;
       dateOfBirth?: string;
-      curriculumId?: string;
-      gradeId?: string;
+      track?: "school" | "preschool";
+      ageYears?: number | null;
+      curriculumId?: string | null;
+      gradeId?: string | null;
       schoolId?: string;
     }>();
 
@@ -418,13 +476,22 @@ export function createMeRoutes() {
       await client.query("BEGIN");
 
       const existing = await client.query(
-        "SELECT id FROM children WHERE id = $1 AND user_id = $2",
+        `SELECT id, track, age_years, curriculum_id, grade_id, school_id
+         FROM children WHERE id = $1 AND user_id = $2`,
         [childId, userId]
       );
       if (existing.rows.length === 0) {
         await client.query("ROLLBACK");
         return c.json({ error: "Child not found" }, 404);
       }
+
+      const current = existing.rows[0] as {
+        track: string;
+        age_years: number | null;
+        curriculum_id: string | null;
+        grade_id: string | null;
+        school_id: string;
+      };
 
       if (body.schoolId) {
         const schoolCheck = await client.query(
@@ -440,16 +507,68 @@ export function createMeRoutes() {
         }
       }
 
-      if (body.curriculumId && body.gradeId) {
+      const nextTrack =
+        body.track === "preschool" || body.track === "school"
+          ? body.track
+          : (current.track as "school" | "preschool");
+
+      const nextSchoolId = body.schoolId ?? current.school_id;
+      let nextCurriculumId =
+        body.curriculumId !== undefined
+          ? body.curriculumId
+          : current.curriculum_id;
+      let nextGradeId =
+        body.gradeId !== undefined ? body.gradeId : current.grade_id;
+      let nextAgeYears =
+        body.ageYears !== undefined ? body.ageYears : current.age_years;
+
+      let experiencedAgeYears: number | null | undefined;
+      let ageCircleUntil: Date | null | undefined;
+      let ageConfirmedAt: Date | null | undefined;
+
+      if (nextTrack === "preschool") {
+        if (nextAgeYears !== 3 && nextAgeYears !== 4) {
+          await client.query("ROLLBACK");
+          return c.json({ error: "ageYears must be 3 or 4 for preschool" }, 400);
+        }
+        nextCurriculumId = null;
+        nextGradeId = null;
+        if (body.ageYears !== undefined && body.ageYears !== current.age_years) {
+          ageConfirmedAt = new Date();
+        }
+        experiencedAgeYears = null;
+        ageCircleUntil = null;
+      } else {
+        if (!nextCurriculumId || !nextGradeId) {
+          await client.query("ROLLBACK");
+          return c.json(
+            { error: "curriculumId and gradeId are required for school track" },
+            400
+          );
+        }
         const gradeCheck = await client.query(
           `SELECT g.id FROM curriculum_grades g
            WHERE g.id = $1 AND g.curriculum_id = $2`,
-          [body.gradeId, body.curriculumId]
+          [nextGradeId, nextCurriculumId]
         );
         if (gradeCheck.rows.length === 0) {
           await client.query("ROLLBACK");
           return c.json({ error: "Grade does not match curriculum" }, 400);
         }
+
+        // Promoting preschool → school: keep age circle for ~12 months.
+        if (current.track === "preschool" && nextTrack === "school") {
+          experiencedAgeYears =
+            current.age_years === 3 || current.age_years === 4
+              ? current.age_years
+              : null;
+          if (experiencedAgeYears != null) {
+            const until = new Date();
+            until.setFullYear(until.getFullYear() + 1);
+            ageCircleUntil = until;
+          }
+        }
+        nextAgeYears = null;
       }
 
       const fields: string[] = [];
@@ -473,38 +592,52 @@ export function createMeRoutes() {
           fields.push(`date_of_birth = $${i++}`);
           values.push(null);
         } else {
-          const dateOfBirth = parseChildDateOfBirth(raw);
-          if (!dateOfBirth) {
+          const parsed = parseChildDateOfBirth(raw);
+          if (!parsed) {
             await client.query("ROLLBACK");
             return c.json({ error: "Invalid dateOfBirth (YYYY-MM-DD)" }, 400);
           }
           fields.push(`date_of_birth = $${i++}`);
-          values.push(dateOfBirth);
+          values.push(parsed);
         }
       }
-      if (body.curriculumId !== undefined) {
-        fields.push(`curriculum_id = $${i++}`);
-        values.push(body.curriculumId);
-      }
-      if (body.gradeId !== undefined) {
-        fields.push(`grade_id = $${i++}`);
-        values.push(body.gradeId);
-      }
-      if (body.schoolId !== undefined) {
-        fields.push(`school_id = $${i++}`);
-        values.push(body.schoolId);
+
+      fields.push(`track = $${i++}`);
+      values.push(nextTrack);
+      fields.push(`school_id = $${i++}`);
+      values.push(nextSchoolId);
+      fields.push(`curriculum_id = $${i++}`);
+      values.push(nextCurriculumId);
+      fields.push(`grade_id = $${i++}`);
+      values.push(nextGradeId);
+      fields.push(`age_years = $${i++}`);
+      values.push(nextAgeYears);
+
+      if (ageConfirmedAt !== undefined) {
+        fields.push(`age_confirmed_at = $${i++}`);
+        values.push(ageConfirmedAt);
+      } else if (nextTrack === "preschool" && current.track !== "preschool") {
+        fields.push(`age_confirmed_at = $${i++}`);
+        values.push(new Date());
       }
 
-      if (fields.length > 0) {
-        fields.push(`updated_at = now()`);
-        const childIdIdx = i++;
-        const userIdIdx = i;
-        values.push(childId, userId);
-        await client.query(
-          `UPDATE children SET ${fields.join(", ")} WHERE id = $${childIdIdx} AND user_id = $${userIdIdx}`,
-          values
-        );
+      if (experiencedAgeYears !== undefined) {
+        fields.push(`experienced_age_years = $${i++}`);
+        values.push(experiencedAgeYears);
       }
+      if (ageCircleUntil !== undefined) {
+        fields.push(`age_circle_until = $${i++}`);
+        values.push(ageCircleUntil);
+      }
+
+      fields.push(`updated_at = now()`);
+      const childIdIdx = i++;
+      const userIdIdx = i;
+      values.push(childId, userId);
+      await client.query(
+        `UPDATE children SET ${fields.join(", ")} WHERE id = $${childIdIdx} AND user_id = $${userIdIdx}`,
+        values
+      );
 
       await syncCircleMembership(client, userId);
       const complete = await evaluateOnboardingComplete(client, userId);

@@ -17,12 +17,23 @@ export async function getSchoolShortlist(
     pinCode: string;
     locality?: string | null;
     region?: string | null;
+    /** preschool | school | preschool_campus (school kind with offers_preschool) */
+    list?: "preschool" | "school" | "preschool_campus";
   }
 ) {
   const country = opts.countryCode.trim().toUpperCase() || "IN";
   const pin = opts.pinCode.trim();
   const seen = new Set<string>();
   const out: ReturnType<typeof mapSchoolListRow>[] = [];
+
+  const kindClause =
+    opts.list === "preschool"
+      ? `AND s.kind = 'preschool'`
+      : opts.list === "preschool_campus"
+        ? `AND s.kind = 'school' AND s.offers_preschool = true`
+        : opts.list === "school"
+          ? `AND s.kind = 'school'`
+          : "";
 
   async function pushRows(rows: Record<string, unknown>[]) {
     for (const row of rows) {
@@ -34,15 +45,19 @@ export async function getSchoolShortlist(
     }
   }
 
+  const selectCols = `s.id, s.name, s.branch, s.city, s.state, s.pin_code, s.verified,
+              s.rating_avg, s.rating_count, s.board_codes, s.locality, s.region, s.aliases,
+              s.kind, s.offers_preschool`;
+
   // Tier 1 — dense PIN
   if (pin) {
     const { rows } = await client.query(
-      `SELECT s.id, s.name, s.branch, s.city, s.state, s.pin_code, s.verified,
-              s.rating_avg, s.rating_count, s.board_codes, s.locality, s.region, s.aliases
+      `SELECT ${selectCols}
        FROM school_pin_affinity a
        JOIN schools s ON s.id = a.school_id
        WHERE a.country_code = $1 AND a.pin_code = $2
          AND s.verified = true AND s.redirect_to_school_id IS NULL
+         ${kindClause}
        ORDER BY a.parents DESC, s.name
        LIMIT $3`,
       [country, pin, SHORTLIST_CAP]
@@ -82,12 +97,12 @@ export async function getSchoolShortlist(
   // Tier 2 — region affinity when PIN tier was thin
   if (out.length < 5 && region) {
     const { rows } = await client.query(
-      `SELECT s.id, s.name, s.branch, s.city, s.state, s.pin_code, s.verified,
-              s.rating_avg, s.rating_count, s.board_codes, s.locality, s.region, s.aliases
+      `SELECT ${selectCols}
        FROM school_region_affinity a
        JOIN schools s ON s.id = a.school_id
        WHERE a.region = $1
          AND s.verified = true AND s.redirect_to_school_id IS NULL
+         ${kindClause}
        ORDER BY a.parents DESC, s.name
        LIMIT $2`,
       [region, SHORTLIST_CAP]
@@ -100,12 +115,12 @@ export async function getSchoolShortlist(
   // Tier 3 — directory: locality then region then alpha
   if (opts.locality?.trim()) {
     const { rows } = await client.query(
-      `SELECT s.id, s.name, s.branch, s.city, s.state, s.pin_code, s.verified,
-              s.rating_avg, s.rating_count, s.board_codes, s.locality, s.region, s.aliases
+      `SELECT ${selectCols}
        FROM schools s
        WHERE s.redirect_to_school_id IS NULL
          AND s.normalized_key <> 'school_not_specified||unknown'
          AND s.locality ILIKE $1
+         ${kindClause}
        ORDER BY s.verified DESC, s.name
        LIMIT $2`,
       [opts.locality.trim(), SHORTLIST_CAP]
@@ -117,12 +132,12 @@ export async function getSchoolShortlist(
 
   if (region) {
     const { rows } = await client.query(
-      `SELECT s.id, s.name, s.branch, s.city, s.state, s.pin_code, s.verified,
-              s.rating_avg, s.rating_count, s.board_codes, s.locality, s.region, s.aliases
+      `SELECT ${selectCols}
        FROM schools s
        WHERE s.redirect_to_school_id IS NULL
          AND s.normalized_key <> 'school_not_specified||unknown'
          AND s.region = $1
+         ${kindClause}
        ORDER BY s.verified DESC, s.name
        LIMIT $2`,
       [region, SHORTLIST_CAP]
@@ -134,11 +149,11 @@ export async function getSchoolShortlist(
 
   // Final fill — verified first, then pending (usable, awaiting review)
   const { rows } = await client.query(
-    `SELECT s.id, s.name, s.branch, s.city, s.state, s.pin_code, s.verified,
-            s.rating_avg, s.rating_count, s.board_codes, s.locality, s.region, s.aliases
+    `SELECT ${selectCols}
      FROM schools s
      WHERE s.redirect_to_school_id IS NULL
        AND s.normalized_key <> 'school_not_specified||unknown'
+       ${kindClause}
      ORDER BY s.verified DESC, s.name
      LIMIT $1`,
     [SHORTLIST_CAP]

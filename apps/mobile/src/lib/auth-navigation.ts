@@ -3,10 +3,12 @@ import type { Router } from "expo-router";
 import { api, type AuthResponse, type AuthUser } from "@/lib/api";
 import { getToken } from "@/lib/session";
 import {
+  getOnboardingAgeYears,
   getOnboardingClassSelection,
   getOnboardingLocation,
   getOnboardingSchool,
   getOnboardingStep,
+  getOnboardingTrack,
   hydrateOnboardingDraft,
   setOnboardingChildren,
   setOnboardingLocation,
@@ -16,6 +18,7 @@ import {
 export type ParentOnboardingHref =
   | "/onboarding/location"
   | "/onboarding/school"
+  | "/onboarding/age"
   | "/onboarding/class"
   | "/onboarding/ready";
 
@@ -40,6 +43,15 @@ export async function resolveParentOnboardingHref(
   const school = getOnboardingSchool();
   const klass = getOnboardingClassSelection();
   const step = getOnboardingStep();
+  const track = getOnboardingTrack();
+  const ageYears = getOnboardingAgeYears();
+
+  if (track === "preschool") {
+    if (school?.id && (ageYears === 3 || ageYears === 4 || step === "age")) {
+      return "/onboarding/age";
+    }
+    return "/onboarding/school";
+  }
 
   if (school?.id && klass.curriculumId && klass.gradeId) {
     return "/onboarding/class";

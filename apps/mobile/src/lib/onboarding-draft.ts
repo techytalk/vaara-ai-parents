@@ -3,13 +3,15 @@ import type { AuthUser, Child, Circle, Curriculum, Location, School } from "@/li
 
 const DRAFT_KEY = "vaara_onboarding_draft_v1";
 const DRAFT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const DRAFT_VERSION = 2;
+const DRAFT_VERSION = 3;
 
 type PersistedDraft = {
   version: number;
   savedAt: number;
   onboardingAttemptId: string;
-  step?: "location" | "school" | "class" | "ready";
+  step?: "location" | "school" | "age" | "class" | "ready";
+  track?: "preschool" | "school";
+  ageYears?: 3 | 4;
   countryCode?: string;
   pinCode?: string;
   locality?: string;
@@ -30,6 +32,8 @@ type OnboardingDraft = {
   user: AuthUser | null;
   onboardingAttemptId: string | null;
   step: PersistedDraft["step"] | null;
+  track: "preschool" | "school" | null;
+  ageYears: 3 | 4 | null;
   catalogueGeneration: number | null;
   curriculumId: string | null;
   gradeId: string | null;
@@ -45,6 +49,8 @@ const draft: OnboardingDraft = {
   user: null,
   onboardingAttemptId: null,
   step: null,
+  track: null,
+  ageYears: null,
   catalogueGeneration: null,
   curriculumId: null,
   gradeId: null,
@@ -68,6 +74,8 @@ async function persistNow(): Promise<void> {
       savedAt: Date.now(),
       onboardingAttemptId: draft.onboardingAttemptId ?? newAttemptId(),
       step: draft.step ?? undefined,
+      track: draft.track ?? undefined,
+      ageYears: draft.ageYears ?? undefined,
       countryCode: draft.location?.countryCode,
       pinCode: draft.location?.pinCode,
       locality: draft.location?.locality ?? undefined,
@@ -101,7 +109,7 @@ export async function hydrateOnboardingDraft(): Promise<void> {
       return;
     }
     const parsed = JSON.parse(raw) as PersistedDraft;
-    if (parsed.version !== DRAFT_VERSION && parsed.version !== 1) return;
+    if (parsed.version !== DRAFT_VERSION && parsed.version !== 1 && parsed.version !== 2) return;
     if (Date.now() - parsed.savedAt > DRAFT_TTL_MS) {
       await SecureStore.deleteItemAsync(DRAFT_KEY);
       draft.onboardingAttemptId = newAttemptId();
@@ -110,6 +118,12 @@ export async function hydrateOnboardingDraft(): Promise<void> {
     }
     draft.onboardingAttemptId = parsed.onboardingAttemptId || newAttemptId();
     draft.step = parsed.step ?? null;
+    draft.track =
+      parsed.track === "preschool" || parsed.track === "school"
+        ? parsed.track
+        : null;
+    draft.ageYears =
+      parsed.ageYears === 3 || parsed.ageYears === 4 ? parsed.ageYears : null;
     draft.catalogueGeneration = parsed.catalogueGeneration ?? null;
     draft.curriculumId = parsed.curriculumId ?? null;
     draft.gradeId = parsed.gradeId ?? null;
@@ -213,6 +227,30 @@ export function getOnboardingClassSelection(): {
   };
 }
 
+export function setOnboardingTrack(track: "preschool" | "school" | null): void {
+  draft.track = track;
+  if (track === "preschool") {
+    draft.curriculumId = null;
+    draft.gradeId = null;
+  } else if (track === "school") {
+    draft.ageYears = null;
+  }
+  void persist();
+}
+
+export function getOnboardingTrack(): "preschool" | "school" | null {
+  return draft.track;
+}
+
+export function setOnboardingAgeYears(ageYears: 3 | 4 | null): void {
+  draft.ageYears = ageYears;
+  void persist();
+}
+
+export function getOnboardingAgeYears(): 3 | 4 | null {
+  return draft.ageYears;
+}
+
 export function setOnboardingLocation(
   location: Location | null,
   options?: { loaded?: boolean }
@@ -288,6 +326,8 @@ export async function clearOnboardingDraft(): Promise<void> {
     draft.user = null;
     draft.onboardingAttemptId = null;
     draft.step = null;
+    draft.track = null;
+    draft.ageYears = null;
     draft.catalogueGeneration = null;
     draft.curriculumId = null;
     draft.gradeId = null;

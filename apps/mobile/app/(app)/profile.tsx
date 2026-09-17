@@ -97,7 +97,11 @@ export default function ProfileScreen() {
 
   const childSummary =
     children.length > 0
-      ? `${children[0].curriculum.code} · ${children[0].grade.label}`
+      ? children[0].track === "preschool" && children[0].ageYears
+        ? `${children[0].ageYears} years`
+        : children[0].curriculum && children[0].grade
+          ? `${children[0].curriculum.code} · ${children[0].grade.label}`
+          : children[0].school.displayLabel
       : "Complete your profile";
 
   const circleValue = statsFailed ? "—" : (stats?.circleCount ?? 0);

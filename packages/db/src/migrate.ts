@@ -86,6 +86,10 @@ const MIGRATIONS = [
     version: "050_backfill_linear_school_class_messages",
     file: "050_backfill_linear_school_class_messages.sql",
   },
+  {
+    version: "051_preschool_onboarding",
+    file: "051_preschool_onboarding.sql",
+  },
 ];
 
 async function isMigrationApplied(

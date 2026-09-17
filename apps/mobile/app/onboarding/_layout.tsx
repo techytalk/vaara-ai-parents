@@ -21,6 +21,7 @@ export default function OnboardingLayout() {
           options={{ title: "Your location", headerBackVisible: false }}
         />
         <Stack.Screen name="school" options={{ title: "Your child's school" }} />
+        <Stack.Screen name="age" options={{ title: "Age circle" }} />
         <Stack.Screen name="class" options={{ title: "Board and class" }} />
         <Stack.Screen
           name="ready"

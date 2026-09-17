@@ -19,7 +19,12 @@ import {
 } from "@/constants/onboarding";
 import { isPlaceholderSchool } from "@/constants/circles";
 import { parseIsoDateOnly, toIsoDateOnly } from "@/lib/dates";
-import { colors, PrimaryButton, useOnboardingContentStyle } from "@/components/onboarding/ui";
+import {
+  Chip,
+  colors,
+  PrimaryButton,
+  useOnboardingContentStyle,
+} from "@/components/onboarding/ui";
 
 export default function EditChildScreen() {
   const { id, focus } = useLocalSearchParams<{ id: string; focus?: string }>();
@@ -38,6 +43,8 @@ export default function EditChildScreen() {
   const [dateOfBirth, setDateOfBirth] = useState<Date | null>(null);
   const [selectedSchool, setSelectedSchool] = useState<School | null>(null);
   const [gender, setGender] = useState("unspecified");
+  const [track, setTrack] = useState<"school" | "preschool">("school");
+  const [ageYears, setAgeYears] = useState<3 | 4 | null>(null);
   const [curriculumId, setCurriculumId] = useState<string | null>(null);
   const [gradeId, setGradeId] = useState<string | null>(null);
 
@@ -85,35 +92,54 @@ export default function EditChildScreen() {
     // until a real one is chosen.
     setSelectedSchool(isPlaceholderSchool(child.school) ? null : child.school);
     setGender(child.gender);
+    setTrack(child.track === "preschool" ? "preschool" : "school");
+    setAgeYears(
+      child.ageYears === 3 || child.ageYears === 4 ? child.ageYears : null
+    );
     const resolved = resolveChildFormState(child, sortedCurricula);
     if (resolved) {
       setCurriculumId(resolved.curriculumId);
       setGradeId(resolved.gradeId);
+    } else {
+      setCurriculumId(null);
+      setGradeId(null);
     }
   }
 
   async function onSave() {
-    if (!token || !curriculumId || !gradeId || !selectedSchool || !gender) return;
+    if (!token || !selectedSchool || !gender) return;
+    if (track === "preschool" && ageYears !== 3 && ageYears !== 4) return;
+    if (track === "school" && (!curriculumId || !gradeId)) return;
 
     setError(null);
     setSubmitting(true);
     try {
       const body: {
-        nickname?: string;
-        dateOfBirth?: string;
+        nickname?: string | null;
+        dateOfBirth?: string | null;
         schoolId: string;
         gender: string;
-        curriculumId: string;
-        gradeId: string;
+        track: "school" | "preschool";
+        ageYears?: number | null;
+        curriculumId?: string | null;
+        gradeId?: string | null;
       } = {
         schoolId: selectedSchool.id,
         gender,
-        curriculumId,
-        gradeId,
+        track,
       };
+      if (track === "preschool") {
+        body.ageYears = ageYears;
+        body.curriculumId = null;
+        body.gradeId = null;
+      } else {
+        body.curriculumId = curriculumId;
+        body.gradeId = gradeId;
+        body.ageYears = null;
+      }
       const nick = nickname.trim();
-      if (nick) body.nickname = nick;
-      if (dateOfBirth) body.dateOfBirth = toIsoDateOnly(dateOfBirth);
+      body.nickname = nick || null;
+      body.dateOfBirth = dateOfBirth ? toIsoDateOnly(dateOfBirth) : null;
 
       await api.updateChild(token, id, body);
       invalidateFamilyMeta();
@@ -148,7 +174,10 @@ export default function EditChildScreen() {
     );
   }
 
-  const canSave = Boolean(selectedSchool && gender && gradeId && curriculumId);
+  const canSave =
+    track === "preschool"
+      ? Boolean(selectedSchool && gender && (ageYears === 3 || ageYears === 4))
+      : Boolean(selectedSchool && gender && gradeId && curriculumId);
 
   return (
     <ScrollView
@@ -158,9 +187,26 @@ export default function EditChildScreen() {
     >
       <Text style={styles.title}>Edit child</Text>
       <Text style={styles.subtitle}>
-        Update school, board or class anytime. Nickname and date of birth are
-        optional and stay private.
+        {track === "preschool"
+          ? "Update preschool campus or age anytime. Nickname and date of birth are optional and stay private."
+          : "Update school, board or class anytime. Nickname and date of birth are optional and stay private."}
       </Text>
+
+      {track === "preschool" ? (
+        <View style={styles.ageRow}>
+          <Text style={styles.ageLabel}>Age circle</Text>
+          <View style={styles.chipRow}>
+            {([3, 4] as const).map((years) => (
+              <Chip
+                key={years}
+                label={`${years} years`}
+                selected={ageYears === years}
+                onPress={() => setAgeYears(years)}
+              />
+            ))}
+          </View>
+        </View>
+      ) : null}
 
       <ChildFormFields
         token={token}
@@ -187,6 +233,14 @@ export default function EditChildScreen() {
         defaultState={defaultState}
         identityOptional
         schoolFirst={focus !== "identity"}
+        showBoardAndClass={track !== "preschool"}
+        list={
+          track === "preschool"
+            ? selectedSchool?.kind === "school"
+              ? "preschool_campus"
+              : "preschool"
+            : "school"
+        }
       />
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -219,4 +273,12 @@ const styles = StyleSheet.create({
   },
   centered: { flex: 1, justifyContent: "center", alignItems: "center" },
   error: { color: colors.error, marginBottom: 8 },
+  ageRow: { marginBottom: 12 },
+  ageLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: colors.text,
+    marginBottom: 8,
+  },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
 });
