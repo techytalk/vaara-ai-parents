@@ -28,7 +28,6 @@
         color: var(--text);
       }
       h1 { font-size: 1.45rem; margin: 0 0 6px; }
-      h2 { font-size: 1.05rem; margin: 22px 0 10px; }
       .muted { color: var(--muted); font-size: 0.9rem; margin: 0 0 18px; }
       a { color: var(--teal-dark); }
       label { display: block; font-size: 0.85rem; margin: 0 0 4px; color: var(--muted); }
@@ -38,7 +37,7 @@
         border-radius: 10px;
         border: 1px solid var(--border);
       }
-      textarea {
+      textarea.paste {
         width: 100%;
         min-height: 220px;
         box-sizing: border-box;
@@ -55,6 +54,14 @@
         margin-right: 8px;
       }
       button.secondary { background: #44403c; }
+      button.ghost {
+        background: transparent;
+        color: var(--teal-dark);
+        border: 1px solid var(--border);
+        padding: 4px 8px;
+        font-size: 0.78rem;
+        margin: 0 4px 0 0;
+      }
       button:disabled { opacity: 0.55; cursor: wait; }
       .toolbar {
         display: flex;
@@ -93,6 +100,7 @@
         gap: 6px;
         flex-wrap: wrap;
         margin-bottom: 12px;
+        align-items: center;
       }
       .tab {
         background: #f7f4ee;
@@ -109,6 +117,18 @@
         color: var(--teal-dark);
         font-weight: 600;
       }
+      .actions-bar {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+        margin: 0 0 12px;
+      }
+      .toast {
+        font-size: 0.85rem;
+        color: var(--ok);
+        min-height: 1.2em;
+      }
       table {
         width: 100%;
         border-collapse: collapse;
@@ -121,6 +141,7 @@
         vertical-align: top;
       }
       th { font-size: 0.78rem; color: var(--muted); font-weight: 600; }
+      th.notes, td.notes { min-width: 260px; width: 32%; }
       .badge {
         display: inline-block;
         font-size: 0.75rem;
@@ -133,6 +154,36 @@
       .badge.maybe { background: #f3e8ff; color: var(--maybe); }
       .badge.miss { background: #feecec; color: var(--miss); }
       .meta { font-size: 0.82rem; color: var(--muted); }
+      .note-box {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .note-box select {
+        width: 100%;
+        box-sizing: border-box;
+      }
+      .note-box textarea {
+        width: 100%;
+        min-height: 64px;
+        box-sizing: border-box;
+        resize: vertical;
+        font-size: 0.82rem;
+        line-height: 1.35;
+      }
+      .note-box .row-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        align-items: center;
+      }
+      .saved-dot {
+        font-size: 0.75rem;
+        color: var(--ok);
+        opacity: 0;
+        transition: opacity 0.2s;
+      }
+      .saved-dot.show { opacity: 1; }
       .err {
         color: #b91c1c;
         background: #feecec;
@@ -148,7 +199,7 @@
         color: var(--muted);
         margin: 6px 0 0;
       }
-      @media (max-width: 720px) {
+      @media (max-width: 900px) {
         body { padding: 14px; }
         table { display: block; overflow-x: auto; }
       }
@@ -164,8 +215,9 @@
     </div>
     <h1>School compare</h1>
     <p class="muted">
-      Paste an area school list (maps / scrape / markdown table). Compares against the live catalog.
-      Analysis only — does not insert or update schools.
+      Paste an area school list, review matches, and leave per-row instructions
+      (insert / add campus / skip…). Copy instructions when done — paste them into chat to generate SQL.
+      Analysis only — this page does not write to the database.
     </p>
 
     <div class="panel">
@@ -186,10 +238,10 @@
         <button id="clear" class="secondary" type="button">Clear</button>
       </div>
       <label for="text">Pasted school list</label>
-      <textarea id="text" placeholder="Paste markdown table or one school per line…&#10;&#10;Example:&#10;| # | School | Type / area |&#10;| 1 | Goldcrest School | CBSE — Gachibowli |&#10;| 2 | Nasr Boys School | ICSE — Gachibowli |"></textarea>
+      <textarea id="text" class="paste" placeholder="Paste markdown table or one school per line…&#10;&#10;Example:&#10;| # | School | Type / area |&#10;| 1 | Goldcrest School | CBSE — Gachibowli |&#10;| 2 | Nasr Boys School | ICSE — Gachibowli |"></textarea>
       <p class="hint">
         Supports markdown tables, numbered lists, and “Name — area” lines.
-        Matching is fuzzy (name + locality); review “maybe” and “brand elsewhere” carefully.
+        Matching is fuzzy; review “maybe” and “brand elsewhere” carefully.
       </p>
     </div>
 
@@ -201,10 +253,16 @@
       <div class="stat else"><div class="n" id="nElse">—</div><div class="l">Brand elsewhere</div></div>
       <div class="stat maybe"><div class="n" id="nMaybe">—</div><div class="l">Maybe</div></div>
       <div class="stat miss"><div class="n" id="nMiss">—</div><div class="l">Missing</div></div>
-      <div class="stat"><div class="n" id="nCat">—</div><div class="l">Catalog size</div></div>
+      <div class="stat"><div class="n" id="nNotes">—</div><div class="l">With notes</div></div>
     </div>
 
     <div id="results" hidden>
+      <div class="actions-bar">
+        <button id="copyInstr" type="button">Copy instructions</button>
+        <button id="copyJson" class="secondary" type="button">Copy JSON</button>
+        <button id="clearNotes" class="secondary" type="button">Clear notes</button>
+        <span class="toast" id="toast"></span>
+      </div>
       <div class="tabs" id="tabs"></div>
       <div class="panel">
         <div id="tableWrap"><p class="empty">Run a compare to see results.</p></div>
@@ -213,8 +271,23 @@
 
     <script>
       const API_DEFAULT = "https://api.vaara.ai";
+      const STORAGE_PREFIX = "vaara.schoolCompare.notes.v1:";
+
+      const ACTIONS = [
+        { value: "", label: "— action —" },
+        { value: "insert", label: "Insert (missing campus)" },
+        { value: "add_campus", label: "Add campus (brand elsewhere)" },
+        { value: "update", label: "Update existing row" },
+        { value: "skip", label: "Skip / ignore" },
+        { value: "merge_review", label: "Merge / same school?" },
+        { value: "other", label: "Other (see note)" },
+      ];
+
       let lastPayload = null;
       let activeTab = "all";
+      /** @type {Record<string, { action: string, note: string }>} */
+      let notesByKey = {};
+      let sessionKey = "";
 
       function $(id) { return document.getElementById(id); }
 
@@ -227,6 +300,27 @@
         }
         box.style.display = "block";
         box.textContent = msg;
+      }
+
+      function toast(msg) {
+        const el = $("toast");
+        el.textContent = msg || "";
+        if (msg) {
+          clearTimeout(toast._t);
+          toast._t = setTimeout(() => { el.textContent = ""; }, 2500);
+        }
+      }
+
+      function rowKey(row) {
+        return String(row.line) + "|" + (row.name || "").toLowerCase().trim();
+      }
+
+      function escapeHtml(s) {
+        return String(s ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
       }
 
       function statusBadge(status) {
@@ -250,12 +344,69 @@
           <div class="meta">${escapeHtml(m.normalizedKey)}</div>`;
       }
 
-      function escapeHtml(s) {
-        return String(s ?? "")
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;")
-          .replace(/"/g, "&quot;");
+      function loadNotes(key) {
+        try {
+          const raw = localStorage.getItem(STORAGE_PREFIX + key);
+          notesByKey = raw ? JSON.parse(raw) : {};
+        } catch {
+          notesByKey = {};
+        }
+      }
+
+      function persistNotes() {
+        if (!sessionKey) return;
+        localStorage.setItem(STORAGE_PREFIX + sessionKey, JSON.stringify(notesByKey));
+        updateNotesStat();
+      }
+
+      function updateNotesStat() {
+        if (!$("nNotes") || !lastPayload) return;
+        const n = lastPayload.results.filter((r) => {
+          const e = notesByKey[rowKey(r)];
+          return e && (e.action || (e.note && e.note.trim()));
+        }).length;
+        $("nNotes").textContent = String(n);
+      }
+
+      function makeSessionKey(area, text) {
+        let h = 0;
+        const s = (area || "") + "\n" + text;
+        for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+        return (area || "area").toLowerCase().replace(/\s+/g, "_") + ":" + (h >>> 0).toString(16);
+      }
+
+      function getNote(row) {
+        return notesByKey[rowKey(row)] || { action: "", note: "" };
+      }
+
+      function setNote(row, patch) {
+        const k = rowKey(row);
+        notesByKey[k] = { ...getNote(row), ...patch };
+        persistNotes();
+      }
+
+      function actionOptions(selected) {
+        return ACTIONS.map(
+          (a) =>
+            `<option value="${a.value}" ${a.value === selected ? "selected" : ""}>${escapeHtml(a.label)}</option>`
+        ).join("");
+      }
+
+      function noteCell(row) {
+        const e = getNote(row);
+        const k = escapeHtml(rowKey(row));
+        return `
+          <div class="note-box" data-key="${k}">
+            <select data-field="action">${actionOptions(e.action || "")}</select>
+            <textarea data-field="note" placeholder="e.g. missing — insert Gachibowli campus; brand variation OK">${escapeHtml(e.note || "")}</textarea>
+            <div class="row-actions">
+              <button type="button" class="ghost" data-quick="insert">Insert</button>
+              <button type="button" class="ghost" data-quick="add_campus">Add campus</button>
+              <button type="button" class="ghost" data-quick="skip">Skip</button>
+              <button type="button" class="ghost" data-save>Save</button>
+              <span class="saved-dot" data-saved>saved</span>
+            </div>
+          </div>`;
       }
 
       function rowsForTab(payload, tab) {
@@ -271,14 +422,61 @@
           ["maybe", "Maybe", payload.summary.maybe],
           ["missing", "Missing", payload.summary.missing],
         ];
-        $("tabs").innerHTML = tabs.map(([id, label, n]) =>
-          `<button type="button" class="tab ${activeTab === id ? "active" : ""}" data-tab="${id}">${label} (${n})</button>`
-        ).join("");
+        $("tabs").innerHTML = tabs
+          .map(
+            ([id, label, n]) =>
+              `<button type="button" class="tab ${activeTab === id ? "active" : ""}" data-tab="${id}">${label} (${n})</button>`
+          )
+          .join("");
         $("tabs").querySelectorAll(".tab").forEach((btn) => {
           btn.addEventListener("click", () => {
             activeTab = btn.getAttribute("data-tab");
             renderTabs(payload);
             renderTable(payload);
+          });
+        });
+      }
+
+      function bindNoteEditors(payload) {
+        $("tableWrap").querySelectorAll(".note-box").forEach((box) => {
+          const key = box.getAttribute("data-key");
+          const row = payload.results.find((r) => rowKey(r) === key);
+          if (!row) return;
+          const select = box.querySelector('select[data-field="action"]');
+          const ta = box.querySelector('textarea[data-field="note"]');
+          const saved = box.querySelector("[data-saved]");
+
+          const flash = () => {
+            saved.classList.add("show");
+            setTimeout(() => saved.classList.remove("show"), 1200);
+          };
+
+          select.addEventListener("change", () => {
+            setNote(row, { action: select.value });
+            flash();
+          });
+          ta.addEventListener("blur", () => {
+            setNote(row, { note: ta.value });
+            flash();
+          });
+          box.querySelector("[data-save]").addEventListener("click", () => {
+            setNote(row, { action: select.value, note: ta.value });
+            flash();
+            toast("Note saved");
+          });
+          box.querySelectorAll("[data-quick]").forEach((btn) => {
+            btn.addEventListener("click", () => {
+              const action = btn.getAttribute("data-quick");
+              select.value = action;
+              const presets = {
+                insert: "Missing — insert this campus",
+                add_campus: "Brand elsewhere — add this area campus",
+                skip: "Skip",
+              };
+              if (!ta.value.trim() && presets[action]) ta.value = presets[action];
+              setNote(row, { action, note: ta.value });
+              flash();
+            });
           });
         });
       }
@@ -289,7 +487,9 @@
           $("tableWrap").innerHTML = '<p class="empty">No schools in this bucket.</p>';
           return;
         }
-        const body = rows.map((r) => `
+        const body = rows
+          .map(
+            (r) => `
           <tr>
             <td>${r.line}</td>
             <td>
@@ -298,8 +498,10 @@
             </td>
             <td>${statusBadge(r.status)}</td>
             <td>${matchCell(r)}</td>
-          </tr>
-        `).join("");
+            <td class="notes">${noteCell(r)}</td>
+          </tr>`
+          )
+          .join("");
         $("tableWrap").innerHTML = `
           <table>
             <thead>
@@ -308,10 +510,13 @@
                 <th>Pasted</th>
                 <th>Status</th>
                 <th>Best catalog match</th>
+                <th class="notes">Your instruction / analysis</th>
               </tr>
             </thead>
             <tbody>${body}</tbody>
           </table>`;
+        bindNoteEditors(payload);
+        updateNotesStat();
       }
 
       function renderSummary(payload) {
@@ -322,7 +527,80 @@
         $("nElse").textContent = payload.summary.brand_elsewhere;
         $("nMaybe").textContent = payload.summary.maybe;
         $("nMiss").textContent = payload.summary.missing;
-        $("nCat").textContent = payload.filters.catalogSize;
+        updateNotesStat();
+      }
+
+      function actionLabel(value) {
+        return ACTIONS.find((a) => a.value === value)?.label || value || "(no action)";
+      }
+
+      function buildInstructionsText() {
+        if (!lastPayload) return "";
+        const area = $("area").value.trim() || "(unspecified area)";
+        const lines = [
+          `School compare instructions — ${area}`,
+          `Generated: ${new Date().toISOString()}`,
+          "",
+          "Use these notes to generate INSERT/UPDATE SQL for the catalog.",
+          "",
+        ];
+        let n = 0;
+        for (const r of lastPayload.results) {
+          const e = getNote(r);
+          if (!e.action && !(e.note && e.note.trim())) continue;
+          n++;
+          const match = r.match
+            ? `${r.match.name} [${r.match.locality || r.match.branch || ""}] key=${r.match.normalizedKey}`
+            : "(no catalog match)";
+          lines.push(`${n}. [${r.status}] ${r.name}`);
+          lines.push(`   Area: ${r.area || area}`);
+          lines.push(`   Match: ${match}`);
+          lines.push(`   Action: ${actionLabel(e.action)}`);
+          if (e.note && e.note.trim()) lines.push(`   Note: ${e.note.trim()}`);
+          lines.push("");
+        }
+        if (n === 0) {
+          return `No per-row instructions yet for ${area}. Add actions/notes on rows first.`;
+        }
+        lines.push(`Total with instructions: ${n}`);
+        return lines.join("\n");
+      }
+
+      function buildInstructionsJson() {
+        if (!lastPayload) return "[]";
+        const area = $("area").value.trim() || null;
+        const items = [];
+        for (const r of lastPayload.results) {
+          const e = getNote(r);
+          if (!e.action && !(e.note && e.note.trim())) continue;
+          items.push({
+            line: r.line,
+            name: r.name,
+            area: r.area || area,
+            status: r.status,
+            action: e.action || null,
+            note: (e.note || "").trim() || null,
+            match: r.match
+              ? {
+                  name: r.match.name,
+                  locality: r.match.locality,
+                  branch: r.match.branch,
+                  normalizedKey: r.match.normalizedKey,
+                }
+              : null,
+          });
+        }
+        return JSON.stringify({ area, items }, null, 2);
+      }
+
+      async function copyText(text, okMsg) {
+        try {
+          await navigator.clipboard.writeText(text);
+          toast(okMsg);
+        } catch {
+          showError("Clipboard failed — select and copy manually from the console payload.");
+          console.log(text);
+        }
       }
 
       async function runCompare() {
@@ -350,6 +628,8 @@
             throw new Error(data.error || `Compare failed (${res.status})`);
           }
           lastPayload = data;
+          sessionKey = makeSessionKey($("area").value.trim(), text);
+          loadNotes(sessionKey);
           activeTab = "all";
           renderSummary(data);
           renderTabs(data);
@@ -368,6 +648,20 @@
         $("stats").hidden = true;
         $("results").hidden = true;
         lastPayload = null;
+        toast("");
+      });
+      $("copyInstr").addEventListener("click", () => {
+        copyText(buildInstructionsText(), "Instructions copied");
+      });
+      $("copyJson").addEventListener("click", () => {
+        copyText(buildInstructionsJson(), "JSON copied");
+      });
+      $("clearNotes").addEventListener("click", () => {
+        if (!sessionKey || !confirm("Clear all saved notes for this compare session?")) return;
+        notesByKey = {};
+        persistNotes();
+        if (lastPayload) renderTable(lastPayload);
+        toast("Notes cleared");
       });
     </script>
   </body>
