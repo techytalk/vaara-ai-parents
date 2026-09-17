@@ -62,6 +62,13 @@
         font-size: 0.78rem;
         margin: 0 4px 0 0;
       }
+      button.danger {
+        background: transparent;
+        color: var(--miss);
+        border: 1px solid #f3c4c4;
+        padding: 4px 8px;
+        font-size: 0.78rem;
+      }
       button:disabled { opacity: 0.55; cursor: wait; }
       .toolbar {
         display: flex;
@@ -95,6 +102,28 @@
         padding: 14px;
         margin-bottom: 14px;
       }
+      .saved-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .saved-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 12px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: #fffcf7;
+      }
+      .saved-row.active {
+        border-color: var(--teal);
+        background: #eaf8f6;
+      }
+      .saved-meta { font-size: 0.85rem; }
+      .saved-meta .title { font-weight: 600; }
       .tabs {
         display: flex;
         gap: 6px;
@@ -159,10 +188,7 @@
         flex-direction: column;
         gap: 6px;
       }
-      .note-box select {
-        width: 100%;
-        box-sizing: border-box;
-      }
+      .note-box select { width: 100%; box-sizing: border-box; }
       .note-box textarea {
         width: 100%;
         min-height: 64px;
@@ -199,6 +225,12 @@
         color: var(--muted);
         margin: 6px 0 0;
       }
+      .session-banner {
+        font-size: 0.85rem;
+        color: var(--muted);
+        margin-bottom: 10px;
+      }
+      .session-banner strong { color: var(--text); }
       @media (max-width: 900px) {
         body { padding: 14px; }
         table { display: block; overflow-x: auto; }
@@ -215,10 +247,20 @@
     </div>
     <h1>School compare</h1>
     <p class="muted">
-      Paste an area school list, review matches, and leave per-row instructions
-      (insert / add campus / skip…). Copy instructions when done — paste them into chat to generate SQL.
-      Analysis only — this page does not write to the database.
+      Paste an area school list, review matches, and leave per-row instructions.
+      Use <strong>Save comparison</strong> so a refresh or laptop shutdown does not lose your work —
+      reload from Saved comparisons below. Copy instructions when ready for SQL.
     </p>
+
+    <div class="panel">
+      <div class="toolbar" style="justify-content: space-between; align-items: center;">
+        <strong style="font-size: 0.95rem;">Saved comparisons</strong>
+        <span class="meta" id="autosaveHint">Stored in this browser only (localStorage).</span>
+      </div>
+      <div id="savedList" class="saved-list">
+        <p class="empty">No saved comparisons yet.</p>
+      </div>
+    </div>
 
     <div class="panel">
       <div class="toolbar">
@@ -238,7 +280,7 @@
         <button id="clear" class="secondary" type="button">Clear</button>
       </div>
       <label for="text">Pasted school list</label>
-      <textarea id="text" class="paste" placeholder="Paste markdown table or one school per line…&#10;&#10;Example:&#10;| # | School | Type / area |&#10;| 1 | Goldcrest School | CBSE — Gachibowli |&#10;| 2 | Nasr Boys School | ICSE — Gachibowli |"></textarea>
+      <textarea id="text" class="paste" placeholder="Paste markdown table or one school per line…"></textarea>
       <p class="hint">
         Supports markdown tables, numbered lists, and “Name — area” lines.
         Matching is fuzzy; review “maybe” and “brand elsewhere” carefully.
@@ -257,8 +299,10 @@
     </div>
 
     <div id="results" hidden>
+      <div class="session-banner" id="sessionBanner"></div>
       <div class="actions-bar">
-        <button id="copyInstr" type="button">Copy instructions</button>
+        <button id="saveCompare" type="button">Save comparison</button>
+        <button id="copyInstr" class="secondary" type="button">Copy instructions</button>
         <button id="copyJson" class="secondary" type="button">Copy JSON</button>
         <button id="clearNotes" class="secondary" type="button">Clear notes</button>
         <span class="toast" id="toast"></span>
@@ -271,7 +315,7 @@
 
     <script>
       const API_DEFAULT = "https://api.vaara.ai";
-      const STORAGE_PREFIX = "vaara.schoolCompare.notes.v1:";
+      const STORE_KEY = "vaara.schoolCompare.sessions.v1";
 
       const ACTIONS = [
         { value: "", label: "— action —" },
@@ -287,7 +331,9 @@
       let activeTab = "all";
       /** @type {Record<string, { action: string, note: string }>} */
       let notesByKey = {};
-      let sessionKey = "";
+      /** Active saved session id (null until first Save) */
+      let currentSessionId = null;
+      let dirty = false;
 
       function $(id) { return document.getElementById(id); }
 
@@ -307,7 +353,7 @@
         el.textContent = msg || "";
         if (msg) {
           clearTimeout(toast._t);
-          toast._t = setTimeout(() => { el.textContent = ""; }, 2500);
+          toast._t = setTimeout(() => { el.textContent = ""; }, 2800);
         }
       }
 
@@ -344,35 +390,207 @@
           <div class="meta">${escapeHtml(m.normalizedKey)}</div>`;
       }
 
-      function loadNotes(key) {
+      function readStore() {
         try {
-          const raw = localStorage.getItem(STORAGE_PREFIX + key);
-          notesByKey = raw ? JSON.parse(raw) : {};
+          const raw = localStorage.getItem(STORE_KEY);
+          if (!raw) return { currentId: null, sessions: {} };
+          const parsed = JSON.parse(raw);
+          return {
+            currentId: parsed.currentId || null,
+            sessions: parsed.sessions || {},
+          };
         } catch {
-          notesByKey = {};
+          return { currentId: null, sessions: {} };
         }
       }
 
-      function persistNotes() {
-        if (!sessionKey) return;
-        localStorage.setItem(STORAGE_PREFIX + sessionKey, JSON.stringify(notesByKey));
-        updateNotesStat();
+      function writeStore(store) {
+        localStorage.setItem(STORE_KEY, JSON.stringify(store));
       }
 
-      function updateNotesStat() {
-        if (!$("nNotes") || !lastPayload) return;
-        const n = lastPayload.results.filter((r) => {
+      function newId() {
+        return "cmp_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+      }
+
+      function countNotes() {
+        if (!lastPayload) return 0;
+        return lastPayload.results.filter((r) => {
           const e = notesByKey[rowKey(r)];
           return e && (e.action || (e.note && e.note.trim()));
         }).length;
-        $("nNotes").textContent = String(n);
       }
 
-      function makeSessionKey(area, text) {
-        let h = 0;
-        const s = (area || "") + "\n" + text;
-        for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
-        return (area || "area").toLowerCase().replace(/\s+/g, "_") + ":" + (h >>> 0).toString(16);
+      function updateNotesStat() {
+        if ($("nNotes")) $("nNotes").textContent = String(countNotes());
+      }
+
+      function updateSessionBanner() {
+        const el = $("sessionBanner");
+        if (!el) return;
+        if (!currentSessionId) {
+          el.innerHTML = dirty
+            ? 'Unsaved session — click <strong>Save comparison</strong> to keep results + notes after refresh.'
+            : "";
+          return;
+        }
+        const store = readStore();
+        const s = store.sessions[currentSessionId];
+        const when = s?.savedAt ? new Date(s.savedAt).toLocaleString() : "";
+        el.innerHTML = `Loaded: <strong>${escapeHtml(s?.title || currentSessionId)}</strong>
+          · last saved ${escapeHtml(when)}${dirty ? " · <em>unsaved changes</em>" : ""}`;
+      }
+
+      function snapshotFromUi(title) {
+        return {
+          id: currentSessionId || newId(),
+          title:
+            title ||
+            ($("area").value.trim() || "Untitled") +
+              " · " +
+              (lastPayload?.summary?.total ?? 0) +
+              " schools",
+          savedAt: new Date().toISOString(),
+          area: $("area").value.trim() || "",
+          region: $("region").value.trim() || "",
+          apiBase: $("apiBase").value.trim() || API_DEFAULT,
+          text: $("text").value,
+          payload: lastPayload,
+          notes: notesByKey,
+          activeTab,
+        };
+      }
+
+      function saveComparison(opts = {}) {
+        if (!lastPayload) {
+          showError("Run Compare first, then save.");
+          return null;
+        }
+        let title = opts.title;
+        if (!currentSessionId && !opts.silent) {
+          const suggested =
+            ($("area").value.trim() || "Area") +
+            " · " +
+            lastPayload.summary.total +
+            " schools";
+          title = prompt("Name this comparison", suggested);
+          if (title === null) return null;
+          title = title.trim() || suggested;
+        } else if (currentSessionId && !title) {
+          const existing = readStore().sessions[currentSessionId];
+          title = existing?.title || ($("area").value.trim() || "Untitled");
+        }
+
+        const snap = snapshotFromUi(title);
+        currentSessionId = snap.id;
+        const store = readStore();
+        store.sessions[snap.id] = snap;
+        store.currentId = snap.id;
+        writeStore(store);
+        dirty = false;
+        updateSessionBanner();
+        renderSavedList();
+        if (!opts.silent) toast("Comparison saved");
+        return snap.id;
+      }
+
+      function autosave() {
+        if (!lastPayload || !currentSessionId) {
+          dirty = true;
+          updateSessionBanner();
+          return;
+        }
+        saveComparison({ silent: true });
+        toast("Auto-saved");
+      }
+
+      function loadComparison(id) {
+        const store = readStore();
+        const s = store.sessions[id];
+        if (!s || !s.payload) {
+          showError("Saved comparison not found or incomplete.");
+          return;
+        }
+        currentSessionId = id;
+        store.currentId = id;
+        writeStore(store);
+
+        $("area").value = s.area || "";
+        $("region").value = s.region || "";
+        $("apiBase").value = s.apiBase || API_DEFAULT;
+        $("text").value = s.text || "";
+        lastPayload = s.payload;
+        notesByKey = s.notes || {};
+        activeTab = s.activeTab || "all";
+        dirty = false;
+
+        showError("");
+        renderSummary(lastPayload);
+        renderTabs(lastPayload);
+        renderTable(lastPayload);
+        updateSessionBanner();
+        renderSavedList();
+        toast("Comparison loaded");
+      }
+
+      function deleteComparison(id) {
+        const store = readStore();
+        delete store.sessions[id];
+        if (store.currentId === id) store.currentId = null;
+        writeStore(store);
+        if (currentSessionId === id) {
+          currentSessionId = null;
+          dirty = true;
+          updateSessionBanner();
+        }
+        renderSavedList();
+        toast("Deleted");
+      }
+
+      function renderSavedList() {
+        const store = readStore();
+        const ids = Object.keys(store.sessions).sort((a, b) => {
+          const ta = store.sessions[a].savedAt || "";
+          const tb = store.sessions[b].savedAt || "";
+          return tb.localeCompare(ta);
+        });
+        const box = $("savedList");
+        if (!ids.length) {
+          box.innerHTML = '<p class="empty">No saved comparisons yet. Run Compare, add notes, then Save comparison.</p>';
+          return;
+        }
+        box.innerHTML = ids
+          .map((id) => {
+            const s = store.sessions[id];
+            const nNotes = Object.values(s.notes || {}).filter(
+              (e) => e && (e.action || (e.note && String(e.note).trim()))
+            ).length;
+            const total = s.payload?.summary?.total ?? "?";
+            const when = s.savedAt ? new Date(s.savedAt).toLocaleString() : "";
+            const active = id === currentSessionId ? "active" : "";
+            return `
+              <div class="saved-row ${active}">
+                <div class="saved-meta">
+                  <div class="title">${escapeHtml(s.title || id)}</div>
+                  <div class="meta">${escapeHtml(when)} · ${total} schools · ${nNotes} notes
+                    ${s.area ? " · " + escapeHtml(s.area) : ""}</div>
+                </div>
+                <div>
+                  <button type="button" class="ghost" data-load="${escapeHtml(id)}">Load</button>
+                  <button type="button" class="danger" data-del="${escapeHtml(id)}">Delete</button>
+                </div>
+              </div>`;
+          })
+          .join("");
+
+        box.querySelectorAll("[data-load]").forEach((btn) => {
+          btn.addEventListener("click", () => loadComparison(btn.getAttribute("data-load")));
+        });
+        box.querySelectorAll("[data-del]").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const id = btn.getAttribute("data-del");
+            if (confirm("Delete this saved comparison?")) deleteComparison(id);
+          });
+        });
       }
 
       function getNote(row) {
@@ -382,7 +600,14 @@
       function setNote(row, patch) {
         const k = rowKey(row);
         notesByKey[k] = { ...getNote(row), ...patch };
-        persistNotes();
+        dirty = true;
+        updateNotesStat();
+        updateSessionBanner();
+        // Auto-save into existing named session so shutdown doesn't lose notes
+        if (currentSessionId) {
+          clearTimeout(setNote._t);
+          setNote._t = setTimeout(() => autosave(), 400);
+        }
       }
 
       function actionOptions(selected) {
@@ -431,6 +656,9 @@
         $("tabs").querySelectorAll(".tab").forEach((btn) => {
           btn.addEventListener("click", () => {
             activeTab = btn.getAttribute("data-tab");
+            dirty = true;
+            if (currentSessionId) autosave();
+            else updateSessionBanner();
             renderTabs(payload);
             renderTable(payload);
           });
@@ -462,7 +690,7 @@
           box.querySelector("[data-save]").addEventListener("click", () => {
             setNote(row, { action: select.value, note: ta.value });
             flash();
-            toast("Note saved");
+            toast(currentSessionId ? "Note saved" : "Note kept — click Save comparison to persist session");
           });
           box.querySelectorAll("[data-quick]").forEach((btn) => {
             btn.addEventListener("click", () => {
@@ -528,6 +756,7 @@
         $("nMaybe").textContent = payload.summary.maybe;
         $("nMiss").textContent = payload.summary.missing;
         updateNotesStat();
+        updateSessionBanner();
       }
 
       function actionLabel(value) {
@@ -598,7 +827,7 @@
           await navigator.clipboard.writeText(text);
           toast(okMsg);
         } catch {
-          showError("Clipboard failed — select and copy manually from the console payload.");
+          showError("Clipboard failed — see browser console for payload.");
           console.log(text);
         }
       }
@@ -627,10 +856,19 @@
           if (!res.ok) {
             throw new Error(data.error || `Compare failed (${res.status})`);
           }
+          // New compare = new unsaved session (keep notes only if same session re-run)
+          const prevNotes = notesByKey;
           lastPayload = data;
-          sessionKey = makeSessionKey($("area").value.trim(), text);
-          loadNotes(sessionKey);
+          notesByKey = {};
+          // Re-attach notes for same line|name keys from previous work in this browser session
+          for (const r of data.results) {
+            const k = rowKey(r);
+            if (prevNotes[k]) notesByKey[k] = prevNotes[k];
+          }
           activeTab = "all";
+          dirty = true;
+          // If already in a named session, update it; else leave unsaved until Save
+          if (currentSessionId) autosave();
           renderSummary(data);
           renderTabs(data);
           renderTable(data);
@@ -648,8 +886,14 @@
         $("stats").hidden = true;
         $("results").hidden = true;
         lastPayload = null;
+        notesByKey = {};
+        currentSessionId = null;
+        dirty = false;
         toast("");
+        updateSessionBanner();
+        renderSavedList();
       });
+      $("saveCompare").addEventListener("click", () => saveComparison());
       $("copyInstr").addEventListener("click", () => {
         copyText(buildInstructionsText(), "Instructions copied");
       });
@@ -657,11 +901,28 @@
         copyText(buildInstructionsJson(), "JSON copied");
       });
       $("clearNotes").addEventListener("click", () => {
-        if (!sessionKey || !confirm("Clear all saved notes for this compare session?")) return;
+        if (!confirm("Clear all notes on this comparison?")) return;
         notesByKey = {};
-        persistNotes();
+        dirty = true;
         if (lastPayload) renderTable(lastPayload);
+        if (currentSessionId) autosave();
+        else updateSessionBanner();
         toast("Notes cleared");
+      });
+
+      // Restore last session on load
+      renderSavedList();
+      const store = readStore();
+      if (store.currentId && store.sessions[store.currentId]) {
+        loadComparison(store.currentId);
+      }
+
+      // Warn before leaving with unsaved work
+      window.addEventListener("beforeunload", (e) => {
+        if (dirty && lastPayload) {
+          e.preventDefault();
+          e.returnValue = "";
+        }
       });
     </script>
   </body>
