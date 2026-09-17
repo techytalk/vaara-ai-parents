@@ -207,7 +207,9 @@ export function createReferenceRoutes() {
   );
 
   app.get(
-    "/schools/catalog/v:gen",
+    // Client requests `/schools/catalog/v{n}`. Hono `v:gen` does not match that
+    // path — use `:gen` and accept `v3` or `3`.
+    "/schools/catalog/:gen",
     rateLimitMiddleware({
       prefix: "ref-school-catalog",
       limit: 30,
@@ -215,7 +217,8 @@ export function createReferenceRoutes() {
       keyFn: (ctx) => ctx.req.header("x-forwarded-for") ?? "anon",
     }),
     async (c) => {
-      const gen = Number(c.req.param("gen"));
+      const raw = (c.req.param("gen") ?? "").replace(/^v/i, "");
+      const gen = Number(raw);
       if (!Number.isFinite(gen) || gen < 1) {
         return c.json({ error: "Invalid generation" }, 400);
       }
