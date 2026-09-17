@@ -983,10 +983,10 @@ export async function listHome(
      WHERE u.status = 'published'
        AND (u.expires_at IS NULL OR u.expires_at > now())
        AND ch.status = 'active'
-       AND ($2::text IS NULL OR $2 = ANY (p.service_pin_codes))
+       AND ($1::text IS NULL OR $1 = ANY (p.service_pin_codes))
      ORDER BY u.published_at DESC
      LIMIT 10`,
-    [userId, pin]
+    [pin]
   );
 
   type Row = {

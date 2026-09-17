@@ -82,6 +82,10 @@ const MIGRATIONS = [
     version: "049_chat_backfill_repair",
     file: "049_chat_backfill_repair.sql",
   },
+  {
+    version: "050_backfill_linear_school_class_messages",
+    file: "050_backfill_linear_school_class_messages.sql",
+  },
 ];
 
 async function isMigrationApplied(

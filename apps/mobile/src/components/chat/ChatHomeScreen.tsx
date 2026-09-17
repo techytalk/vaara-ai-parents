@@ -11,7 +11,7 @@ import {
 import { useRouter } from "expo-router";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
-import { EmptyState, ScreenLoader } from "@/components/ui";
+import { EmptyState, InlineError, ScreenLoader } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import { useRealtimeChannel } from "@/hooks/useRealtimeChannel";
 import { api, type ChatHomeItem } from "@/lib/api";
@@ -81,6 +81,17 @@ export function ChatHomeScreen() {
 
   if (query.isLoading) {
     return <ScreenLoader label="Loading Home" />;
+  }
+
+  if (query.isError && items.length === 0) {
+    return (
+      <View style={styles.error}>
+        <InlineError
+          message="We couldn't load Home. Check your connection and try again."
+          onRetry={() => void query.refetch()}
+        />
+      </View>
+    );
   }
 
   return (
@@ -191,6 +202,11 @@ function HomeRow({
 }
 
 const styles = StyleSheet.create({
+  error: {
+    flex: 1,
+    justifyContent: "center",
+    padding: spacing.md,
+  },
   list: { padding: spacing.md, gap: spacing.sm, paddingBottom: 40 },
   empty: { flexGrow: 1 },
   intro: {
