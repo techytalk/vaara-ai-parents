@@ -37,6 +37,8 @@ type Props = {
   /** Filters shortlist/search/create for preschool onboarding. */
   list?: "preschool" | "school" | "preschool_campus";
   createLabel?: string;
+  label?: string;
+  placeholder?: string;
 };
 
 function toSchool(item: SchoolListItem): School {
@@ -65,6 +67,8 @@ export function SchoolPicker({
   onCreateModeChange,
   list,
   createLabel,
+  label = "School",
+  placeholder = "Select school",
 }: Props) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SchoolListItem[]>([]);
@@ -72,6 +76,7 @@ export function SchoolPicker({
   const [searching, setSearching] = useState(false);
   const [shortlistReady, setShortlistReady] = useState(false);
   const [searchSettled, setSearchSettled] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [showAddNew, setShowAddNew] = useState(false);
   const [candidates, setCandidates] = useState<School[]>([]);
   const [confirmationToken, setConfirmationToken] = useState<string | null>(
@@ -100,8 +105,9 @@ export function SchoolPicker({
 
   useEffect(() => {
     if (selected) {
-      setQuery(selected.displayLabel);
+      setQuery("");
       setShowAddNew(false);
+      setMenuOpen(false);
     }
   }, [selected?.id]);
 
@@ -121,7 +127,6 @@ export function SchoolPicker({
       if (cancelled) return;
       setShortlist(listRows);
       setShortlistReady(true);
-      // Re-run local filter if the user already typed while catalogue loaded.
       const q = query.trim();
       if (q.length > 0 && q.length < 3 && !list) {
         setResults(filterLocalCatalog(q, 20));
@@ -139,11 +144,6 @@ export function SchoolPicker({
     abortRef.current?.abort();
 
     const q = query.trim();
-    if (selected && q === selected.displayLabel) {
-      setResults([]);
-      setSearchSettled(false);
-      return;
-    }
     if (q.length === 0) {
       setResults([]);
       setSearching(false);
@@ -210,7 +210,6 @@ export function SchoolPicker({
       } catch (e) {
         if (controller.signal.aborted) return;
         if (requestId !== requestIdRef.current) return;
-        // Keep local results visible on remote failure.
         setError(e instanceof Error ? e.message : "Search failed");
       } finally {
         if (requestId === requestIdRef.current) {
@@ -223,25 +222,25 @@ export function SchoolPicker({
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [
-    query,
-    selected?.id,
-    selected?.displayLabel,
-    list,
-    token,
-    defaultCity,
-    defaultPin,
-  ]);
+  }, [query, list, token, defaultCity, defaultPin]);
 
   function openCreateForm() {
     trackEvent("school_create_opened", {
       track: list === "preschool" ? "preschool" : "school",
       school_kind: list === "preschool" ? "preschool" : "school",
     });
+    setMenuOpen(false);
     setShowAddNew(true);
     setAddName(query.trim());
     setCandidates([]);
     setConfirmationToken(null);
+  }
+
+  function selectSchool(school: School, source: "shortlist" | "search") {
+    trackEvent("school_selected", { source });
+    onSelect(school);
+    setMenuOpen(false);
+    setQuery("");
   }
 
   async function createSchool(confirmToken?: string | null) {
@@ -271,14 +270,14 @@ export function SchoolPicker({
           ...(confirmToken ? { confirmCreateToken: confirmToken } : {}),
         },
         {
-          // Only send idempotency on the final confirmed create path.
           idempotencyKey: confirmToken
             ? `${ensureOnboardingAttemptId()}:school:${name}:${city}`
             : undefined,
         }
       );
       trackEvent("school_created", {
-        school_kind: school.kind ?? (list === "preschool" ? "preschool" : "school"),
+        school_kind:
+          school.kind ?? (list === "preschool" ? "preschool" : "school"),
       });
       trackEvent("school_selected", { source: "created" });
       onSelect(school);
@@ -312,11 +311,10 @@ export function SchoolPicker({
   }
 
   const showShortlist =
-    !selected && query.trim().length === 0 && !showAddNew;
+    menuOpen && !selected && query.trim().length === 0 && !showAddNew;
   const showSearchResults =
-    !selected && query.trim().length > 0 && !showAddNew;
-  const showOther =
-    showSearchResults && searchSettled && !searching;
+    menuOpen && !selected && query.trim().length > 0 && !showAddNew;
+  const showOther = showSearchResults && searchSettled && !searching;
 
   const selectedMeta = selected
     ? [selected.branch, selected.city].filter(Boolean).join(" · ")
@@ -324,57 +322,123 @@ export function SchoolPicker({
 
   return (
     <View style={styles.wrap}>
-      <FieldLabel>Search for your child&apos;s school</FieldLabel>
-      <View style={styles.searchRow}>
-        <Ionicons name="search-outline" size={18} color={colors.textMuted} />
-        <TextInput
-          style={styles.input}
-          placeholder="Type school name (e.g. The Gaudium School)"
-          placeholderTextColor={colors.textSubtle}
-          value={selected ? selected.name : query}
-          onChangeText={(text) => {
-            if (selected) onSelect(null);
-            setQuery(text);
-          }}
-          autoCorrect={false}
-          autoCapitalize="words"
-        />
-        {selected || query ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Clear school search"
-            onPress={() => {
-              setQuery("");
-              if (selected) onSelect(null);
-            }}
-            hitSlop={8}
-          >
-            <Ionicons name="close-circle" size={18} color={colors.textMuted} />
-          </Pressable>
-        ) : null}
-      </View>
-      <Text style={styles.hint}>
-        Tap a school from the list, or type to search.
-      </Text>
+      <FieldLabel>{label}</FieldLabel>
 
-      {searching ? (
-        <ActivityIndicator style={styles.loader} color={colors.primary} />
+      {!showAddNew ? (
+        <Pressable
+          style={[
+            styles.dropdownTrigger,
+            menuOpen && styles.dropdownTriggerOpen,
+          ]}
+          onPress={() => {
+            if (selected) {
+              onSelect(null);
+              setQuery("");
+            }
+            setMenuOpen((open) => !open);
+          }}
+        >
+          <Text
+            style={[
+              styles.dropdownTriggerText,
+              !selected && styles.dropdownTriggerPlaceholder,
+            ]}
+            numberOfLines={1}
+          >
+            {selected?.displayLabel || placeholder}
+          </Text>
+          <Ionicons
+            name={menuOpen ? "chevron-up" : "chevron-down"}
+            size={18}
+            color={colors.textMuted}
+          />
+        </Pressable>
       ) : null}
 
-      {showShortlist ? (
-        <View style={styles.dropdown}>
-          {shortlistReady ? (
-            <>
-              <Text style={styles.suggestHeader}>Suggested schools</Text>
-              {shortlist.map((school, index) => (
+      {menuOpen && !showAddNew ? (
+        <>
+          <View style={styles.searchRow}>
+            <Ionicons name="search-outline" size={18} color={colors.textMuted} />
+            <TextInput
+              style={styles.input}
+              placeholder="Type to search"
+              placeholderTextColor={colors.textSubtle}
+              value={query}
+              onChangeText={(text) => {
+                if (selected) onSelect(null);
+                setQuery(text);
+              }}
+              autoCorrect={false}
+              autoCapitalize="words"
+              autoFocus
+            />
+            {query ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Clear school search"
+                onPress={() => setQuery("")}
+                hitSlop={8}
+              >
+                <Ionicons
+                  name="close-circle"
+                  size={18}
+                  color={colors.textMuted}
+                />
+              </Pressable>
+            ) : null}
+          </View>
+
+          {searching ? (
+            <ActivityIndicator style={styles.loader} color={colors.primary} />
+          ) : null}
+
+          {showShortlist ? (
+            <View style={styles.dropdown}>
+              {shortlistReady ? (
+                <>
+                  {shortlist.map((school, index) => (
+                    <Pressable
+                      key={school.id}
+                      style={styles.resultRow}
+                      onPress={() => {
+                        trackEvent("shortlist_tapped", { rank: index + 1 });
+                        selectSchool(toSchool(school), "shortlist");
+                      }}
+                    >
+                      <Text style={styles.resultTitle}>{school.name}</Text>
+                      <Text style={styles.resultMeta}>
+                        {[school.branch, school.city]
+                          .filter(Boolean)
+                          .join(" · ")}
+                        {!school.verified ? " · Pending review" : ""}
+                      </Text>
+                    </Pressable>
+                  ))}
+                  {shortlist.length === 0 ? (
+                    <Text style={styles.suggestEmpty}>
+                      No suggestions yet — type a name.
+                    </Text>
+                  ) : null}
+                  <Pressable style={styles.otherRow} onPress={openCreateForm}>
+                    <Text style={styles.otherTitle}>Not here / Other</Text>
+                    <Text style={styles.otherMeta}>
+                      {createLabel ?? "Add your school"}
+                    </Text>
+                  </Pressable>
+                </>
+              ) : (
+                <Text style={styles.suggestEmpty}>Loading…</Text>
+              )}
+            </View>
+          ) : null}
+
+          {showSearchResults ? (
+            <View style={styles.dropdown}>
+              {results.map((school) => (
                 <Pressable
                   key={school.id}
                   style={styles.resultRow}
-                  onPress={() => {
-                    trackEvent("shortlist_tapped", { rank: index + 1 });
-                    trackEvent("school_selected", { source: "shortlist" });
-                    onSelect(toSchool(school));
-                  }}
+                  onPress={() => selectSchool(toSchool(school), "search")}
                 >
                   <Text style={styles.resultTitle}>{school.name}</Text>
                   <Text style={styles.resultMeta}>
@@ -383,45 +447,20 @@ export function SchoolPicker({
                   </Text>
                 </Pressable>
               ))}
-              {shortlist.length === 0 ? (
-                <Text style={styles.suggestEmpty}>
-                  No suggestions yet — type your school name.
-                </Text>
+              {showOther ? (
+                <Pressable style={styles.otherRow} onPress={openCreateForm}>
+                  <Text style={styles.otherTitle}>Not here / Other</Text>
+                  <Text style={styles.otherMeta}>
+                    {createLabel ?? "Add your school"}
+                  </Text>
+                </Pressable>
               ) : null}
-            </>
-          ) : (
-            <Text style={styles.suggestEmpty}>Loading suggestions…</Text>
-          )}
-        </View>
-      ) : null}
-
-      {showSearchResults ? (
-        <View style={styles.dropdown}>
-          {results.map((school) => (
-            <Pressable
-              key={school.id}
-              style={styles.resultRow}
-              onPress={() => {
-                trackEvent("school_selected", { source: "search" });
-                onSelect(toSchool(school));
-              }}
-            >
-              <Text style={styles.resultTitle}>{school.name}</Text>
-              <Text style={styles.resultMeta}>
-                {[school.branch, school.city].filter(Boolean).join(" · ")}
-                {!school.verified ? " · Pending review" : ""}
-              </Text>
-            </Pressable>
-          ))}
-          {showOther ? (
-            <Pressable style={styles.otherRow} onPress={openCreateForm}>
-              <Text style={styles.otherTitle}>Not here / Other</Text>
-              <Text style={styles.otherMeta}>
-                {createLabel ?? "Add your school"}
-              </Text>
-            </Pressable>
+              {!searching && searchSettled && results.length === 0 ? (
+                <Text style={styles.suggestEmpty}>No matches</Text>
+              ) : null}
+            </View>
           ) : null}
-        </View>
+        </>
       ) : null}
 
       {showAddNew ? (
@@ -434,14 +473,12 @@ export function SchoolPicker({
               onPress={() => {
                 setShowAddNew(false);
                 setCandidates([]);
+                setMenuOpen(true);
               }}
             >
               <Text style={styles.backToList}>Back to list</Text>
             </Pressable>
           </View>
-          <Text style={styles.addFormHint}>
-            We&apos;ll check for a close match before creating a new entry.
-          </Text>
 
           {candidates.length > 0 ? (
             <View style={styles.candidateBlock}>
@@ -524,7 +561,7 @@ export function SchoolPicker({
       ) : null}
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
-      {selected ? (
+      {selected && !menuOpen && !showAddNew ? (
         <View style={styles.selectedCard}>
           <Image
             source={require("../../../assets/illustrations/school-selected-badge.png")}
@@ -550,6 +587,32 @@ export function SchoolPicker({
 
 const styles = StyleSheet.create({
   wrap: { marginBottom: 12 },
+  dropdownTrigger: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    minHeight: 48,
+    paddingHorizontal: 14,
+    backgroundColor: colors.card,
+    marginBottom: 8,
+  },
+  dropdownTriggerOpen: {
+    borderColor: colors.primary,
+  },
+  dropdownTriggerText: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: "600",
+    color: colors.text,
+  },
+  dropdownTriggerPlaceholder: {
+    fontWeight: "500",
+    color: colors.textMuted,
+  },
   searchRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -560,6 +623,7 @@ const styles = StyleSheet.create({
     minHeight: 48,
     paddingHorizontal: 12,
     backgroundColor: colors.card,
+    marginBottom: 8,
   },
   input: {
     flex: 1,
@@ -568,14 +632,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.text,
   },
-  hint: {
-    fontSize: 12,
-    color: colors.textMuted,
-    marginTop: 6,
-    marginBottom: 8,
-  },
   selectedCard: {
-    marginTop: 8,
+    marginTop: 4,
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
@@ -672,11 +730,6 @@ const styles = StyleSheet.create({
   },
   addFormTitle: { fontSize: 16, fontWeight: "700", color: colors.text },
   backToList: { fontSize: 13, color: colors.primary, fontWeight: "600" },
-  addFormHint: {
-    fontSize: 13,
-    color: colors.textMuted,
-    marginBottom: 10,
-  },
   candidateBlock: { marginBottom: 8 },
   createBtn: {
     backgroundColor: colors.primary,

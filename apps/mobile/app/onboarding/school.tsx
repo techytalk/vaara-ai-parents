@@ -54,7 +54,6 @@ function schoolHook(
             <Text style={hookAccent}>3- and 4-year-olds</Text> nearby.
           </>
         ),
-        body: "Pick a preschool or a school nursery campus — then join the age circle for your area.",
       };
     }
     return {
@@ -64,7 +63,6 @@ function schoolHook(
           <Text style={hookAccent}>{school.name}</Text>.
         </>
       ),
-      body: "Next you will join the 3-year or 4-year parents circle in your PIN.",
     };
   }
 
@@ -271,10 +269,6 @@ export default function OnboardingSchoolScreen() {
               onPress={() => onSelectCampusList("preschool_campus")}
             />
           </View>
-          <Text style={styles.hint}>
-            Choose one list only. Preschool for Kidzee / EuroKids / Montessori.
-            School for a K–12 nursery wing (for example CHIREC).
-          </Text>
         </>
       ) : null}
 
@@ -292,6 +286,18 @@ export default function OnboardingSchoolScreen() {
         list={pickerList}
         createLabel={
           pickerList === "preschool" ? "Add preschool" : "Add school"
+        }
+        label={
+          pickerList === "preschool"
+            ? "Preschool"
+            : pickerList === "preschool_campus"
+              ? "School campus"
+              : "School"
+        }
+        placeholder={
+          pickerList === "preschool"
+            ? "Select preschool"
+            : "Select school"
         }
       />
 
@@ -329,12 +335,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
-    marginBottom: 12,
-  },
-  hint: {
-    fontSize: 13,
-    lineHeight: 18,
-    color: colors.textMuted,
     marginBottom: 12,
   },
   error: { color: colors.error, marginBottom: 8 },
