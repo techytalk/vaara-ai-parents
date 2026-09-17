@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow" />
+    <title>Vaara — School compare</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+        --teal: #0e9a8a;
+        --teal-dark: #08786d;
+        --bg: #fffcf7;
+        --card: #fff;
+        --text: #0d1b2a;
+        --muted: #5e6974;
+        --border: #e8e3db;
+        --ok: #078675;
+        --warn: #b96d00;
+        --miss: #b91c1c;
+        --maybe: #6d28d9;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: var(--bg);
+        color: var(--text);
+      }
+      h1 { font-size: 1.45rem; margin: 0 0 6px; }
+      h2 { font-size: 1.05rem; margin: 22px 0 10px; }
+      .muted { color: var(--muted); font-size: 0.9rem; margin: 0 0 18px; }
+      a { color: var(--teal-dark); }
+      label { display: block; font-size: 0.85rem; margin: 0 0 4px; color: var(--muted); }
+      input, select, textarea, button {
+        font: inherit;
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+      }
+      textarea {
+        width: 100%;
+        min-height: 220px;
+        box-sizing: border-box;
+        resize: vertical;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.85rem;
+        line-height: 1.4;
+      }
+      button {
+        background: var(--teal);
+        color: #fff;
+        border: none;
+        cursor: pointer;
+        margin-right: 8px;
+      }
+      button.secondary { background: #44403c; }
+      button:disabled { opacity: 0.55; cursor: wait; }
+      .toolbar {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        align-items: end;
+        margin-bottom: 12px;
+      }
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+        gap: 10px;
+        margin-bottom: 16px;
+      }
+      .stat {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 12px 14px;
+      }
+      .stat .n { font-size: 1.5rem; font-weight: 700; }
+      .stat .l { font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
+      .stat.on .n { color: var(--ok); }
+      .stat.else .n { color: var(--warn); }
+      .stat.maybe .n { color: var(--maybe); }
+      .stat.miss .n { color: var(--miss); }
+      .panel {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 14px;
+        margin-bottom: 14px;
+      }
+      .tabs {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin-bottom: 12px;
+      }
+      .tab {
+        background: #f7f4ee;
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 6px 12px;
+        font-size: 0.85rem;
+        cursor: pointer;
+      }
+      .tab.active {
+        background: #eaf8f6;
+        border-color: var(--teal);
+        color: var(--teal-dark);
+        font-weight: 600;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.9rem;
+      }
+      th, td {
+        text-align: left;
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--border);
+        vertical-align: top;
+      }
+      th { font-size: 0.78rem; color: var(--muted); font-weight: 600; }
+      .badge {
+        display: inline-block;
+        font-size: 0.75rem;
+        font-weight: 600;
+        padding: 2px 8px;
+        border-radius: 999px;
+      }
+      .badge.on { background: #e6f7f4; color: var(--ok); }
+      .badge.else { background: #fff2d9; color: var(--warn); }
+      .badge.maybe { background: #f3e8ff; color: var(--maybe); }
+      .badge.miss { background: #feecec; color: var(--miss); }
+      .meta { font-size: 0.82rem; color: var(--muted); }
+      .err {
+        color: #b91c1c;
+        background: #feecec;
+        border-radius: 10px;
+        padding: 10px 12px;
+        margin-bottom: 12px;
+        display: none;
+      }
+      .nav { margin-bottom: 14px; font-size: 0.9rem; }
+      .empty { color: var(--muted); padding: 12px 0; }
+      .hint {
+        font-size: 0.82rem;
+        color: var(--muted);
+        margin: 6px 0 0;
+      }
+      @media (max-width: 720px) {
+        body { padding: 14px; }
+        table { display: block; overflow-x: auto; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="nav">
+      <strong>Admin</strong> · School compare ·
+      <a href="/internal/admin/">Parent signups</a> ·
+      <a href="/internal/admin/directory.html">School directory</a> ·
+      <a href="/internal/admin/schools.html">School tools</a> ·
+      <a href="/internal/admin/qr.html">QR codes</a>
+    </div>
+    <h1>School compare</h1>
+    <p class="muted">
+      Paste an area school list (maps / scrape / markdown table). Compares against the live catalog.
+      Analysis only — does not insert or update schools.
+    </p>
+
+    <div class="panel">
+      <div class="toolbar">
+        <div>
+          <label>Default area / locality</label>
+          <input id="area" type="text" size="28" placeholder="e.g. Gachibowli" />
+        </div>
+        <div>
+          <label>Limit catalog to region (optional)</label>
+          <input id="region" type="text" size="24" placeholder="e.g. west-hyderabad" />
+        </div>
+        <div>
+          <label>API base</label>
+          <input id="apiBase" size="32" value="https://api.vaara.ai" />
+        </div>
+        <button id="run" type="button">Compare</button>
+        <button id="clear" class="secondary" type="button">Clear</button>
+      </div>
+      <label for="text">Pasted school list</label>
+      <textarea id="text" placeholder="Paste markdown table or one school per line…&#10;&#10;Example:&#10;| # | School | Type / area |&#10;| 1 | Goldcrest School | CBSE — Gachibowli |&#10;| 2 | Nasr Boys School | ICSE — Gachibowli |"></textarea>
+      <p class="hint">
+        Supports markdown tables, numbered lists, and “Name — area” lines.
+        Matching is fuzzy (name + locality); review “maybe” and “brand elsewhere” carefully.
+      </p>
+    </div>
+
+    <div id="err" class="err"></div>
+
+    <div class="stats" id="stats" hidden>
+      <div class="stat"><div class="n" id="nTotal">—</div><div class="l">Pasted</div></div>
+      <div class="stat on"><div class="n" id="nOn">—</div><div class="l">On site</div></div>
+      <div class="stat else"><div class="n" id="nElse">—</div><div class="l">Brand elsewhere</div></div>
+      <div class="stat maybe"><div class="n" id="nMaybe">—</div><div class="l">Maybe</div></div>
+      <div class="stat miss"><div class="n" id="nMiss">—</div><div class="l">Missing</div></div>
+      <div class="stat"><div class="n" id="nCat">—</div><div class="l">Catalog size</div></div>
+    </div>
+
+    <div id="results" hidden>
+      <div class="tabs" id="tabs"></div>
+      <div class="panel">
+        <div id="tableWrap"><p class="empty">Run a compare to see results.</p></div>
+      </div>
+    </div>
+
+    <script>
+      const API_DEFAULT = "https://api.vaara.ai";
+      let lastPayload = null;
+      let activeTab = "all";
+
+      function $(id) { return document.getElementById(id); }
+
+      function showError(msg) {
+        const box = $("err");
+        if (!msg) {
+          box.style.display = "none";
+          box.textContent = "";
+          return;
+        }
+        box.style.display = "block";
+        box.textContent = msg;
+      }
+
+      function statusBadge(status) {
+        const map = {
+          on_site: ["on", "On site"],
+          brand_elsewhere: ["else", "Brand elsewhere"],
+          maybe: ["maybe", "Maybe"],
+          missing: ["miss", "Missing"],
+        };
+        const [cls, label] = map[status] || ["miss", status];
+        return `<span class="badge ${cls}">${label}</span>`;
+      }
+
+      function matchCell(row) {
+        if (!row.match) return '<span class="meta">—</span>';
+        const m = row.match;
+        const loc = [m.locality || m.branch, m.region].filter(Boolean).join(" · ");
+        return `<div><strong>${escapeHtml(m.name)}</strong></div>
+          <div class="meta">${escapeHtml(loc || m.city || "")} · score ${m.score}
+          ${m.verified ? " · verified" : ""}</div>
+          <div class="meta">${escapeHtml(m.normalizedKey)}</div>`;
+      }
+
+      function escapeHtml(s) {
+        return String(s ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function rowsForTab(payload, tab) {
+        if (tab === "all") return payload.results;
+        return payload.buckets[tab] || [];
+      }
+
+      function renderTabs(payload) {
+        const tabs = [
+          ["all", "All", payload.summary.total],
+          ["on_site", "On site", payload.summary.on_site],
+          ["brand_elsewhere", "Brand elsewhere", payload.summary.brand_elsewhere],
+          ["maybe", "Maybe", payload.summary.maybe],
+          ["missing", "Missing", payload.summary.missing],
+        ];
+        $("tabs").innerHTML = tabs.map(([id, label, n]) =>
+          `<button type="button" class="tab ${activeTab === id ? "active" : ""}" data-tab="${id}">${label} (${n})</button>`
+        ).join("");
+        $("tabs").querySelectorAll(".tab").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            activeTab = btn.getAttribute("data-tab");
+            renderTabs(payload);
+            renderTable(payload);
+          });
+        });
+      }
+
+      function renderTable(payload) {
+        const rows = rowsForTab(payload, activeTab);
+        if (!rows.length) {
+          $("tableWrap").innerHTML = '<p class="empty">No schools in this bucket.</p>';
+          return;
+        }
+        const body = rows.map((r) => `
+          <tr>
+            <td>${r.line}</td>
+            <td>
+              <div><strong>${escapeHtml(r.name)}</strong></div>
+              <div class="meta">${escapeHtml(r.area || "—")}${r.note ? " · " + escapeHtml(r.note) : ""}</div>
+            </td>
+            <td>${statusBadge(r.status)}</td>
+            <td>${matchCell(r)}</td>
+          </tr>
+        `).join("");
+        $("tableWrap").innerHTML = `
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Pasted</th>
+                <th>Status</th>
+                <th>Best catalog match</th>
+              </tr>
+            </thead>
+            <tbody>${body}</tbody>
+          </table>`;
+      }
+
+      function renderSummary(payload) {
+        $("stats").hidden = false;
+        $("results").hidden = false;
+        $("nTotal").textContent = payload.summary.total;
+        $("nOn").textContent = payload.summary.on_site;
+        $("nElse").textContent = payload.summary.brand_elsewhere;
+        $("nMaybe").textContent = payload.summary.maybe;
+        $("nMiss").textContent = payload.summary.missing;
+        $("nCat").textContent = payload.filters.catalogSize;
+      }
+
+      async function runCompare() {
+        showError("");
+        const text = $("text").value;
+        if (!text.trim()) {
+          showError("Paste a school list first.");
+          return;
+        }
+        const btn = $("run");
+        btn.disabled = true;
+        try {
+          const apiBase = ($("apiBase").value || API_DEFAULT).replace(/\/$/, "");
+          const res = await fetch(`${apiBase}/internal/admin/schools/compare`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              text,
+              area: $("area").value.trim() || null,
+              region: $("region").value.trim() || null,
+            }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            throw new Error(data.error || `Compare failed (${res.status})`);
+          }
+          lastPayload = data;
+          activeTab = "all";
+          renderSummary(data);
+          renderTabs(data);
+          renderTable(data);
+        } catch (e) {
+          showError(e.message || String(e));
+        } finally {
+          btn.disabled = false;
+        }
+      }
+
+      $("run").addEventListener("click", runCompare);
+      $("clear").addEventListener("click", () => {
+        $("text").value = "";
+        showError("");
+        $("stats").hidden = true;
+        $("results").hidden = true;
+        lastPayload = null;
+      });
+    </script>
+  </body>
+</html>

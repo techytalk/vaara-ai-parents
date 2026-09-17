@@ -9,6 +9,12 @@ import {
   refreshAffinityViews,
 } from "../services/school-merge.js";
 import { buildSchoolCatalog } from "../services/school-catalog.js";
+import {
+  comparePastedToCatalog,
+  parsePastedSchoolList,
+  summarizeCompare,
+  type CatalogSchool,
+} from "../services/school-list-compare.js";
 
 function requireCronSecret(c: { req: { header: (n: string) => string | undefined } }) {
   const secret = c.req.header("X-Cron-Secret");
@@ -412,6 +418,102 @@ export function createInternalRoutes() {
         summary: summaryRows[0] ?? null,
         recentDays,
         parents,
+      });
+    } finally {
+      client.release();
+    }
+  });
+
+  // ---- Admin school list compare (analysis only; open for now) ----
+
+  app.post("/admin/schools/compare", async (c) => {
+    let body: {
+      text?: string;
+      area?: string | null;
+      region?: string | null;
+      limit?: number;
+    };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
+    const text = typeof body.text === "string" ? body.text : "";
+    if (!text.trim()) {
+      return c.json({ error: "text is required (paste a school list)" }, 400);
+    }
+    if (text.length > 200_000) {
+      return c.json({ error: "text too long (max 200k chars)" }, 400);
+    }
+
+    const defaultArea =
+      typeof body.area === "string" && body.area.trim()
+        ? body.area.trim()
+        : null;
+    const regionFilter =
+      typeof body.region === "string" && body.region.trim()
+        ? body.region.trim()
+        : null;
+    const limit = Math.min(Math.max(Number(body.limit ?? 8000), 100), 12000);
+
+    const pasted = parsePastedSchoolList(text, defaultArea);
+    if (pasted.length === 0) {
+      return c.json({
+        error: "Could not parse any schools from the pasted text",
+      }, 400);
+    }
+    if (pasted.length > 500) {
+      return c.json({ error: "Max 500 schools per compare" }, 400);
+    }
+
+    const client = await pool.connect();
+    try {
+      const params: unknown[] = [];
+      let sql = `
+        SELECT
+          s.id::text AS id,
+          s.name,
+          s.branch,
+          s.locality,
+          s.region,
+          s.city,
+          s.board_codes,
+          s.grades_offered,
+          s.normalized_key,
+          s.verified
+        FROM schools s
+        WHERE s.redirect_to_school_id IS NULL
+          AND s.normalized_key <> 'school_not_specified||unknown'
+      `;
+      if (regionFilter) {
+        params.push(regionFilter);
+        sql += ` AND s.region = $${params.length}`;
+      }
+      params.push(limit);
+      sql += ` ORDER BY s.name LIMIT $${params.length}`;
+
+      const { rows } = await client.query(sql, params);
+      const catalog = rows as CatalogSchool[];
+      const results = comparePastedToCatalog(pasted, catalog, defaultArea);
+      const summary = summarizeCompare(results);
+
+      return c.json({
+        ok: true,
+        analysisOnly: true,
+        filters: {
+          area: defaultArea,
+          region: regionFilter,
+          catalogSize: catalog.length,
+        },
+        summary,
+        results,
+        buckets: {
+          on_site: results.filter((r) => r.status === "on_site"),
+          brand_elsewhere: results.filter((r) => r.status === "brand_elsewhere"),
+          maybe: results.filter((r) => r.status === "maybe"),
+          missing: results.filter((r) => r.status === "missing"),
+        },
       });
     } finally {
       client.release();
