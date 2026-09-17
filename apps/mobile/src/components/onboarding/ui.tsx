@@ -63,6 +63,7 @@ export function OnboardingPayoff({
   primaryIcon,
   secondaryIcon,
   illustration,
+  anonymousAvatars,
   compact = false,
 }: {
   title: ReactNode;
@@ -71,6 +72,11 @@ export function OnboardingPayoff({
   secondaryIcon?: IoniconName;
   /** Optional hero art shown beside compact title/body (phone + tablet). */
   illustration?: ImageSourcePropType;
+  /**
+   * Soft anonymous profile faces around the illustration. Keep small and low
+   * opacity so the school (or other) art stays the focus.
+   */
+  anonymousAvatars?: ImageSourcePropType[];
   /** Compact chrome: no icon hero, tighter spacing (Steps 1–3). */
   compact?: boolean;
 }) {
@@ -83,12 +89,38 @@ export function OnboardingPayoff({
             {body ? <Text style={payoffStyles.compactBody}>{body}</Text> : null}
           </View>
           {illustration ? (
-            <Image
-              source={illustration}
-              style={payoffStyles.compactArt}
-              resizeMode="contain"
-              accessibilityIgnoresInvertColors
-            />
+            <View style={payoffStyles.artWrap}>
+              {anonymousAvatars?.[0] ? (
+                <Image
+                  source={anonymousAvatars[0]}
+                  style={[payoffStyles.anonFace, payoffStyles.anonFaceTop]}
+                  resizeMode="contain"
+                  accessibilityIgnoresInvertColors
+                />
+              ) : null}
+              {anonymousAvatars?.[1] ? (
+                <Image
+                  source={anonymousAvatars[1]}
+                  style={[payoffStyles.anonFace, payoffStyles.anonFaceLeft]}
+                  resizeMode="contain"
+                  accessibilityIgnoresInvertColors
+                />
+              ) : null}
+              <Image
+                source={illustration}
+                style={payoffStyles.compactArt}
+                resizeMode="contain"
+                accessibilityIgnoresInvertColors
+              />
+              {anonymousAvatars?.[2] ? (
+                <Image
+                  source={anonymousAvatars[2]}
+                  style={[payoffStyles.anonFace, payoffStyles.anonFaceRight]}
+                  resizeMode="contain"
+                  accessibilityIgnoresInvertColors
+                />
+              ) : null}
+            </View>
           ) : null}
         </View>
       </View>
@@ -297,10 +329,45 @@ const payoffStyles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
-  compactArt: {
-    width: 112,
-    height: 112,
+  artWrap: {
+    width: 118,
+    height: 118,
     marginTop: -4,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  compactArt: {
+    width: 100,
+    height: 100,
+    zIndex: 2,
+  },
+  anonFace: {
+    position: "absolute",
+    width: 28,
+    height: 28,
+    opacity: 0.55,
+    zIndex: 1,
+  },
+  anonFaceTop: {
+    top: 0,
+    right: 10,
+    width: 26,
+    height: 26,
+    opacity: 0.48,
+  },
+  anonFaceLeft: {
+    left: -2,
+    bottom: 18,
+    width: 24,
+    height: 24,
+    opacity: 0.42,
+  },
+  anonFaceRight: {
+    right: -4,
+    bottom: 8,
+    width: 30,
+    height: 30,
+    opacity: 0.5,
   },
   compactTitle: {
     fontSize: 20,

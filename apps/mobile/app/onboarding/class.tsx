@@ -72,44 +72,15 @@ function boardBlurb(curriculum: Curriculum): string {
   );
 }
 
-function classHook(opts: {
-  boardName: string | null;
-  gradeLabel: string | null;
-}): { title: ReactNode; body: string } {
-  const { boardName, gradeLabel } = opts;
-
-  if (boardName && gradeLabel) {
-    return {
-      title: (
-        <>
-          Is your child the only one dealing with{" "}
-          <Text style={hookAccent}>this</Text>?
-        </>
-      ),
-      body: `Find ${gradeLabel} parents on ${boardName} facing the same stage — ask questions, compare experiences and share what works.`,
-    };
-  }
-
-  if (boardName) {
-    return {
-      title: (
-        <>
-          Choosing <Text style={hookAccent}>{boardName}</Text>? Talk to parents
-          who&apos;ve lived it.
-        </>
-      ),
-      body: "Connect with parents whose children follow the same curriculum. Ask questions, compare experiences and share what works.",
-    };
-  }
-
+function classHook(): { title: ReactNode; body?: string } {
   return {
     title: (
       <>
-        Same Class. Same Board.{"\n"}
-        <Text style={hookAccent}>Real Parent Answers.</Text>
+        Connect with Parents, whose children are in the{" "}
+        <Text style={hookAccent}>same grade</Text> and follow the{" "}
+        <Text style={hookAccent}>same curriculum</Text>.
       </>
     ),
-    body: "Connect with parents whose children are in the same grade and follow the same curriculum. Ask questions, compare experiences and share what works.",
   };
 }
 
@@ -169,7 +140,7 @@ export default function OnboardingClassScreen() {
   const selectedGrade = selectedCurriculum?.grades.find((g) => g.id === gradeId);
   const boardName = selectedCurriculum?.name ?? selectedCurriculum?.code ?? null;
   const gradeLabel = selectedGrade?.label ?? null;
-  const hook = classHook({ boardName, gradeLabel });
+  const hook = classHook();
   const canContinue = Boolean(curriculumId && gradeId);
   const heroArt = boardName
     ? require("../../assets/illustrations/onboarding-class-parents-who-get-it.png")
@@ -218,7 +189,6 @@ export default function OnboardingClassScreen() {
       contentContainerStyle={[styles.content, contentStyle]}
       keyboardShouldPersistTaps="handled"
     >
-      <Text style={styles.step}>Step 3 of 3</Text>
       <OnboardingPayoff
         compact
         title={hook.title}
@@ -351,12 +321,6 @@ export default function OnboardingClassScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   content: {},
-  step: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: colors.primary,
-    marginBottom: 8,
-  },
   centered: { flex: 1, justifyContent: "center", alignItems: "center" },
   sectionHead: {
     flexDirection: "row",

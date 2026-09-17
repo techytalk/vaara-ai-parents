@@ -29,27 +29,28 @@ const hookAccent = {
   textDecorationColor: colors.primaryLight,
 };
 
-function schoolHook(school: School | null): { title: ReactNode; body: string } {
+function schoolHook(school: School | null): { title: ReactNode; body?: string } {
+  const actionLine = "Ask Questions - Share Experiences";
   if (!school) {
     return {
       title: (
         <>
-          Join the parent community at{" "}
-          <Text style={hookAccent}>your child&apos;s school</Text>
+          Connect with other parents from same school{" "}
+          <Text style={hookAccent}>anonymously</Text>.{"\n"}
+          {actionLine}
         </>
       ),
-      body: "Connect with parents from the same school to ask questions, share experiences and get real insights about school life.",
     };
   }
 
   return {
     title: (
       <>
-        What&apos;s it really like at{" "}
-        <Text style={hookAccent}>{school.name}</Text>?
+        Connect with other parents at{" "}
+        <Text style={hookAccent}>{school.name}</Text> anonymously.{"\n"}
+        {actionLine}
       </>
     ),
-    body: "Find parents from the same school to ask questions, share experiences and get real insights about school life.",
   };
 }
 
@@ -133,12 +134,16 @@ export default function OnboardingSchoolScreen() {
       contentContainerStyle={[styles.content, contentStyle]}
       keyboardShouldPersistTaps="handled"
     >
-      <Text style={styles.step}>Step 2 of 3</Text>
       <OnboardingPayoff
         compact
         title={hook.title}
         body={hook.body}
         illustration={require("../../assets/illustrations/onboarding-school-same-school.png")}
+        anonymousAvatars={[
+          require("../../assets/illustrations/onboarding-anon-fox.png"),
+          require("../../assets/illustrations/onboarding-anon-owl.png"),
+          require("../../assets/illustrations/onboarding-anon-panda.png"),
+        ]}
       />
 
       <SchoolPicker
@@ -182,12 +187,6 @@ export default function OnboardingSchoolScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   content: {},
-  step: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: colors.primary,
-    marginBottom: 8,
-  },
   centered: { flex: 1, justifyContent: "center", alignItems: "center" },
   error: { color: colors.error, marginBottom: 8 },
   privacy: {

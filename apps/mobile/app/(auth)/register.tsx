@@ -99,10 +99,6 @@ export default function RegisterScreen() {
             <AuthHookHeadline
               kicker="Create your Vaara account"
               headline={[
-                { text: "Ever wished you could ask another parent " },
-                { text: "anonymously?", accent: true },
-              ]}
-              lead={[
                 { text: "Find other parents from your child’s " },
                 { text: "school", accent: true },
                 { text: " and " },

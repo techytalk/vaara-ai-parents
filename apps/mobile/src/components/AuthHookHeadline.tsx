@@ -10,7 +10,7 @@ type Props = {
   kicker: string;
   /** Headline split into plain + accent parts (accent = teal + underline). */
   headline: AccentSpan[];
-  lead: AccentSpan[] | string;
+  lead?: AccentSpan[] | string;
 };
 
 function renderSpans(parts: AccentSpan[], accentStyle: object) {
@@ -22,7 +22,12 @@ function renderSpans(parts: AccentSpan[], accentStyle: object) {
 }
 
 export function AuthHookHeadline({ kicker, headline, lead }: Props) {
-  const leadParts = typeof lead === "string" ? [{ text: lead }] : lead;
+  const leadParts =
+    lead == null
+      ? []
+      : typeof lead === "string"
+        ? [{ text: lead }]
+        : lead;
 
   return (
     <View style={styles.wrap}>
@@ -30,9 +35,11 @@ export function AuthHookHeadline({ kicker, headline, lead }: Props) {
       <Text style={styles.headline}>
         {renderSpans(headline, styles.headlineAccent)}
       </Text>
-      <Text style={styles.lead}>
-        {renderSpans(leadParts, styles.leadAccent)}
-      </Text>
+      {leadParts.length > 0 ? (
+        <Text style={styles.lead}>
+          {renderSpans(leadParts, styles.leadAccent)}
+        </Text>
+      ) : null}
     </View>
   );
 }

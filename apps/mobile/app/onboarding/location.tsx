@@ -67,11 +67,11 @@ function locationHook(opts: {
     return {
       title: (
         <>
-          Which schools are parents{" "}
-          <Text style={hookAccent}>around you</Text> choosing?
+          Enter your <Text style={hookAccent}>PIN code</Text> to find parents
+          from different schools in your area.
         </>
       ),
-      body: "Enter your PIN code to find parents from different schools in your area. Compare experiences, ask questions and discover what's happening nearby.",
+      body: "Compare experiences, ask questions and discover what's happening nearby.",
     };
   }
 
@@ -79,8 +79,8 @@ function locationHook(opts: {
     return {
       title: (
         <>
-          Which schools are parents{" "}
-          <Text style={hookAccent}>around you</Text> choosing?
+          Enter your <Text style={hookAccent}>PIN code</Text> to find parents
+          from different schools in your area.
         </>
       ),
       body: "Finding your area…",
@@ -460,10 +460,6 @@ export default function LocationScreen() {
         contentContainerStyle={[styles.content, contentStyle]}
         keyboardShouldPersistTaps="handled"
       >
-      {alreadyComplete ? null : (
-        <Text style={styles.step}>Step 1 of 3</Text>
-      )}
-
       <OnboardingPayoff
         compact
         title={hook.title}
@@ -501,12 +497,6 @@ export default function LocationScreen() {
         }}
         hint="We use your PIN to find nearby parents — never your street address."
       />
-
-      {!pinReady && selectedCountry ? (
-        <Text style={styles.pinHint}>
-          Enter your {postalLabel.toLowerCase()} to see your area.
-        </Text>
-      ) : null}
 
       {placeLine && !lookupLoading && !lookupError ? (
         <View style={styles.placeLine}>
@@ -644,9 +634,7 @@ export default function LocationScreen() {
       {error ? <Text style={styles.error}>{error}</Text> : null}
       {!canContinue ? (
         <Text style={styles.pinHint}>
-          {!pinReady
-            ? `Enter your ${(selectedCountry?.postalLabel ?? "postal code").toLowerCase()} and area to continue.`
-            : "Select or type your locality / area to continue."}
+          Enter your Pincode and area to continue.
         </Text>
       ) : null}
       </ScrollView>
@@ -772,12 +760,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     paddingTop: 6,
     paddingBottom: 6,
-  },
-  step: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: colors.primary,
-    marginBottom: 8,
   },
   formTitle: {
     fontSize: 20,
