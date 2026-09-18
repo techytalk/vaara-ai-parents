@@ -259,7 +259,9 @@ export function createCircleChatRoutes() {
       attachments?: unknown;
     }>();
     const attachments = parseChatAttachments(body.attachments);
-    if (!attachments.ok) return c.json({ error: attachments.error }, 400);
+    if (attachments.ok === false) {
+      return c.json({ error: attachments.error }, 400);
+    }
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -773,7 +775,9 @@ export function createThreadRoutes() {
       attachments?: unknown;
     }>();
     const attachments = parseChatAttachments(body.attachments);
-    if (!attachments.ok) return c.json({ error: attachments.error }, 400);
+    if (attachments.ok === false) {
+      return c.json({ error: attachments.error }, 400);
+    }
     const client = await pool.connect();
     try {
       const access = await loadThreadAccess(client, threadId, userId);
