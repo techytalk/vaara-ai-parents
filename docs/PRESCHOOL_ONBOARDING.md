@@ -3,6 +3,12 @@
 **Status:** agreed, not yet implemented.  
 **Date:** 17 September 2026.
 
+> **UX amendment (campus picker):** Do **not** show a second **Campus type**
+> chip row, and do **not** filter the campus picker by `kind` /
+> `preschool_campus`. After track (Preschool 3–4 vs School), use **one
+> unfiltered** closed dropdown. See
+> [`ONBOARDING_SCHOOL_LOCATION_UX.md`](./ONBOARDING_SCHOOL_LOCATION_UX.md).
+
 This is the specification for letting **preschool parents of 3- and 4-year-olds**
 finish sign-up and land in research rooms with other nearby parents of the same
 age. It does not replace school-age onboarding.

@@ -16,10 +16,9 @@ export type ThreadAccess = {
   discovery: boolean;
 };
 
-const LINEAR_TYPES = new Set(["school_class"]);
-
-export function isLinearCircleType(circleType: string): boolean {
-  return LINEAR_TYPES.has(circleType);
+/** Every member group is a linear channel; threads hang off messages. */
+export function isLinearCircleType(_circleType?: string): boolean {
+  return true;
 }
 
 /** Viewer $1 is eligible to see a discoverable thread `t` in circle `c`. */
@@ -184,6 +183,9 @@ export async function loadThreadAccess(
     !blocked &&
     (member || (grantRole != null && canReplyGrant));
 
+  const isThreadGuest =
+    grantRole === "guest_author" || grantRole === "guest_replier";
+
   return {
     circleId,
     status,
@@ -193,7 +195,9 @@ export async function loadThreadAccess(
     canRead,
     canReply,
     canOpenGroup: member,
-    canMessageAuthor: canRead && authorId !== userId && !blocked,
+    // Guest askers stay in-thread; members/discovery may still Message author.
+    canMessageAuthor:
+      canRead && authorId !== userId && !blocked && !isThreadGuest,
     discovery,
   };
 }

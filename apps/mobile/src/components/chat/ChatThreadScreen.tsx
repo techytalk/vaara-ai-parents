@@ -60,6 +60,7 @@ export function ChatThreadScreen({
   const [sheetMessage, setSheetMessage] = useState<ChatMessage | null>(null);
   const [sheetMode, setSheetMode] = useState<"react" | "more">("react");
   const [pendingDelete, setPendingDelete] = useState<ChatMessage | null>(null);
+  const [quoteTarget, setQuoteTarget] = useState<ChatMessage | null>(null);
   const lastSeqRef = useRef(0);
 
   const meQuery = useQuery({
@@ -159,11 +160,17 @@ export function ChatThreadScreen({
   });
 
   useEffect(() => {
-    if (mode !== "thread" || !threadId || maxSeq === 0) return;
-    void authed((token) => api.markThreadRead(token, threadId, maxSeq)).catch(
-      () => {}
-    );
-  }, [maxSeq, mode, threadId]);
+    if (mode === "thread" && threadId && maxSeq > 0) {
+      void authed((token) => api.markThreadRead(token, threadId, maxSeq)).catch(
+        () => {}
+      );
+    }
+    if (mode === "group" && circleId && maxSeq > 0) {
+      void authed((token) =>
+        api.markGroupChatRead(token, circleId, { lastReadMessageSeq: maxSeq })
+      ).catch(() => {});
+    }
+  }, [circleId, maxSeq, mode, threadId]);
 
   const canReply =
     mode === "group" || threadQuery.data?.access.canReply !== false;
@@ -194,9 +201,11 @@ export function ChatThreadScreen({
           : api.sendGroupMessage(token, circleId!, {
               body,
               clientMessageId: randomUUID(),
+              replyToMessageId: quoteTarget?.id,
             })
       );
       setDraft("");
+      setQuoteTarget(null);
       await catchUp();
     } finally {
       setSending(false);
@@ -214,6 +223,25 @@ export function ChatThreadScreen({
         params: { conversationId: result.conversationId },
       });
     }
+  }
+
+  async function openThread(message: ChatMessage) {
+    if (!circleId || message.status !== "visible") return;
+    const existing = message.sideThreadId;
+    if (existing) {
+      router.push({
+        pathname: "/(app)/messages/threads/[threadId]",
+        params: { threadId: existing },
+      });
+      return;
+    }
+    const result = await authed((token) =>
+      api.ensureMessageThread(token, circleId, message.id)
+    );
+    router.push({
+      pathname: "/(app)/messages/threads/[threadId]",
+      params: { threadId: result.threadId },
+    });
   }
 
   async function toggleMute() {
@@ -254,6 +282,7 @@ export function ChatThreadScreen({
   function startEdit(message: ChatMessage) {
     setEditingId(message.id);
     setDraft(message.body ?? "");
+    setQuoteTarget(null);
     setSheetMessage(null);
   }
 
@@ -280,7 +309,12 @@ export function ChatThreadScreen({
             <Text style={styles.topicBody}>{threadQuery.data.body}</Text>
           ) : null}
           <View style={styles.topicActions}>
-            <Text style={styles.meta}>{threadQuery.data.circleName}</Text>
+            <Text style={styles.meta}>
+              {threadQuery.data.circleName}
+              {threadQuery.data.access.grantRole === "guest_author"
+                ? " · Guest question"
+                : ""}
+            </Text>
             <Pressable onPress={() => void toggleMute()}>
               <Text style={styles.messageAuthor}>
                 {threadQuery.data.muted ? "Unmute" : "Mute"}
@@ -304,7 +338,11 @@ export function ChatThreadScreen({
           <EmptyState
             icon="chatbubble-outline"
             title="No messages yet"
-            message="Say hello — this is the start of the conversation."
+            message={
+              mode === "group"
+                ? "Start a conversation. Use the thread icon on a message to keep a side discussion together."
+                : "Say hello — this is the start of the conversation."
+            }
           />
         }
         renderItem={({ item }) => (
@@ -316,6 +354,13 @@ export function ChatThreadScreen({
             onOpenReact={() => openSheet(item, "react")}
             onOpenMore={() => openSheet(item, "more")}
             onReact={(reaction) => void react(item, reaction)}
+            showThreadActions={mode === "group"}
+            onThread={() => void openThread(item)}
+            onQuote={() => {
+              if (item.status !== "visible") return;
+              setQuoteTarget(item);
+              setEditingId(null);
+            }}
           />
         )}
       />
@@ -342,7 +387,44 @@ export function ChatThreadScreen({
               </Pressable>
             </View>
           ) : null}
+          {quoteTarget && !editingId ? (
+            <View style={styles.editBanner}>
+              <View style={styles.editAccent} />
+              <View style={styles.editCopy}>
+                <Text style={styles.editTitle}>Reply in channel</Text>
+                <Text style={styles.editPreview} numberOfLines={1}>
+                  {quoteTarget.body}
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => setQuoteTarget(null)}
+                hitSlop={10}
+                accessibilityLabel="Cancel channel reply"
+              >
+                <Ionicons name="close" size={20} color={colors.textMuted} />
+              </Pressable>
+            </View>
+          ) : null}
           <View style={styles.inputRow}>
+            {mode === "group" && circleId && !editingId ? (
+              <Pressable
+                onPress={() =>
+                  router.push({
+                    pathname: "/(app)/messages/groups/[circleId]/new-thread",
+                    params: { circleId },
+                  })
+                }
+                hitSlop={8}
+                accessibilityLabel="Ask — start a lasting thread"
+                style={styles.askBtn}
+              >
+                <Ionicons
+                  name="help-circle-outline"
+                  size={22}
+                  color={colors.primaryDark}
+                />
+              </Pressable>
+            ) : null}
             <TextInput
               style={styles.input}
               placeholder={editingId ? "Update message" : "Message"}
@@ -429,6 +511,9 @@ function Bubble({
   onOpenReact,
   onOpenMore,
   onReact,
+  showThreadActions,
+  onThread,
+  onQuote,
 }: {
   message: ChatMessage;
   mine: boolean;
@@ -437,6 +522,9 @@ function Bubble({
   onOpenReact: () => void;
   onOpenMore: () => void;
   onReact: (reaction: string) => void;
+  showThreadActions: boolean;
+  onThread: () => void;
+  onQuote: () => void;
 }) {
   const reactions = message.reactions?.filter((item) => item.count > 0) ?? [];
   const visible = message.status === "visible";
@@ -496,6 +584,49 @@ function Bubble({
         </Pressable>
         {visible ? (
           <View style={[styles.quickActions, mine && styles.quickActionsMine]}>
+            {showThreadActions ? (
+              <>
+                <Pressable
+                  onPress={onThread}
+                  style={styles.actionBtn}
+                  accessibilityLabel={
+                    (message.replyCount ?? 0) > 0
+                      ? `${message.replyCount} replies`
+                      : "Reply in thread"
+                  }
+                >
+                  <Ionicons
+                    name={
+                      (message.replyCount ?? 0) > 0
+                        ? "chatbubbles"
+                        : "chatbubbles-outline"
+                    }
+                    size={16}
+                    color={
+                      (message.replyCount ?? 0) > 0
+                        ? colors.primaryDark
+                        : colors.textMuted
+                    }
+                  />
+                  {(message.replyCount ?? 0) > 0 ? (
+                    <Text style={[styles.actionLabel, styles.actionLabelOn]}>
+                      {message.replyCount}
+                    </Text>
+                  ) : null}
+                </Pressable>
+                <Pressable
+                  onPress={onQuote}
+                  style={styles.actionBtn}
+                  accessibilityLabel="Reply in channel"
+                >
+                  <Ionicons
+                    name="arrow-undo-outline"
+                    size={16}
+                    color={colors.textMuted}
+                  />
+                </Pressable>
+              </>
+            ) : null}
             <Pressable
               onPress={onLike}
               style={styles.actionBtn}
@@ -533,6 +664,22 @@ function Bubble({
               </Pressable>
             ) : null}
           </View>
+        ) : null}
+        {showThreadActions &&
+        visible &&
+        (message.replyCount ?? 0) > 0 &&
+        message.lastReplyPreview ? (
+          <Pressable
+            onPress={onThread}
+            accessibilityLabel={`${message.replyCount} replies`}
+          >
+            <Text
+              style={[styles.threadPreview, mine && styles.threadPreviewMine]}
+              numberOfLines={1}
+            >
+              {message.lastReplyPreview}
+            </Text>
+          </Pressable>
         ) : null}
         {reactions.length > 0 ? (
           <View style={[styles.reactRow, mine && styles.reactRowMine]}>
@@ -788,6 +935,21 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
   actionLabelOn: { color: colors.primaryDark },
+  threadPreview: {
+    marginTop: 4,
+    marginLeft: 4,
+    fontFamily: typography.regular,
+    fontSize: 12,
+    color: colors.textMuted,
+    maxWidth: 220,
+  },
+  threadPreviewMine: { marginLeft: 0, marginRight: 4, textAlign: "right" },
+  askBtn: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   composer: {
     borderTopWidth: 1,
     borderTopColor: colors.border,

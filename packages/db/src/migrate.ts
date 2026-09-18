@@ -90,6 +90,10 @@ const MIGRATIONS = [
     version: "051_preschool_onboarding",
     file: "051_preschool_onboarding.sql",
   },
+  {
+    version: "052_slack_style_threads",
+    file: "052_slack_style_threads.sql",
+  },
 ];
 
 async function isMigrationApplied(

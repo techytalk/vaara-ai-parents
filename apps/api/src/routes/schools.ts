@@ -25,9 +25,10 @@ import {
 import { schoolVisiblePredicate, schoolNotRedirected } from "../lib/school-visibility.js";
 import { authMiddleware, type AuthVariables } from "../middleware/auth.js";
 import { rateLimitMiddleware } from "../middleware/rate-limit.js";
-import { createThread } from "../services/chat.js";
+import { createThread, publishChatNudge } from "../services/chat.js";
 import { incrementDailyQuota, isCircleMember } from "../services/chat-access.js";
 import { syncCircleMembership } from "../services/circle-sync.js";
+import { userHasRole } from "../lib/user-roles.js";
 
 const PLACEHOLDER_SCHOOL_KEY = "school_not_specified||unknown";
 const SCHOOL_DEDUPE_HEADER = "x-vaara-school-dedupe";
@@ -855,6 +856,10 @@ export function createSchoolsRoutes() {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+      if (!(await userHasRole(client, userId, "parent"))) {
+        await client.query("ROLLBACK");
+        return c.json({ error: "Parent role required" }, 403);
+      }
       await syncCircleMembership(client, userId);
 
       const school = await client.query(
@@ -891,6 +896,7 @@ export function createSchoolsRoutes() {
         title: text.slice(0, 140),
         body: text,
         kind: "question",
+        homeVisibility: guest ? "member" : "discoverable",
         guest,
       });
 
@@ -910,6 +916,13 @@ export function createSchoolsRoutes() {
 
       await client.query("COMMIT");
 
+      await publishChatNudge({
+        circleId,
+        threadId,
+        seq: Number(result.thread.created_seq ?? result.thread.last_activity_seq ?? 0),
+        authorId: userId,
+      });
+
       return c.json(
         {
           id: question.rows[0].id,
@@ -918,6 +931,7 @@ export function createSchoolsRoutes() {
           circleId,
           threadId,
           postId: null,
+          guest,
         },
         201
       );

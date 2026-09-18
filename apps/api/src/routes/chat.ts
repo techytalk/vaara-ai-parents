@@ -10,7 +10,6 @@ import { userHasRole } from "../lib/user-roles.js";
 import {
   incrementDailyQuota,
   isCircleMember,
-  isLinearCircleType,
   loadThreadAccess,
 } from "../services/chat-access.js";
 import {
@@ -18,6 +17,7 @@ import {
   createThread,
   deleteCircleMessage,
   editCircleMessage,
+  ensureThreadForMessage,
   listHome,
   listInbox,
   listLinearMessages,
@@ -304,6 +304,33 @@ export function createCircleChatRoutes() {
     }
   });
 
+  app.post("/:circleId/messages/:messageId/thread", threadLimit, async (c) => {
+    const userId = c.get("user").sub;
+    const circleId = String(c.req.param("circleId"));
+    const messageId = String(c.req.param("messageId"));
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await ensureThreadForMessage({
+        client,
+        userId,
+        circleId,
+        messageId,
+      });
+      if ("error" in result) {
+        await client.query("ROLLBACK");
+        return c.json({ error: result.error }, result.status as 400 | 403 | 404);
+      }
+      await client.query("COMMIT");
+      return c.json(result, result.created ? 201 : 200);
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  });
+
   app.post("/:circleId/chat-read", async (c) => {
     const userId = c.get("user").sub;
     const circleId = String(c.req.param("circleId"));
@@ -382,7 +409,7 @@ export function createCircleChatRoutes() {
         localOnly ? [circleId, userId, pin] : [circleId, userId]
       );
       return c.json({
-        linear: isLinearCircleType(String(circle.rows[0]?.circle_type)),
+        linear: true,
         threads: rows.map((row) => ({
           id: row.id,
           title: row.title,
@@ -520,6 +547,7 @@ export function createThreadRoutes() {
         status: row.status,
         replyCount: row.reply_count,
         lastMessageAt: row.last_message_at,
+        rootMessageId: row.root_message_id,
         serviceRepliesAllowed: row.service_replies_allowed,
         muted: Boolean(
           muted.rows[0]?.muted_until &&

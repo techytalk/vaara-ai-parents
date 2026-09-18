@@ -44,6 +44,7 @@ export default function MessagesInboxScreen() {
   const insets = useSafeAreaInsets();
   const [inbox, setInbox] = useState<ChatInbox>({
     groups: [],
+    guestThreads: [],
     dms: [],
     services: [],
   });
@@ -119,6 +120,10 @@ export default function MessagesInboxScreen() {
 
       <FlatList
         data={[
+          ...(inbox.guestThreads ?? []).map((item) => ({
+            ...item,
+            rowKey: `gt:${item.id}`,
+          })),
           ...inbox.groups.map((item) => ({ ...item, rowKey: `g:${item.id}` })),
           ...inbox.dms.map((item) => ({ ...item, rowKey: `d:${item.id}` })),
           ...inbox.services.map((item) => ({ ...item, rowKey: `s:${item.id}` })),
@@ -133,8 +138,11 @@ export default function MessagesInboxScreen() {
         }
         contentContainerStyle={[
           styles.list,
-          inbox.groups.length + inbox.dms.length + inbox.services.length === 0 &&
-            styles.listEmpty,
+          (inbox.guestThreads?.length ?? 0) +
+            inbox.groups.length +
+            inbox.dms.length +
+            inbox.services.length ===
+            0 && styles.listEmpty,
         ]}
         ListEmptyComponent={
           <EmptyState
@@ -182,6 +190,48 @@ export default function MessagesInboxScreen() {
           ) : null
         }
         renderItem={({ item }) => {
+          if (item.kind === "guest_thread") {
+            return (
+              <Pressable
+                style={styles.row}
+                onPress={() =>
+                  router.push({
+                    pathname: "/(app)/messages/threads/[threadId]",
+                    params: { threadId: item.id },
+                  })
+                }
+              >
+                <View style={styles.supportAvatar}>
+                  <Ionicons
+                    name="chatbubbles-outline"
+                    size={22}
+                    color={colors.primaryDark}
+                  />
+                </View>
+                <View style={styles.rowMain}>
+                  <View style={styles.rowTop}>
+                    <Text style={styles.handle} numberOfLines={1}>
+                      {item.title || item.preview || "Your question"}
+                    </Text>
+                    <Text style={styles.time}>
+                      {formatInboxTime(item.lastAt ?? undefined)}
+                    </Text>
+                  </View>
+                  <Text style={styles.preview} numberOfLines={1}>
+                    Guest · {item.circleName}
+                    {item.replyCount > 0 ? ` · ${item.replyCount} replies` : ""}
+                  </Text>
+                </View>
+                {item.unreadCount > 0 ? (
+                  <View style={styles.unreadBadge}>
+                    <Text style={styles.unreadText}>
+                      {item.unreadCount > 99 ? "99+" : item.unreadCount}
+                    </Text>
+                  </View>
+                ) : null}
+              </Pressable>
+            );
+          }
           if (item.kind === "group") {
             return (
               <Pressable

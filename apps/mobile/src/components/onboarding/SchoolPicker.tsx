@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Image,
+  FlatList,
+  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -34,8 +35,13 @@ type Props = {
   defaultLocality?: string;
   defaultCountry?: string;
   onCreateModeChange?: (open: boolean) => void;
-  /** Filters shortlist/search/create for preschool onboarding. */
+  /** Filters shortlist/search/create (e.g. child edit). Omit on onboarding. */
   list?: "preschool" | "school" | "preschool_campus";
+  /**
+   * When creating without a kind filter, set offers_preschool if the parent
+   * chose the preschool track.
+   */
+  offersPreschoolOnCreate?: boolean;
   createLabel?: string;
   label?: string;
   placeholder?: string;
@@ -52,6 +58,8 @@ function toSchool(item: SchoolListItem): School {
     verified: item.verified,
     displayLabel: item.displayLabel,
     boardCodes: item.boardCodes,
+    kind: item.kind,
+    offersPreschool: item.offersPreschool,
   };
 }
 
@@ -66,6 +74,7 @@ export function SchoolPicker({
   defaultCountry = "IN",
   onCreateModeChange,
   list,
+  offersPreschoolOnCreate = false,
   createLabel,
   label = "School",
   placeholder = "Select school",
@@ -224,9 +233,18 @@ export function SchoolPicker({
     };
   }, [query, list, token, defaultCity, defaultPin]);
 
+  function closeMenu() {
+    setMenuOpen(false);
+    setQuery("");
+    setError(null);
+  }
+
   function openCreateForm() {
     trackEvent("school_create_opened", {
-      track: list === "preschool" ? "preschool" : "school",
+      track:
+        list === "preschool" || offersPreschoolOnCreate
+          ? "preschool"
+          : "school",
       school_kind: list === "preschool" ? "preschool" : "school",
     });
     setMenuOpen(false);
@@ -253,6 +271,13 @@ export function SchoolPicker({
     setCreating(true);
     setError(null);
     try {
+      const kind = list === "preschool" ? "preschool" : "school";
+      const offersPreschool =
+        list === "preschool" ||
+        list === "preschool_campus" ||
+        offersPreschoolOnCreate
+          ? true
+          : undefined;
       const school = await api.createSchool(
         token,
         {
@@ -262,11 +287,8 @@ export function SchoolPicker({
           state: addState.trim() || defaultState || undefined,
           pinCode: addPin.trim() || defaultPin || undefined,
           locality: defaultLocality || addBranch.trim() || undefined,
-          kind: list === "preschool" ? "preschool" : "school",
-          offersPreschool:
-            list === "preschool" || list === "preschool_campus"
-              ? true
-              : undefined,
+          kind,
+          offersPreschool,
           ...(confirmToken ? { confirmCreateToken: confirmToken } : {}),
         },
         {
@@ -276,8 +298,7 @@ export function SchoolPicker({
         }
       );
       trackEvent("school_created", {
-        school_kind:
-          school.kind ?? (list === "preschool" ? "preschool" : "school"),
+        school_kind: school.kind ?? kind,
       });
       trackEvent("school_selected", { source: "created" });
       onSelect(school);
@@ -310,15 +331,12 @@ export function SchoolPicker({
     }
   }
 
-  const showShortlist =
-    menuOpen && !selected && query.trim().length === 0 && !showAddNew;
-  const showSearchResults =
-    menuOpen && !selected && query.trim().length > 0 && !showAddNew;
-  const showOther = showSearchResults && searchSettled && !searching;
-
-  const selectedMeta = selected
-    ? [selected.branch, selected.city].filter(Boolean).join(" · ")
-    : "";
+  const listData: SchoolListItem[] =
+    query.trim().length === 0 ? shortlist : results;
+  const showOther =
+    query.trim().length === 0
+      ? shortlistReady
+      : searchSettled && !searching;
 
   return (
     <View style={styles.wrap}>
@@ -326,17 +344,15 @@ export function SchoolPicker({
 
       {!showAddNew ? (
         <Pressable
-          style={[
-            styles.dropdownTrigger,
-            menuOpen && styles.dropdownTriggerOpen,
-          ]}
+          style={styles.dropdownTrigger}
           onPress={() => {
-            if (selected) {
-              onSelect(null);
-              setQuery("");
-            }
-            setMenuOpen((open) => !open);
+            setQuery("");
+            setError(null);
+            setMenuOpen(true);
           }}
+          accessibilityRole="button"
+          accessibilityLabel={placeholder}
+          accessibilityState={{ expanded: menuOpen }}
         >
           <Text
             style={[
@@ -347,16 +363,24 @@ export function SchoolPicker({
           >
             {selected?.displayLabel || placeholder}
           </Text>
-          <Ionicons
-            name={menuOpen ? "chevron-up" : "chevron-down"}
-            size={18}
-            color={colors.textMuted}
-          />
+          <Ionicons name="chevron-down" size={20} color={colors.textMuted} />
         </Pressable>
       ) : null}
 
-      {menuOpen && !showAddNew ? (
-        <>
+      <Modal
+        visible={menuOpen && !showAddNew}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={closeMenu}
+      >
+        <View style={styles.modal}>
+          <View style={styles.modalHead}>
+            <Text style={styles.modalTitle}>{label}</Text>
+            <Pressable onPress={closeMenu} accessibilityRole="button">
+              <Text style={styles.modalClose}>Done</Text>
+            </Pressable>
+          </View>
+
           <View style={styles.searchRow}>
             <Ionicons name="search-outline" size={18} color={colors.textMuted} />
             <TextInput
@@ -364,10 +388,7 @@ export function SchoolPicker({
               placeholder="Type to search"
               placeholderTextColor={colors.textSubtle}
               value={query}
-              onChangeText={(text) => {
-                if (selected) onSelect(null);
-                setQuery(text);
-              }}
+              onChangeText={setQuery}
               autoCorrect={false}
               autoCapitalize="words"
               autoFocus
@@ -392,76 +413,76 @@ export function SchoolPicker({
             <ActivityIndicator style={styles.loader} color={colors.primary} />
           ) : null}
 
-          {showShortlist ? (
-            <View style={styles.dropdown}>
-              {shortlistReady ? (
-                <>
-                  {shortlist.map((school, index) => (
-                    <Pressable
-                      key={school.id}
-                      style={styles.resultRow}
-                      onPress={() => {
-                        trackEvent("shortlist_tapped", { rank: index + 1 });
-                        selectSchool(toSchool(school), "shortlist");
-                      }}
-                    >
-                      <Text style={styles.resultTitle}>{school.name}</Text>
-                      <Text style={styles.resultMeta}>
-                        {[school.branch, school.city]
-                          .filter(Boolean)
-                          .join(" · ")}
-                        {!school.verified ? " · Pending review" : ""}
-                      </Text>
-                    </Pressable>
-                  ))}
-                  {shortlist.length === 0 ? (
-                    <Text style={styles.suggestEmpty}>
-                      No suggestions yet — type a name.
-                    </Text>
-                  ) : null}
+          {query.trim().length === 0 && !shortlistReady ? (
+            <Text style={styles.suggestEmpty}>Loading…</Text>
+          ) : (
+            <FlatList
+              data={listData}
+              keyExtractor={(item) => item.id}
+              keyboardShouldPersistTaps="handled"
+              ListEmptyComponent={
+                query.trim().length === 0 || searchSettled ? (
+                  <Text style={styles.suggestEmpty}>
+                    {query.trim().length === 0
+                      ? "No suggestions yet — type a name."
+                      : "No matches"}
+                  </Text>
+                ) : null
+              }
+              ListFooterComponent={
+                showOther ? (
                   <Pressable style={styles.otherRow} onPress={openCreateForm}>
                     <Text style={styles.otherTitle}>Not here / Other</Text>
                     <Text style={styles.otherMeta}>
                       {createLabel ?? "Add your school"}
                     </Text>
                   </Pressable>
-                </>
-              ) : (
-                <Text style={styles.suggestEmpty}>Loading…</Text>
-              )}
-            </View>
-          ) : null}
-
-          {showSearchResults ? (
-            <View style={styles.dropdown}>
-              {results.map((school) => (
+                ) : null
+              }
+              renderItem={({ item, index }) => (
                 <Pressable
-                  key={school.id}
-                  style={styles.resultRow}
-                  onPress={() => selectSchool(toSchool(school), "search")}
+                  style={[
+                    styles.resultRow,
+                    item.id === selected?.id && styles.resultRowActive,
+                  ]}
+                  onPress={() => {
+                    if (query.trim().length === 0) {
+                      trackEvent("shortlist_tapped", { rank: index + 1 });
+                      selectSchool(toSchool(item), "shortlist");
+                    } else {
+                      selectSchool(toSchool(item), "search");
+                    }
+                  }}
                 >
-                  <Text style={styles.resultTitle}>{school.name}</Text>
-                  <Text style={styles.resultMeta}>
-                    {[school.branch, school.city].filter(Boolean).join(" · ")}
-                    {!school.verified ? " · Pending review" : ""}
-                  </Text>
+                  <View style={styles.resultCopy}>
+                    <Text
+                      style={[
+                        styles.resultTitle,
+                        item.id === selected?.id && styles.resultTitleActive,
+                      ]}
+                    >
+                      {item.name}
+                    </Text>
+                    <Text style={styles.resultMeta}>
+                      {[item.branch, item.city].filter(Boolean).join(" · ")}
+                      {!item.verified ? " · Pending review" : ""}
+                    </Text>
+                  </View>
+                  {item.id === selected?.id ? (
+                    <Ionicons
+                      name="checkmark"
+                      size={20}
+                      color={colors.primary}
+                    />
+                  ) : null}
                 </Pressable>
-              ))}
-              {showOther ? (
-                <Pressable style={styles.otherRow} onPress={openCreateForm}>
-                  <Text style={styles.otherTitle}>Not here / Other</Text>
-                  <Text style={styles.otherMeta}>
-                    {createLabel ?? "Add your school"}
-                  </Text>
-                </Pressable>
-              ) : null}
-              {!searching && searchSettled && results.length === 0 ? (
-                <Text style={styles.suggestEmpty}>No matches</Text>
-              ) : null}
-            </View>
-          ) : null}
-        </>
-      ) : null}
+              )}
+            />
+          )}
+
+          {error ? <Text style={styles.modalError}>{error}</Text> : null}
+        </View>
+      </Modal>
 
       {showAddNew ? (
         <View style={styles.addForm}>
@@ -560,27 +581,7 @@ export function SchoolPicker({
         </View>
       ) : null}
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      {selected && !menuOpen && !showAddNew ? (
-        <View style={styles.selectedCard}>
-          <Image
-            source={require("../../../assets/illustrations/school-selected-badge.png")}
-            style={styles.selectedArt}
-            resizeMode="contain"
-            accessibilityIgnoresInvertColors
-          />
-          <View style={styles.selectedCopy}>
-            <Text style={styles.selectedBadge}>SELECTED</Text>
-            <Text style={styles.selectedTitle}>{selected.name}</Text>
-            {selectedMeta ? (
-              <Text style={styles.selectedMeta}>{selectedMeta}</Text>
-            ) : null}
-          </View>
-          <View style={styles.selectedCheck}>
-            <Ionicons name="checkmark" size={16} color="#fff" />
-          </View>
-        </View>
-      ) : null}
+      {error && !menuOpen ? <Text style={styles.error}>{error}</Text> : null}
     </View>
   );
 }
@@ -600,9 +601,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     marginBottom: 8,
   },
-  dropdownTriggerOpen: {
-    borderColor: colors.primary,
-  },
   dropdownTriggerText: {
     flex: 1,
     fontSize: 16,
@@ -612,6 +610,28 @@ const styles = StyleSheet.create({
   dropdownTriggerPlaceholder: {
     fontWeight: "500",
     color: colors.textMuted,
+  },
+  modal: {
+    flex: 1,
+    backgroundColor: colors.bg,
+    paddingTop: 12,
+  },
+  modalHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  modalClose: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: colors.primary,
   },
   searchRow: {
     flexDirection: "row",
@@ -623,6 +643,7 @@ const styles = StyleSheet.create({
     minHeight: 48,
     paddingHorizontal: 12,
     backgroundColor: colors.card,
+    marginHorizontal: 16,
     marginBottom: 8,
   },
   input: {
@@ -632,57 +653,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.text,
   },
-  selectedCard: {
-    marginTop: 4,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    backgroundColor: colors.primarySoft,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: colors.primaryLight,
-    padding: 12,
-  },
-  selectedArt: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-  },
-  selectedCopy: { flex: 1 },
-  selectedBadge: {
-    fontSize: 10,
-    fontWeight: "800",
-    letterSpacing: 0.6,
-    color: colors.primaryDark,
-    marginBottom: 2,
-  },
-  selectedTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: colors.text,
-  },
-  selectedMeta: {
-    fontSize: 13,
-    color: colors.textMuted,
-    marginTop: 2,
-  },
-  selectedCheck: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   loader: { marginVertical: 8 },
-  dropdown: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    backgroundColor: colors.card,
-    marginBottom: 8,
-    overflow: "hidden",
-  },
   suggestHeader: {
     fontSize: 12,
     fontWeight: "700",
@@ -695,23 +666,32 @@ const styles = StyleSheet.create({
   suggestEmpty: {
     fontSize: 13,
     color: colors.textMuted,
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
     paddingVertical: 12,
   },
   resultRow: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
-  resultTitle: { fontSize: 15, fontWeight: "600", color: colors.text },
-  resultMeta: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
-  otherRow: {
-    paddingHorizontal: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 16,
     paddingVertical: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
+  },
+  resultRowActive: {
     backgroundColor: colors.primarySoft,
+  },
+  resultCopy: { flex: 1 },
+  resultTitle: { fontSize: 15, fontWeight: "600", color: colors.text },
+  resultTitleActive: { color: colors.primary },
+  resultMeta: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
+  otherRow: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    backgroundColor: colors.primarySoft,
+    marginTop: 4,
   },
   otherTitle: { fontSize: 15, fontWeight: "700", color: colors.primary },
   otherMeta: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
@@ -740,4 +720,9 @@ const styles = StyleSheet.create({
   },
   createBtnText: { color: "#fff", fontWeight: "700", fontSize: 15 },
   error: { color: colors.error, marginTop: 8 },
+  modalError: {
+    color: colors.error,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
 });

@@ -3,6 +3,18 @@
 Decision document. **Not implemented yet.** This is the full end-to-end
 product and data contract.
 
+> **Amendment (threads):** Wide groups as a topic-only list is
+> **superseded**. Threads are Slack-style side conversations under a
+> channel message (same-circle members + guests; thread roots can appear
+> on Home/feed). See `docs/SLACK_STYLE_THREADS.md`.
+>
+> **Amendment (school guests):** Guests do not join groups. Any
+> parent-role account may use **Ask this school** to create one
+> persistent, thread-only guest question in a whole-`school` circle.
+> They cannot open its channel, other threads, or member list.
+> Class/grade circles stay members-only. Details in
+> `docs/SLACK_STYLE_THREADS.md` §3.2.
+
 **UI for this model is new. Existing post/feed tables and APIs are retained
 while their data is migrated into single-circle threads.** After migration
 and validation, the old Home feed, circle-feed, and post-composer screens are
@@ -1468,12 +1480,13 @@ validation, not part of the SQL transaction.
 
 | Item | State |
 |---|---|
-| This contract | Locked; reviewed against the live schema, API routes, and realtime gateway |
-| Ordering, migration field mapping, DM context keys | Resolved (§11.3, §11.6, §11.8, §11.13) |
+| This contract | Locked for membership, tutors, DMs, access; **thread interior amended** by `docs/SLACK_STYLE_THREADS.md` |
+| Slack-style channel + message threads (all groups) | Implemented; apply migration `052_slack_style_threads` |
+| Ordering, migration field mapping, DM context keys | Resolved (§11.3, §11.6, §11.8, §11.13); amend with `parent_message_id` per Slack doc |
 | Curriculum scope, realtime revocation, block behavior, limits, empty states | Resolved (§5.1, §12.3, §15.2, §15.4, §13.3) |
 | Existing post data | Migration source; retained read-only for compatibility and audit |
 | Old Home/circle-feed/composer navigation | Hidden only after migration validation |
-| Threads, group messages, Messages merge, Home chat door, tutor channels, dual-role DMs, discovery Message author | Not built |
+| Threads, group messages, Messages merge, Home chat door, tutor channels, dual-role DMs, discovery Message author | Partially built on previous topic model; Slack cutover pending |
 
 Implementation reuses `circles`, current membership, DMs, safety controls,
 and discovery ideas. It adds canonical single-circle threads, group messages,

@@ -512,8 +512,21 @@ export type ChatInboxService = {
   unreadCount: number;
 };
 
+export type ChatInboxGuestThread = {
+  kind: "guest_thread";
+  id: string;
+  circleId: string;
+  circleName: string;
+  title: string | null;
+  preview: string | null;
+  lastAt: string | null;
+  replyCount: number;
+  unreadCount: number;
+};
+
 export type ChatInbox = {
   groups: ChatInboxGroup[];
+  guestThreads?: ChatInboxGuestThread[];
   dms: ChatInboxDm[];
   services: ChatInboxService[];
 };
@@ -540,6 +553,9 @@ export type ChatMessage = {
   seq: number;
   circleId: string;
   threadId: string | null;
+  sideThreadId?: string | null;
+  replyCount?: number;
+  lastReplyPreview?: string | null;
   body: string | null;
   status: string;
   isLegacy: boolean;
@@ -2211,6 +2227,13 @@ export const api = {
     request<ChatMessage>(
       `/v1/circles/${circleId}/messages`,
       { method: "POST", body: JSON.stringify(body) },
+      token
+    ),
+
+  ensureMessageThread: (token: string, circleId: string, messageId: string) =>
+    request<{ threadId: string; created: boolean }>(
+      `/v1/circles/${circleId}/messages/${messageId}/thread`,
+      { method: "POST", body: JSON.stringify({}) },
       token
     ),
 

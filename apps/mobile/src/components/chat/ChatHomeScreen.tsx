@@ -112,7 +112,7 @@ export function ChatHomeScreen() {
       ]}
       ListHeaderComponent={
         <Text style={styles.intro}>
-          Conversations from your groups. Tap a row to open that thread.
+          Conversations from your groups. Lasting threads show up here — tap to open.
         </Text>
       }
       ListEmptyComponent={

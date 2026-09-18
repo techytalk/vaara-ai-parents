@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import type { PoolClient } from "pg";
 import { pool } from "@vaara/db";
 import {
@@ -20,7 +21,6 @@ import { userHasRole } from "../lib/user-roles.js";
 import {
   DISCOVERY_MATCH_SQL,
   insertChatOutbox,
-  isCircleDiscoveryEligible,
   incrementDailyQuota,
   isCircleMember,
   isLinearCircleType,
@@ -42,6 +42,9 @@ export type ChatMessageView = {
   seq: number;
   circleId: string;
   threadId: string | null;
+  sideThreadId: string | null;
+  replyCount: number;
+  lastReplyPreview: string | null;
   body: string | null;
   status: string;
   isLegacy: boolean;
@@ -80,6 +83,20 @@ function guardText(text: string): { error: string } | null {
   const medical = detectMedicalAdvice(text);
   if (medical.blocked) return { error: medical.reason ?? "Not allowed" };
   return rejectObjectionableText(text);
+}
+
+async function followThread(
+  client: PoolClient,
+  threadId: string,
+  userId: string
+): Promise<void> {
+  await client.query(
+    `INSERT INTO circle_thread_reads (thread_id, user_id, following, last_read_at)
+     VALUES ($1, $2, true, now())
+     ON CONFLICT (thread_id, user_id)
+     DO UPDATE SET following = true`,
+    [threadId, userId]
+  );
 }
 
 async function authorView(
@@ -125,6 +142,11 @@ export function mapMessageRow(
     seq: Number(row.seq),
     circleId: String(row.circle_id),
     threadId: row.thread_id ? String(row.thread_id) : null,
+    sideThreadId: row.side_thread_id ? String(row.side_thread_id) : null,
+    replyCount: Number(row.reply_count ?? 0),
+    lastReplyPreview: row.last_reply_preview
+      ? String(row.last_reply_preview)
+      : null,
     body: row.status === "visible" ? (row.body as string | null) : null,
     status: String(row.status),
     isLegacy: row.is_legacy === true,
@@ -380,8 +402,18 @@ export async function createThread(params: {
     if (member) {
       return { error: "Use the group composer instead of a guest thread", status: 400 };
     }
-    if (!(await isCircleDiscoveryEligible(client, params.circleId, params.userId))) {
-      return { error: "You cannot start a guest thread in this group", status: 403 };
+    const circle = await client.query(
+      `SELECT circle_type FROM circles WHERE id = $1`,
+      [params.circleId]
+    );
+    if (circle.rows.length === 0) {
+      return { error: "Group not found", status: 404 };
+    }
+    if (String(circle.rows[0].circle_type) !== "school") {
+      return {
+        error: "Guest questions are only allowed in whole-school groups",
+        status: 403,
+      };
     }
   } else if (!member) {
     return { error: "Not a member of this group", status: 403 };
@@ -432,6 +464,25 @@ export async function createThread(params: {
     ]
   );
   const thread = rows[0];
+  const rootSeq = await nextCircleSeq(client, params.circleId);
+  const rootBody = body || title || "Thread";
+  const root = await client.query(
+    `INSERT INTO circle_messages (
+       seq, circle_id, thread_id, author_id, author_role, body,
+       client_message_id, status
+     )
+     VALUES ($1, $2, NULL, $3, 'parent', $4, $5, 'visible')
+     RETURNING id`,
+    [rootSeq, params.circleId, params.userId, rootBody, randomUUID()]
+  );
+  await client.query(
+    `UPDATE circle_threads
+     SET root_message_id = $2, last_activity_seq = $3, updated_at = now()
+     WHERE id = $1`,
+    [thread.id, root.rows[0].id, rootSeq]
+  );
+  thread.root_message_id = root.rows[0].id;
+  await followThread(client, String(thread.id), params.userId);
   if (params.guest) {
     await client.query(
       `INSERT INTO circle_thread_access_grants (
@@ -542,16 +593,20 @@ export async function createCircleMessage(params: {
   } else {
     const member = await isCircleMember(client, params.circleId, params.userId);
     if (!member) return { error: "Not a member of this group", status: 403 };
-    const circle = await client.query(
-      `SELECT circle_type FROM circles WHERE id = $1`,
-      [params.circleId]
-    );
-    if (!isLinearCircleType(String(circle.rows[0]?.circle_type))) {
-      return { error: "Start a thread to talk in this group", status: 400 };
-    }
     if (authorRole !== "parent") {
       return { error: "Providers cannot post in parent group chat", status: 403 };
     }
+  }
+
+  let parentMessageId: string | null = null;
+  if (params.threadId) {
+    const root = await client.query(
+      `SELECT root_message_id FROM circle_threads WHERE id = $1`,
+      [params.threadId]
+    );
+    parentMessageId = root.rows[0]?.root_message_id
+      ? String(root.rows[0].root_message_id)
+      : null;
   }
 
   if (params.replyToMessageId) {
@@ -577,9 +632,9 @@ export async function createCircleMessage(params: {
   const inserted = await client.query(
     `INSERT INTO circle_messages (
        seq, circle_id, thread_id, author_id, author_role, body,
-       reply_to_message_id, client_message_id, status
+       reply_to_message_id, parent_message_id, client_message_id, status
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'visible')
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'visible')
      RETURNING *`,
     [
       seq,
@@ -589,6 +644,7 @@ export async function createCircleMessage(params: {
       authorRole,
       body,
       params.replyToMessageId ?? null,
+      parentMessageId,
       params.clientMessageId,
     ]
   );
@@ -636,6 +692,83 @@ export async function createCircleMessage(params: {
   return { message: mapMessageRow(row, author) };
 }
 
+export async function ensureThreadForMessage(params: {
+  client: PoolClient;
+  userId: string;
+  circleId: string;
+  messageId: string;
+}): Promise<{ threadId: string; created: boolean } | { error: string; status: number }> {
+  const member = await isCircleMember(
+    params.client,
+    params.circleId,
+    params.userId
+  );
+  if (!member) return { error: "Not a member of this group", status: 403 };
+
+  const message = await params.client.query(
+    `SELECT id, circle_id, thread_id, parent_message_id, author_id, author_role, body, status
+     FROM circle_messages
+     WHERE id = $1 AND circle_id = $2`,
+    [params.messageId, params.circleId]
+  );
+  const row = message.rows[0];
+  if (!row) return { error: "Message not found", status: 404 };
+  if (row.status !== "visible") {
+    return { error: "Cannot start a thread on this message", status: 400 };
+  }
+  if (row.thread_id || row.parent_message_id) {
+    return { error: "Reply in the existing thread instead", status: 400 };
+  }
+  if (await isBlocked(params.client, params.userId, String(row.author_id))) {
+    return { error: "Message not found", status: 404 };
+  }
+
+  const existing = await params.client.query(
+    `SELECT id FROM circle_threads
+     WHERE root_message_id = $1 AND status <> 'deleted'
+     LIMIT 1`,
+    [params.messageId]
+  );
+  if (existing.rows[0]) {
+    await followThread(params.client, String(existing.rows[0].id), params.userId);
+    return { threadId: String(existing.rows[0].id), created: false };
+  }
+
+  const isParent = await userHasRole(params.client, params.userId, "parent");
+  if (!isParent) return { error: "Parent role required", status: 403 };
+
+  const seq = await nextCircleSeq(params.client, params.circleId);
+  const inserted = await params.client.query(
+    `INSERT INTO circle_threads (
+       created_seq, last_activity_seq, circle_id, author_id, author_role,
+       title, body, kind, home_visibility, status, last_message_at, reply_count,
+       root_message_id
+     )
+     VALUES ($1, $1, $2, $3, $4, NULL, $5, 'general', 'member', 'open', now(), 0, $6)
+     RETURNING id`,
+    [
+      seq,
+      params.circleId,
+      row.author_id,
+      row.author_role,
+      row.body,
+      params.messageId,
+    ]
+  );
+  const threadId = String(inserted.rows[0].id);
+  await followThread(params.client, threadId, String(row.author_id));
+  if (params.userId !== String(row.author_id)) {
+    await followThread(params.client, threadId, params.userId);
+  }
+  await insertChatOutbox(params.client, "thread.created", "thread", threadId, {
+    circleId: params.circleId,
+    threadId,
+    seq,
+    rootMessageId: params.messageId,
+  });
+  return { threadId, created: true };
+}
+
 export async function listLinearMessages(params: {
   client: PoolClient;
   userId: string;
@@ -667,8 +800,28 @@ export async function listLinearMessages(params: {
   }
   values.push(params.limit);
   const { rows } = await params.client.query(
-    `SELECT m.*
+    `SELECT m.*,
+            t.id AS side_thread_id,
+            COALESCE(t.reply_count, 0) AS reply_count,
+            (
+              SELECT LEFT(r.body, 80)
+              FROM circle_messages r
+              WHERE r.thread_id = t.id AND r.status = 'visible'
+              ORDER BY r.seq DESC
+              LIMIT 1
+            ) AS last_reply_preview,
+            EXISTS (
+              SELECT 1
+              FROM circle_thread_access_grants g
+              WHERE g.thread_id = t.id
+                AND g.user_id = m.author_id
+                AND g.grant_role = 'guest_author'
+                AND g.revoked_at IS NULL
+                AND (g.expires_at IS NULL OR g.expires_at > now())
+            ) AS is_guest_author
      FROM circle_messages m
+     LEFT JOIN circle_threads t
+       ON t.root_message_id = m.id AND t.status <> 'deleted'
      WHERE ${filters.join(" AND ")}
        AND NOT EXISTS (
          SELECT 1 FROM user_blocks ub
@@ -686,7 +839,7 @@ export async function listLinearMessages(params: {
       params.client,
       String(row.author_id),
       row.author_role,
-      false
+      row.is_guest_author === true
     );
     messages.push(mapMessageRow(row, author));
   }
@@ -744,21 +897,23 @@ export async function listThreadMessages(params: {
   const ordered = params.afterSeq != null ? rows : [...rows].reverse();
   const messages: ChatMessageView[] = [];
   for (const row of ordered) {
-    const guest = !access.isMember && String(row.author_id) === params.userId;
+    const guestGrant = await params.client.query(
+      `SELECT 1
+       FROM circle_thread_access_grants
+       WHERE thread_id = $1
+         AND user_id = $2
+         AND grant_role IN ('guest_author', 'guest_replier')
+         AND revoked_at IS NULL
+         AND (expires_at IS NULL OR expires_at > now())
+       LIMIT 1`,
+      [params.threadId, row.author_id]
+    );
     const author = await authorView(
       params.client,
       String(row.author_id),
       row.author_role,
-      guest ||
-        (await params.client
-          .query(
-            `SELECT 1 FROM circle_thread_access_grants
-             WHERE thread_id = $1 AND user_id = $2 AND revoked_at IS NULL`,
-            [params.threadId, row.author_id]
-          )
-          .then((r) => rows.length > 0 && r.rows.length > 0 && !access.isMember))
+      guestGrant.rows.length > 0
     );
-    void guest;
     messages.push(mapMessageRow(row, author));
   }
   await attachReactions(params.client, messages, params.userId);
@@ -874,6 +1029,37 @@ export async function listInbox(client: PoolClient, userId: string) {
     [userId]
   );
 
+  // Guest school questions: thread-only access, not membership in the school group.
+  const guestThreads = await client.query(
+    `SELECT
+       t.id,
+       t.title,
+       t.body,
+       t.last_message_at,
+       t.reply_count,
+       c.id AS circle_id,
+       c.display_name AS circle_name,
+       COALESCE(tr.last_read_seq, 0) AS last_read_seq,
+       t.last_activity_seq
+     FROM circle_thread_access_grants g
+     JOIN circle_threads t ON t.id = g.thread_id
+     JOIN circles c ON c.id = t.circle_id
+     LEFT JOIN circle_thread_reads tr
+       ON tr.thread_id = t.id AND tr.user_id = $1
+     WHERE g.user_id = $1
+       AND g.grant_role = 'guest_author'
+       AND g.revoked_at IS NULL
+       AND (g.expires_at IS NULL OR g.expires_at > now())
+       AND t.status = 'open'
+       AND NOT EXISTS (
+         SELECT 1 FROM circle_members cm
+         WHERE cm.circle_id = t.circle_id AND cm.user_id = $1
+       )
+     ORDER BY t.last_message_at DESC NULLS LAST
+     LIMIT 50`,
+    [userId]
+  );
+
   return {
     groups: groups.rows.map((row) => ({
       kind: "group" as const,
@@ -883,6 +1069,18 @@ export async function listInbox(client: PoolClient, userId: string) {
       preview: row.preview,
       lastAt: row.last_at,
       unreadCount: Number(row.unread_count ?? 0),
+    })),
+    guestThreads: guestThreads.rows.map((row) => ({
+      kind: "guest_thread" as const,
+      id: row.id,
+      circleId: row.circle_id,
+      circleName: row.circle_name,
+      title: row.title,
+      preview: previewText(row.body, row.title),
+      lastAt: row.last_message_at,
+      replyCount: Number(row.reply_count ?? 0),
+      unreadCount:
+        Number(row.last_activity_seq) > Number(row.last_read_seq ?? 0) ? 1 : 0,
     })),
     dms: dms.rows.map((row) => ({
       kind: "dm" as const,
@@ -937,6 +1135,7 @@ export async function listHome(
      WHERE cm.user_id = $1
        AND t.status = 'open'
        AND t.home_visibility <> 'hidden'
+       AND (t.reply_count > 0 OR t.title IS NOT NULL)
        AND NOT EXISTS (
          SELECT 1 FROM user_blocks ub
          WHERE (ub.blocker_id = $1 AND ub.blocked_id = t.author_id)
@@ -959,6 +1158,7 @@ export async function listHome(
        ON hi.thread_id = t.id AND hi.user_id = $1
      WHERE t.status = 'open'
        AND t.home_visibility = 'discoverable'
+       AND (t.reply_count > 0 OR t.title IS NOT NULL)
        AND NOT EXISTS (
          SELECT 1 FROM circle_members cm
          WHERE cm.circle_id = t.circle_id AND cm.user_id = $1

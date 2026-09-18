@@ -158,6 +158,9 @@ export default function LocationScreen() {
   const beganRef = useRef(false);
   const lookupRequestRef = useRef(0);
   const skipNextLookupRef = useRef(false);
+  const scrollRef = useRef<ScrollView>(null);
+  const areaSectionYRef = useRef<number | null>(null);
+  const pendingAreaScrollRef = useRef(false);
 
   const selectedCountry = useMemo(
     () => countries.find((country) => country.code === countryCode) ?? null,
@@ -287,6 +290,20 @@ export default function LocationScreen() {
           }
           return current;
         });
+
+        if (lookup.localities.length >= 1) {
+          pendingAreaScrollRef.current = true;
+          const areaY = areaSectionYRef.current;
+          if (areaY !== null) {
+            pendingAreaScrollRef.current = false;
+            requestAnimationFrame(() => {
+              scrollRef.current?.scrollTo({
+                y: Math.max(0, areaY - 12),
+                animated: true,
+              });
+            });
+          }
+        }
 
         if (alreadyComplete) {
           const token = await getToken();
@@ -456,6 +473,7 @@ export default function LocationScreen() {
       keyboardVerticalOffset={Platform.OS === "ios" ? headerHeight : 0}
     >
       <ScrollView
+        ref={scrollRef}
         style={styles.scroll}
         contentContainerStyle={[styles.content, contentStyle]}
         keyboardShouldPersistTaps="handled"
@@ -506,7 +524,21 @@ export default function LocationScreen() {
       ) : null}
 
       {showAreaFields ? (
-        <View>
+        <View
+          onLayout={(event) => {
+            const areaY = event.nativeEvent.layout.y;
+            areaSectionYRef.current = areaY;
+            if (pendingAreaScrollRef.current) {
+              pendingAreaScrollRef.current = false;
+              requestAnimationFrame(() => {
+                scrollRef.current?.scrollTo({
+                  y: Math.max(0, areaY - 12),
+                  animated: true,
+                });
+              });
+            }
+          }}
+        >
           {!selectedCountry?.lookupSupported ? (
             <Text style={styles.manualHint}>
               Postal lookup isn&apos;t available for this country yet. Enter your

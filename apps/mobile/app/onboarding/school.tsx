@@ -94,9 +94,6 @@ export default function OnboardingSchoolScreen() {
   const router = useRouter();
   const [token, setToken] = useState<string | null>(null);
   const [track, setTrack] = useState<CampusList>("school");
-  const [campusList, setCampusList] = useState<"preschool" | "preschool_campus">(
-    "preschool"
-  );
   const [selectedSchool, setSelectedSchool] = useState<School | null>(null);
   const [defaultCity, setDefaultCity] = useState("");
   const [defaultPin, setDefaultPin] = useState("");
@@ -108,13 +105,6 @@ export default function OnboardingSchoolScreen() {
   const [addingSchool, setAddingSchool] = useState(false);
   const contentStyle = useOnboardingContentStyle();
   const hook = schoolHook(track, selectedSchool);
-
-  const pickerList =
-    track === "preschool"
-      ? campusList === "preschool"
-        ? "preschool"
-        : "preschool_campus"
-      : "school";
 
   useEffect(() => {
     setOnboardingStep("school");
@@ -152,9 +142,6 @@ export default function OnboardingSchoolScreen() {
           setSelectedSchool(existingSchool);
           if (existingSchool.kind === "preschool") {
             setTrack("preschool");
-            setCampusList("preschool");
-          } else if (savedTrack === "preschool") {
-            setCampusList("preschool_campus");
           }
         }
       } catch (e) {
@@ -172,16 +159,7 @@ export default function OnboardingSchoolScreen() {
     setSelectedSchool(null);
     void setOnboardingSchoolAsync(null);
     setError(null);
-    if (next === "preschool") setCampusList("preschool");
     trackEvent("onboarding_track_selected", { track: next });
-  }
-
-  function onSelectCampusList(next: "preschool" | "preschool_campus") {
-    if (next === campusList) return;
-    setCampusList(next);
-    setSelectedSchool(null);
-    void setOnboardingSchoolAsync(null);
-    setError(null);
   }
 
   async function onContinue() {
@@ -195,11 +173,7 @@ export default function OnboardingSchoolScreen() {
     }
     setOnboardingTrack(track);
     await setOnboardingSchoolAsync(selectedSchool);
-    const schoolKind =
-      selectedSchool.kind ??
-      (track === "preschool" && campusList === "preschool"
-        ? "preschool"
-        : "school");
+    const schoolKind = selectedSchool.kind ?? "school";
     trackEvent("onboarding_school_complete", {
       track,
       school_verified: selectedSchool.verified,
@@ -254,26 +228,8 @@ export default function OnboardingSchoolScreen() {
         />
       </View>
 
-      {track === "preschool" ? (
-        <>
-          <FieldLabel>Campus type</FieldLabel>
-          <View style={styles.trackRow}>
-            <Chip
-              label="Preschool"
-              selected={campusList === "preschool"}
-              onPress={() => onSelectCampusList("preschool")}
-            />
-            <Chip
-              label="School"
-              selected={campusList === "preschool_campus"}
-              onPress={() => onSelectCampusList("preschool_campus")}
-            />
-          </View>
-        </>
-      ) : null}
-
       <SchoolPicker
-        key={`${track}:${pickerList}`}
+        key={track}
         token={token}
         selected={selectedSchool}
         onSelect={setSelectedSchool}
@@ -283,21 +239,11 @@ export default function OnboardingSchoolScreen() {
         defaultLocality={defaultLocality}
         defaultCountry={defaultCountry}
         onCreateModeChange={setAddingSchool}
-        list={pickerList}
-        createLabel={
-          pickerList === "preschool" ? "Add preschool" : "Add school"
-        }
-        label={
-          pickerList === "preschool"
-            ? "Preschool"
-            : pickerList === "preschool_campus"
-              ? "School campus"
-              : "School"
-        }
+        offersPreschoolOnCreate={track === "preschool"}
+        createLabel="Add school"
+        label={track === "preschool" ? "Preschool / school campus" : "School"}
         placeholder={
-          pickerList === "preschool"
-            ? "Select preschool"
-            : "Select school"
+          track === "preschool" ? "Select preschool or school" : "Select school"
         }
       />
 

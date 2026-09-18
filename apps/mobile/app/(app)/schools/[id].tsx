@@ -162,10 +162,10 @@ export default function SchoolProfileScreen() {
         ))
       )}
 
-      <SectionHeader title="Ask current parents" />
+      <SectionHeader title="Ask this school" />
       <Text style={styles.meta}>
-        Your question goes to parents at this school. You won't see their full
-        feed — only replies to you.
+        Ask parents at this school. You only see replies on your question —
+        not the school&apos;s full chat.
       </Text>
       <TextInput
         style={styles.input}
@@ -175,7 +175,7 @@ export default function SchoolProfileScreen() {
         multiline
         placeholderTextColor={colors.textSubtle}
       />
-      <Button label="Post question" onPress={onAsk} />
+      <Button label="Ask this school" onPress={onAsk} />
 
       <Button
         label="School calendar"

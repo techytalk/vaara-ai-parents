@@ -59,7 +59,7 @@ export default function NewThreadScreen() {
         onPress={() => void submit()}
         disabled={!title.trim() || saving}
       >
-        <Text style={styles.buttonLabel}>Start thread</Text>
+        <Text style={styles.buttonLabel}>{saving ? "Starting…" : "Ask"}</Text>
       </Pressable>
     </View>
   );
