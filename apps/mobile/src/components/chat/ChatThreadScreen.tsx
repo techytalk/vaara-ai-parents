@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
   FlatList,
+  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -14,16 +18,49 @@ import { useHeaderHeight } from "@react-navigation/elements";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
+import * as ImagePicker from "expo-image-picker";
 import { Avatar, EmptyState, ScreenLoader } from "@/components/ui";
+import {
+  ChatMessageAttachments,
+  attachmentQuoteLabel,
+} from "@/components/chat/ChatMessageAttachments";
 import { colors, radii, shadows, spacing, typography } from "@/constants/theme";
 import { useBottomChromeInset } from "@/hooks/useBottomChromeInset";
 import { useAndroidImeDockOffset } from "@/hooks/useKeyboardHeight";
 import { useRealtimeChannel } from "@/hooks/useRealtimeChannel";
 import { api, type ChatMessage } from "@/lib/api";
+import {
+  MAX_POST_DOCUMENTS,
+  documentsBusy,
+  pickDocuments,
+  uploadAndScanDocument,
+  type PendingDocument,
+} from "@/lib/document-upload";
+import {
+  persistPickedMediaUri,
+  resolveMediaBytes,
+  uploadMediaBytes,
+} from "@/lib/media-local";
 import { getToken } from "@/lib/session";
 import { randomUUID } from "@/lib/uuid";
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🎉"] as const;
+const MAX_CHAT_MEDIA = 4;
+
+type PendingChatMedia = {
+  localId: string;
+  uri: string;
+  fileName: string;
+  mediaType: "image" | "video";
+  mimeType: string;
+  fileSize?: number;
+  width?: number;
+  height?: number;
+  durationMs?: number;
+  storageKey?: string;
+  status: "uploading" | "ready" | "failed";
+  reason?: string;
+};
 
 async function authed<T>(fn: (token: string) => Promise<T>): Promise<T> {
   const token = await getToken();
@@ -62,6 +99,9 @@ export function ChatThreadScreen({
   const [pendingDelete, setPendingDelete] = useState<ChatMessage | null>(null);
   const [quoteTarget, setQuoteTarget] = useState<ChatMessage | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [attachSheetOpen, setAttachSheetOpen] = useState(false);
+  const [pendingMedia, setPendingMedia] = useState<PendingChatMedia[]>([]);
+  const [pendingDocs, setPendingDocs] = useState<PendingDocument[]>([]);
   const lastSeqRef = useRef(0);
 
   const meQuery = useQuery({
@@ -188,9 +228,166 @@ export function ChatThreadScreen({
       ? true
       : Boolean(threadQuery.data?.access.canReply);
 
+  const mediaBusy = pendingMedia.some((item) => item.status === "uploading");
+  const docsBusy = documentsBusy(pendingDocs);
+  const hasFailedAttachment =
+    pendingMedia.some((item) => item.status === "failed") ||
+    pendingDocs.some(
+      (item) => item.status === "failed" || item.status === "blocked"
+    );
+  const readyMedia = pendingMedia.filter((item) => item.status === "ready");
+  const readyDocs = pendingDocs.filter((item) => item.status === "clean");
+  const hasAttachments = pendingMedia.length > 0 || pendingDocs.length > 0;
+  const attachmentsReady =
+    hasAttachments &&
+    !mediaBusy &&
+    !docsBusy &&
+    !hasFailedAttachment &&
+    readyMedia.length + readyDocs.length ===
+      pendingMedia.length + pendingDocs.length;
+
+  async function uploadChatMedia(token: string, item: PendingChatMedia) {
+    try {
+      const { sizeBytes, body } = await resolveMediaBytes(
+        item.uri,
+        item.fileName,
+        item.fileSize
+      );
+      const upload = await api.createMediaUpload(token, {
+        fileName: item.fileName,
+        mediaType: item.mediaType,
+        mimeType: item.mimeType,
+        sizeBytes,
+        purpose: "chat",
+      });
+      await uploadMediaBytes(
+        upload.uploadUrl,
+        body,
+        item.mimeType,
+        item.fileName
+      );
+      setPendingMedia((current) =>
+        current.map((row) =>
+          row.localId === item.localId
+            ? { ...row, storageKey: upload.storageKey, status: "ready" }
+            : row
+        )
+      );
+    } catch (error) {
+      setPendingMedia((current) =>
+        current.map((row) =>
+          row.localId === item.localId
+            ? {
+                ...row,
+                status: "failed",
+                reason:
+                  error instanceof Error
+                    ? error.message
+                    : "Upload failed — retry or remove",
+              }
+            : row
+        )
+      );
+    }
+  }
+
+  async function pickChatMedia() {
+    setAttachSheetOpen(false);
+    if (Platform.OS === "ios") {
+      const permission =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        setActionError("Photos permission is required to attach media.");
+        return;
+      }
+    }
+    const remaining = MAX_CHAT_MEDIA - pendingMedia.length;
+    if (remaining <= 0) {
+      setActionError(`A message can include up to ${MAX_CHAT_MEDIA} photos or videos`);
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.All,
+      allowsMultipleSelection: true,
+      selectionLimit: remaining,
+      quality: 0.85,
+      videoMaxDuration: 120,
+    });
+    if (result.canceled) return;
+
+    const selected: PendingChatMedia[] = [];
+    for (const [index, asset] of result.assets.entries()) {
+      if (asset.type !== "image" && asset.type !== "video") continue;
+      const mediaType = asset.type === "video" ? "video" : "image";
+      const fileName =
+        asset.fileName ??
+        `${mediaType}-${Date.now()}-${index}.${mediaType === "video" ? "mp4" : "jpg"}`;
+      const uri = await persistPickedMediaUri(asset.uri, fileName);
+      selected.push({
+        localId: `${Date.now()}-${index}-${fileName}`,
+        uri,
+        fileName,
+        mediaType,
+        mimeType:
+          asset.mimeType ??
+          (mediaType === "video" ? "video/mp4" : "image/jpeg"),
+        fileSize: asset.fileSize,
+        width: asset.width,
+        height: asset.height,
+        durationMs: asset.duration ?? undefined,
+        status: "uploading",
+      });
+    }
+    if (selected.length === 0) return;
+    setPendingMedia((current) =>
+      [...current, ...selected].slice(0, MAX_CHAT_MEDIA)
+    );
+    setActionError(null);
+    const token = await getToken();
+    if (!token) return;
+    for (const item of selected) {
+      void uploadChatMedia(token, item);
+    }
+  }
+
+  async function pickChatDocs() {
+    setAttachSheetOpen(false);
+    const remaining = MAX_POST_DOCUMENTS - pendingDocs.length;
+    if (remaining <= 0) {
+      setActionError(`A message can include up to ${MAX_POST_DOCUMENTS} documents`);
+      return;
+    }
+    try {
+      const picked = await pickDocuments(remaining);
+      if (picked.length === 0) return;
+      setPendingDocs((current) =>
+        [...current, ...picked].slice(0, MAX_POST_DOCUMENTS)
+      );
+      setActionError(null);
+      await authed(async (token) => {
+        for (const doc of picked) {
+          if (doc.status !== "uploading") continue;
+          await uploadAndScanDocument(token, doc, (next) => {
+            setPendingDocs((current) =>
+              current.map((item) =>
+                item.localId === next.localId ? next : item
+              )
+            );
+          });
+        }
+      });
+    } catch (error) {
+      setActionError(
+        error instanceof Error ? error.message : "Could not attach document"
+      );
+    }
+  }
+
   async function send() {
     const body = draft.trim();
-    if (!body || sending) return;
+    const canSendAttachments = attachmentsReady && !editingId;
+    if ((!body && !canSendAttachments) || sending) return;
+    if (hasFailedAttachment || mediaBusy || docsBusy) return;
     setSending(true);
     try {
       if (editingId) {
@@ -205,20 +402,41 @@ export function ChatThreadScreen({
         await listQuery.refetch();
         return;
       }
+      const attachments = [
+        ...readyMedia.map((item) => ({
+          storageKey: item.storageKey as string,
+          mediaType: item.mediaType,
+          mimeType: item.mimeType,
+          fileName: item.fileName,
+          width: item.width,
+          height: item.height,
+          durationMs: item.durationMs,
+        })),
+        ...readyDocs.map((item) => ({
+          storageKey: item.storageKey as string,
+          mediaType: "document" as const,
+          mimeType: item.mimeType,
+          fileName: item.fileName,
+        })),
+      ];
       await authed((token) =>
         mode === "thread" && threadId
           ? api.sendThreadMessage(token, threadId, {
               body,
               clientMessageId: randomUUID(),
+              attachments: attachments.length > 0 ? attachments : undefined,
             })
           : api.sendGroupMessage(token, circleId!, {
               body,
               clientMessageId: randomUUID(),
               replyToMessageId: quoteTarget?.id,
+              attachments: attachments.length > 0 ? attachments : undefined,
             })
       );
       setDraft("");
       setQuoteTarget(null);
+      setPendingMedia([]);
+      setPendingDocs([]);
       await catchUp();
     } catch (error) {
       setActionError(
@@ -227,6 +445,62 @@ export function ChatThreadScreen({
     } finally {
       setSending(false);
     }
+  }
+
+  async function reportMessage(message: ChatMessage) {
+    setSheetMessage(null);
+    Alert.alert("Report message", "Why are you reporting this?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Spam",
+        onPress: () =>
+          void authed((token) =>
+            api.reportChatMessage(token, message.circleId, message.id, "spam")
+          )
+            .then(() => Alert.alert("Reported", "Thanks — we’ll review this."))
+            .catch((error) =>
+              setActionError(
+                error instanceof Error ? error.message : "Could not report"
+              )
+            ),
+      },
+      {
+        text: "Inappropriate",
+        onPress: () =>
+          void authed((token) =>
+            api.reportChatMessage(
+              token,
+              message.circleId,
+              message.id,
+              "inappropriate"
+            )
+          )
+            .then(() => Alert.alert("Reported", "Thanks — we’ll review this."))
+            .catch((error) =>
+              setActionError(
+                error instanceof Error ? error.message : "Could not report"
+              )
+            ),
+      },
+      {
+        text: "Harassment",
+        onPress: () =>
+          void authed((token) =>
+            api.reportChatMessage(
+              token,
+              message.circleId,
+              message.id,
+              "harassment"
+            )
+          )
+            .then(() => Alert.alert("Reported", "Thanks — we’ll review this."))
+            .catch((error) =>
+              setActionError(
+                error instanceof Error ? error.message : "Could not report"
+              )
+            ),
+      },
+    ]);
   }
 
   async function messageAuthor() {
@@ -329,7 +603,15 @@ export function ChatThreadScreen({
 
   const dockStyle =
     androidDockOffset > 0 ? { marginBottom: androidDockOffset } : null;
-  const canSend = Boolean(draft.trim()) && !sending && canReply;
+  const canSend =
+    !sending &&
+    canReply &&
+    !mediaBusy &&
+    !docsBusy &&
+    !hasFailedAttachment &&
+    (editingId
+      ? Boolean(draft.trim())
+      : Boolean(draft.trim()) || attachmentsReady);
 
   return (
     <KeyboardAvoidingView
@@ -433,7 +715,10 @@ export function ChatThreadScreen({
               <View style={styles.editCopy}>
                 <Text style={styles.editTitle}>Reply in channel</Text>
                 <Text style={styles.editPreview} numberOfLines={1}>
-                  {quoteTarget.body}
+                  {attachmentQuoteLabel(
+                    quoteTarget.attachments,
+                    quoteTarget.body
+                  )}
                 </Text>
               </View>
               <Pressable
@@ -445,10 +730,142 @@ export function ChatThreadScreen({
               </Pressable>
             </View>
           ) : null}
+          {!editingId && hasAttachments ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.attachTray}
+              contentContainerStyle={styles.attachTrayContent}
+            >
+              {pendingMedia.map((item) => (
+                <View key={item.localId} style={styles.attachThumbWrap}>
+                  {item.mediaType === "image" ? (
+                    <Image source={{ uri: item.uri }} style={styles.attachThumb} />
+                  ) : (
+                    <View style={[styles.attachThumb, styles.attachVideo]}>
+                      <Ionicons name="play" size={16} color={colors.textInverse} />
+                    </View>
+                  )}
+                  {item.status === "uploading" ? (
+                    <View style={styles.attachBusy}>
+                      <ActivityIndicator size="small" color={colors.textInverse} />
+                    </View>
+                  ) : null}
+                  {item.status === "failed" ? (
+                    <Pressable
+                      style={styles.attachRetry}
+                      onPress={() => {
+                        void getToken().then((token) => {
+                          if (!token) return;
+                          setPendingMedia((current) =>
+                            current.map((row) =>
+                              row.localId === item.localId
+                                ? { ...row, status: "uploading", reason: undefined }
+                                : row
+                            )
+                          );
+                          void uploadChatMedia(token, {
+                            ...item,
+                            status: "uploading",
+                          });
+                        });
+                      }}
+                    >
+                      <Text style={styles.attachRetryLabel}>Retry</Text>
+                    </Pressable>
+                  ) : null}
+                  <Pressable
+                    style={styles.attachRemove}
+                    onPress={() =>
+                      setPendingMedia((current) =>
+                        current.filter((row) => row.localId !== item.localId)
+                      )
+                    }
+                    accessibilityLabel="Remove attachment"
+                  >
+                    <Ionicons name="close-circle" size={20} color={colors.text} />
+                  </Pressable>
+                </View>
+              ))}
+              {pendingDocs.map((item) => (
+                <View key={item.localId} style={styles.attachDocChip}>
+                  <Ionicons name="document-text-outline" size={16} color={colors.primaryDark} />
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.attachDocName} numberOfLines={1}>
+                      {item.fileName}
+                    </Text>
+                    <Text style={styles.attachDocStatus} numberOfLines={1}>
+                      {item.status === "scanning"
+                        ? "Checking file…"
+                        : item.status === "uploading"
+                          ? "Uploading…"
+                          : item.status === "clean"
+                            ? "Ready"
+                            : item.reason ?? "Failed"}
+                    </Text>
+                  </View>
+                  {(item.status === "failed" || item.status === "blocked") &&
+                  item.uri ? (
+                    <Pressable
+                      onPress={() => {
+                        void authed(async (token) => {
+                          setPendingDocs((current) =>
+                            current.map((row) =>
+                              row.localId === item.localId
+                                ? { ...row, status: "uploading", reason: undefined }
+                                : row
+                            )
+                          );
+                          await uploadAndScanDocument(
+                            token,
+                            { ...item, status: "uploading" },
+                            (next) => {
+                              setPendingDocs((current) =>
+                                current.map((row) =>
+                                  row.localId === next.localId ? next : row
+                                )
+                              );
+                            }
+                          );
+                        });
+                      }}
+                    >
+                      <Text style={styles.attachRetryLabel}>Retry</Text>
+                    </Pressable>
+                  ) : null}
+                  <Pressable
+                    onPress={() =>
+                      setPendingDocs((current) =>
+                        current.filter((row) => row.localId !== item.localId)
+                      )
+                    }
+                    accessibilityLabel="Remove document"
+                  >
+                    <Ionicons name="close" size={18} color={colors.textMuted} />
+                  </Pressable>
+                </View>
+              ))}
+            </ScrollView>
+          ) : null}
           <View style={styles.inputRow}>
+            {!editingId ? (
+              <Pressable
+                style={styles.attachBtn}
+                onPress={() => setAttachSheetOpen(true)}
+                accessibilityLabel="Add attachment"
+              >
+                <Ionicons name="add" size={26} color={colors.primaryDark} />
+              </Pressable>
+            ) : null}
             <TextInput
               style={styles.input}
-              placeholder={editingId ? "Update message" : "Message"}
+              placeholder={
+                editingId
+                  ? "Update message"
+                  : hasAttachments
+                    ? "Add a note…"
+                    : "Message"
+              }
               placeholderTextColor={colors.textSubtle}
               value={draft}
               onChangeText={setDraft}
@@ -474,6 +891,48 @@ export function ChatThreadScreen({
         </Text>
       )}
 
+      <Modal
+        visible={attachSheetOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setAttachSheetOpen(false)}
+      >
+        <Pressable
+          style={styles.backdrop}
+          onPress={() => setAttachSheetOpen(false)}
+        >
+          <Pressable style={styles.attachSheet} onPress={() => {}}>
+            <Text style={styles.sheetTitle}>Add to message</Text>
+            <Pressable style={styles.sheetAction} onPress={() => void pickChatMedia()}>
+              <View style={styles.sheetIcon}>
+                <Ionicons name="images-outline" size={18} color={colors.primaryDark} />
+              </View>
+              <View>
+                <Text style={styles.sheetActionLabel}>Photos & videos</Text>
+                <Text style={styles.sheetHint}>
+                  Choose up to {MAX_CHAT_MEDIA - pendingMedia.length} more
+                </Text>
+              </View>
+            </Pressable>
+            <Pressable style={styles.sheetAction} onPress={() => void pickChatDocs()}>
+              <View style={styles.sheetIcon}>
+                <Ionicons name="document-outline" size={18} color={colors.primaryDark} />
+              </View>
+              <View>
+                <Text style={styles.sheetActionLabel}>Document</Text>
+                <Text style={styles.sheetHint}>PDF, Word, or Excel</Text>
+              </View>
+            </Pressable>
+            <Pressable
+              style={styles.sheetAction}
+              onPress={() => setAttachSheetOpen(false)}
+            >
+              <Text style={styles.sheetActionLabel}>Done</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       <MessageActionSheet
         message={sheetMessage}
         mode={sheetMode}
@@ -491,6 +950,9 @@ export function ChatThreadScreen({
           if (!sheetMessage) return;
           setPendingDelete(sheetMessage);
           setSheetMessage(null);
+        }}
+        onReport={() => {
+          if (sheetMessage) void reportMessage(sheetMessage);
         }}
       />
 
@@ -554,6 +1016,7 @@ function Bubble({
   );
   const ageMs = Date.now() - new Date(message.createdAt).getTime();
   const canManage = mine && ageMs <= 24 * 60 * 60 * 1000;
+  const canReport = !mine && visible;
   const role =
     message.author.role === "provider"
       ? "Tutor"
@@ -589,15 +1052,23 @@ function Bubble({
             !visible && styles.bubbleDeleted,
           ]}
         >
-          <Text
-            style={[
-              styles.body,
-              mine && visible && styles.bodyMine,
-              !visible && styles.bodyDeleted,
-            ]}
-          >
-            {visible ? message.body : "Message deleted"}
-          </Text>
+          {visible ? (
+            <ChatMessageAttachments
+              attachments={message.attachments}
+              mine={mine}
+            />
+          ) : null}
+          {visible && message.body ? (
+            <Text style={[styles.body, mine && styles.bodyMine]}>
+              {message.body}
+            </Text>
+          ) : null}
+          {!visible ? (
+            <Text style={[styles.body, styles.bodyDeleted]}>Message deleted</Text>
+          ) : null}
+          {visible && !message.body && !(message.attachments?.length) ? (
+            <Text style={[styles.body, mine && styles.bodyMine]}> </Text>
+          ) : null}
           <Text style={[styles.time, mine && visible && styles.timeMine]}>
             {message.editedAt && visible ? "edited · " : ""}
             {formatTime(message.createdAt)}
@@ -670,7 +1141,7 @@ function Bubble({
               <Ionicons name="happy-outline" size={16} color={colors.textMuted} />
               <Text style={styles.actionLabel}>React</Text>
             </Pressable>
-            {canManage ? (
+            {canManage || canReport ? (
               <Pressable
                 onPress={onOpenMore}
                 style={styles.actionBtn}
@@ -737,6 +1208,7 @@ function MessageActionSheet({
   onReact,
   onEdit,
   onDelete,
+  onReport,
 }: {
   message: ChatMessage | null;
   mode: "react" | "more";
@@ -745,13 +1217,15 @@ function MessageActionSheet({
   onReact: (reaction: string) => void;
   onEdit: () => void;
   onDelete: () => void;
+  onReport: () => void;
 }) {
   if (!message) return null;
   const ageMs = Date.now() - new Date(message.createdAt).getTime();
   const canEdit = mine && ageMs <= 15 * 60 * 1000;
   const canDelete = mine && ageMs <= 24 * 60 * 60 * 1000;
+  const canReport = !mine;
   const showReact = mode === "react";
-  const showMore = mode === "more" && (canEdit || canDelete);
+  const showMore = mode === "more" && (canEdit || canDelete || canReport);
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
@@ -781,7 +1255,9 @@ function MessageActionSheet({
           ) : null}
           {showMore ? (
             <View style={styles.sheetActions}>
-              <Text style={styles.sheetTitle}>Your message</Text>
+              <Text style={styles.sheetTitle}>
+                {mine ? "Your message" : "Message"}
+              </Text>
               {canEdit ? (
                 <Pressable style={styles.sheetAction} onPress={onEdit}>
                   <View style={styles.sheetIcon}>
@@ -804,6 +1280,21 @@ function MessageActionSheet({
                     </Text>
                     <Text style={styles.sheetHint}>
                       Everyone in the group will see it as deleted
+                    </Text>
+                  </View>
+                </Pressable>
+              ) : null}
+              {canReport ? (
+                <Pressable style={styles.sheetAction} onPress={onReport}>
+                  <View style={[styles.sheetIcon, styles.sheetIconDanger]}>
+                    <Ionicons name="flag-outline" size={16} color={colors.error} />
+                  </View>
+                  <View>
+                    <Text style={[styles.sheetActionLabel, styles.sheetActionDanger]}>
+                      Report
+                    </Text>
+                    <Text style={styles.sheetHint}>
+                      Flag inappropriate text or attachments
                     </Text>
                   </View>
                 </Pressable>
@@ -970,6 +1461,90 @@ const styles = StyleSheet.create({
     height: 44,
     alignItems: "center",
     justifyContent: "center",
+  },
+  attachBtn: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 2,
+  },
+  attachTray: {
+    maxHeight: 88,
+    marginBottom: 8,
+  },
+  attachTrayContent: {
+    gap: 8,
+    paddingHorizontal: 2,
+    alignItems: "center",
+  },
+  attachThumbWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 12,
+    overflow: "hidden",
+  },
+  attachThumb: {
+    width: 72,
+    height: 72,
+    backgroundColor: colors.border,
+  },
+  attachVideo: {
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#222",
+  },
+  attachBusy: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.35)",
+  },
+  attachRetry: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.55)",
+  },
+  attachRetryLabel: {
+    color: colors.textInverse,
+    fontFamily: typography.semibold,
+    fontSize: 11,
+  },
+  attachRemove: {
+    position: "absolute",
+    top: 2,
+    right: 2,
+  },
+  attachDocChip: {
+    width: 180,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: colors.bg,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  attachDocName: {
+    fontFamily: typography.semibold,
+    color: colors.text,
+    fontSize: 12,
+  },
+  attachDocStatus: {
+    fontFamily: typography.regular,
+    color: colors.textMuted,
+    fontSize: 11,
+  },
+  attachSheet: {
+    backgroundColor: colors.card,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: spacing.md,
+    paddingBottom: spacing.xl,
+    gap: 4,
   },
   composer: {
     borderTopWidth: 1,

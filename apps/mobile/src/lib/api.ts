@@ -548,6 +548,18 @@ export type ChatHomeItem = {
   preview?: string | null;
 };
 
+export type ChatMessageAttachment = {
+  id: string;
+  type: "image" | "video" | "document";
+  mimeType: string;
+  sizeBytes: number;
+  fileName: string | null;
+  width: number | null;
+  height: number | null;
+  durationMs: number | null;
+  url: string | null;
+};
+
 export type ChatMessage = {
   id: string;
   seq: number;
@@ -570,6 +582,8 @@ export type ChatMessage = {
   createdAt: string;
   editedAt: string | null;
   reactions?: Array<{ reaction: string; count: number; mine: boolean }>;
+  /** Always present from API; treat missing as [] for older clients. */
+  attachments?: ChatMessageAttachment[];
 };
 
 export type MessageableParent = {
@@ -1338,7 +1352,7 @@ export const api = {
       mediaType: "image" | "video" | "document";
       mimeType: string;
       sizeBytes: number;
-      purpose?: "post" | "listing";
+      purpose?: "post" | "listing" | "chat";
     }
   ) =>
     request<{
@@ -1349,6 +1363,13 @@ export const api = {
     }>(
       "/v1/media/upload-url",
       { method: "POST", body: JSON.stringify(body) },
+      token
+    ),
+
+  getChatMediaDownloadUrl: (token: string, mediaId: string) =>
+    request<{ downloadUrl: string; expiresInSeconds: number }>(
+      `/v1/chat/media/${mediaId}/download`,
+      {},
       token
     ),
 
@@ -2222,7 +2243,20 @@ export const api = {
   sendGroupMessage: (
     token: string,
     circleId: string,
-    body: { body: string; clientMessageId?: string; replyToMessageId?: string }
+    body: {
+      body: string;
+      clientMessageId?: string;
+      replyToMessageId?: string;
+      attachments?: Array<{
+        storageKey: string;
+        mediaType: "image" | "video" | "document";
+        mimeType: string;
+        fileName?: string;
+        width?: number;
+        height?: number;
+        durationMs?: number;
+      }>;
+    }
   ) =>
     request<ChatMessage>(
       `/v1/circles/${circleId}/messages`,
@@ -2310,7 +2344,20 @@ export const api = {
   sendThreadMessage: (
     token: string,
     threadId: string,
-    body: { body: string; clientMessageId?: string; asProvider?: boolean }
+    body: {
+      body: string;
+      clientMessageId?: string;
+      asProvider?: boolean;
+      attachments?: Array<{
+        storageKey: string;
+        mediaType: "image" | "video" | "document";
+        mimeType: string;
+        fileName?: string;
+        width?: number;
+        height?: number;
+        durationMs?: number;
+      }>;
+    }
   ) =>
     request<ChatMessage>(
       `/v1/threads/${threadId}/messages`,
@@ -2383,6 +2430,18 @@ export const api = {
     request<{ ok: boolean }>(
       `/v1/circles/${circleId}/messages/${messageId}/reactions?reaction=${encodeURIComponent(reaction)}`,
       { method: "DELETE" },
+      token
+    ),
+
+  reportChatMessage: (
+    token: string,
+    circleId: string,
+    messageId: string,
+    reasonId: string
+  ) =>
+    request<{ ok: boolean }>(
+      `/v1/circles/${circleId}/messages/${messageId}/report`,
+      { method: "POST", body: JSON.stringify({ reasonId }) },
       token
     ),
 

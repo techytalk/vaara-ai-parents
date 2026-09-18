@@ -12,6 +12,7 @@ import { parseChatAttachments } from "../lib/chat-attachments.js";
 import {
   createChatMediaUrl,
   createDocumentDownloadUrl,
+  deleteStoredMedia,
   isMediaStorageConfigured,
 } from "../lib/media-storage.js";
 import {
@@ -326,6 +327,7 @@ export function createCircleChatRoutes() {
     const messageId = String(c.req.param("messageId"));
     const client = await pool.connect();
     try {
+      await client.query("BEGIN");
       const result = await deleteCircleMessage({
         client,
         userId,
@@ -333,9 +335,21 @@ export function createCircleChatRoutes() {
         messageId,
       });
       if ("error" in result) {
+        await client.query("ROLLBACK");
         return c.json({ error: result.error }, result.status as 400 | 403 | 404);
       }
+      await client.query("COMMIT");
+      if (result.storageKeys.length > 0) {
+        try {
+          await deleteStoredMedia(result.storageKeys);
+        } catch (error) {
+          console.error("[chat] message delete S3 cleanup failed", error);
+        }
+      }
       return c.json({ ok: true });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
     } finally {
       client.release();
     }

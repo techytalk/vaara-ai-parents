@@ -94,6 +94,10 @@ const MIGRATIONS = [
     version: "052_slack_style_threads",
     file: "052_slack_style_threads.sql",
   },
+  {
+    version: "053_circle_message_media_hardening",
+    file: "053_circle_message_media_hardening.sql",
+  },
 ];
 
 async function isMigrationApplied(

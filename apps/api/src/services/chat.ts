@@ -19,7 +19,6 @@ import {
 import { isBlocked } from "../lib/author.js";
 import { userHasRole } from "../lib/user-roles.js";
 import {
-  attachmentPreviewText,
   insertChatAttachments,
   loadAttachmentPreviewLabels,
   loadChatAttachments,
@@ -287,7 +286,9 @@ export async function editCircleMessage(params: {
     row.author_role,
     updated.rows[0].author_was_guest === true
   );
-  return { message: mapMessageRow(updated.rows[0], author) };
+  const message = mapMessageRow(updated.rows[0], author);
+  await attachAttachments(params.client, [message]);
+  return { message };
 }
 
 export async function deleteCircleMessage(params: {
@@ -295,7 +296,10 @@ export async function deleteCircleMessage(params: {
   userId: string;
   circleId: string;
   messageId: string;
-}): Promise<{ ok: true } | { error: string; status: number }> {
+}): Promise<
+  | { ok: true; storageKeys: string[] }
+  | { error: string; status: number }
+> {
   const { rows } = await params.client.query(
     `SELECT * FROM circle_messages WHERE id = $1 AND circle_id = $2`,
     [params.messageId, params.circleId]
@@ -308,12 +312,25 @@ export async function deleteCircleMessage(params: {
   if (Date.now() - new Date(row.created_at).getTime() > 24 * 60 * 60 * 1000) {
     return { error: "Delete window has closed", status: 400 };
   }
+  const media = await params.client.query<{ storage_key: string }>(
+    `SELECT storage_key FROM circle_message_media WHERE message_id = $1`,
+    [params.messageId]
+  );
+  const storageKeys = media.rows.map((item) => item.storage_key);
   await params.client.query(
     `UPDATE circle_messages
      SET status = 'deleted', body = NULL, deleted_at = now()
      WHERE id = $1`,
     [params.messageId]
   );
+  // Drop attachment rows so reads cannot resurface them; S3 cleanup happens
+  // after the transaction commits (caller).
+  if (storageKeys.length > 0) {
+    await params.client.query(
+      `DELETE FROM circle_message_media WHERE message_id = $1`,
+      [params.messageId]
+    );
+  }
   // Deleting a root closes its thread; deleting a reply refreshes counters via trigger.
   await params.client.query(
     `UPDATE circle_threads
@@ -321,7 +338,7 @@ export async function deleteCircleMessage(params: {
      WHERE root_message_id = $1 AND status = 'open'`,
     [params.messageId]
   );
-  return { ok: true };
+  return { ok: true, storageKeys };
 }
 
 export async function setMessageReaction(params: {

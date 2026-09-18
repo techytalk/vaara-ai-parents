@@ -1,8 +1,8 @@
 # Attachments in chat messages
 
-**Status:** Specification complete and reviewed — ready to build, not yet
-implemented. All scope decisions are settled (§12) and every code reference has
-been checked against the current codebase and production database.
+**Status:** Implemented end-to-end (API + mobile). Spec remains the source of
+truth for behavior. Apply migration `053` before relying on hardened
+constraints in a new environment.
 
 **Read the [§12 decision log](#12-decision-log) first.** It records the six
 resolved scope decisions and the facts already verified against production, so

@@ -110,7 +110,7 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow Vaara Parents to select photos and videos for circle posts."
+          "photosPermission": "Allow Vaara Parents to select photos and videos for messages and posts."
         }
       ],
       "expo-document-picker",

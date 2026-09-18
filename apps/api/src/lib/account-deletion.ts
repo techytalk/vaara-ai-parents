@@ -6,7 +6,7 @@ async function collectUserMediaKeys(
   client: PoolClient,
   userId: string
 ): Promise<string[]> {
-  const [posts, listings] = await Promise.all([
+  const [posts, listings, messages] = await Promise.all([
     client.query<{ storage_key: string }>(
       `SELECT cpm.storage_key
        FROM circle_post_media cpm
@@ -21,9 +21,18 @@ async function collectUserMediaKeys(
        WHERE l.seller_id = $1`,
       [userId]
     ),
+    client.query<{ storage_key: string }>(
+      `SELECT cmm.storage_key
+       FROM circle_message_media cmm
+       JOIN circle_messages cm ON cm.id = cmm.message_id
+       WHERE cm.author_id = $1`,
+      [userId]
+    ),
   ]);
 
-  return [...posts.rows, ...listings.rows].map((row) => row.storage_key);
+  return [...posts.rows, ...listings.rows, ...messages.rows].map(
+    (row) => row.storage_key
+  );
 }
 
 export async function deleteUserAccount(userId: string): Promise<boolean> {
