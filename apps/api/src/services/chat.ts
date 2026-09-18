@@ -647,7 +647,7 @@ export async function createCircleMessage(params: {
     userId: params.userId,
     attachments,
   });
-  if (!verified.ok) {
+  if (verified.ok === false) {
     return { error: verified.error, status: verified.status };
   }
 
