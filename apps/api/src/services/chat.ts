@@ -856,10 +856,27 @@ export async function listLinearMessages(params: {
 
   const filters = [`m.circle_id = $1`, `m.thread_id IS NULL`];
   const values: unknown[] = [params.circleId, params.userId];
-  filters.push(`m.created_at >= COALESCE((
-    SELECT MAX(joined_at) FROM circle_membership_periods
-    WHERE circle_id = $1 AND user_id = $2 AND left_at IS NULL
-  ), m.created_at)`);
+  // school_class/school: history from current join only.
+  // Wide groups: still-open thread roots remain visible (migrated topics
+  // are channel roots now; hiding them by joined_at made groups look empty).
+  filters.push(`(
+    m.created_at >= COALESCE((
+      SELECT MAX(joined_at) FROM circle_membership_periods
+      WHERE circle_id = $1 AND user_id = $2 AND left_at IS NULL
+    ), m.created_at)
+    OR (
+      EXISTS (
+        SELECT 1 FROM circles c
+        WHERE c.id = $1
+          AND c.circle_type IN ('class', 'locality', 'curriculum', 'community')
+      )
+      AND EXISTS (
+        SELECT 1 FROM circle_threads t
+        WHERE t.root_message_id = m.id
+          AND t.status = 'open'
+      )
+    )
+  )`);
   if (params.beforeSeq != null) {
     values.push(params.beforeSeq);
     filters.push(`m.seq < $${values.length}`);
@@ -1027,10 +1044,20 @@ export async function listInbox(client: PoolClient, userId: string) {
          AND m.status = 'visible'
          AND m.author_id <> $1
          AND (r.last_read_message_seq IS NULL OR m.seq > r.last_read_message_seq)
-         AND m.created_at >= COALESCE((
-           SELECT MAX(joined_at) FROM circle_membership_periods
-           WHERE circle_id = c.id AND user_id = $1 AND left_at IS NULL
-         ), m.created_at)
+         AND (
+           m.created_at >= COALESCE((
+             SELECT MAX(joined_at) FROM circle_membership_periods
+             WHERE circle_id = c.id AND user_id = $1 AND left_at IS NULL
+           ), m.created_at)
+           OR (
+             c.circle_type IN ('class', 'locality', 'curriculum', 'community')
+             AND EXISTS (
+               SELECT 1 FROM circle_threads t
+               WHERE t.root_message_id = m.id
+                 AND t.status = 'open'
+             )
+           )
+         )
          AND NOT EXISTS (
            SELECT 1 FROM user_blocks ub
            WHERE (ub.blocker_id = $1 AND ub.blocked_id = m.author_id)
@@ -1217,7 +1244,11 @@ export async function listHome(
      WHERE cm.user_id = $1
        AND t.status = 'open'
        AND t.home_visibility <> 'hidden'
-       AND (t.reply_count > 0 OR t.title IS NOT NULL)
+       AND (
+         t.reply_count > 0
+         OR NULLIF(btrim(COALESCE(t.title, '')), '') IS NOT NULL
+         OR NULLIF(btrim(COALESCE(t.body, '')), '') IS NOT NULL
+       )
        AND NOT EXISTS (
          SELECT 1 FROM user_blocks ub
          WHERE (ub.blocker_id = $1 AND ub.blocked_id = t.author_id)
@@ -1240,7 +1271,11 @@ export async function listHome(
        ON hi.thread_id = t.id AND hi.user_id = $1
      WHERE t.status = 'open'
        AND t.home_visibility = 'discoverable'
-       AND (t.reply_count > 0 OR t.title IS NOT NULL)
+       AND (
+         t.reply_count > 0
+         OR NULLIF(btrim(COALESCE(t.title, '')), '') IS NOT NULL
+         OR NULLIF(btrim(COALESCE(t.body, '')), '') IS NOT NULL
+       )
        AND NOT EXISTS (
          SELECT 1 FROM circle_members cm
          WHERE cm.circle_id = t.circle_id AND cm.user_id = $1
