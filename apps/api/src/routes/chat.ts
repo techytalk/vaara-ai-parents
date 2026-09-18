@@ -1,3 +1,4 @@
+import { publishThreadEvent, publishUserInboxEvent } from "@vaara/redis";
 import { Hono } from "hono";
 import { pool } from "@vaara/db";
 import { randomUUID } from "crypto";
@@ -162,6 +163,9 @@ export function createCircleChatRoutes() {
         afterSeq: parseSeq(c.req.query("afterSeq")),
         limit: Math.min(Number(c.req.query("limit") ?? 40), 100),
       });
+      if ("error" in result) {
+        return c.json({ error: result.error }, result.status as 403);
+      }
       return c.json(result);
     } finally {
       client.release();
@@ -349,8 +353,22 @@ export function createCircleChatRoutes() {
          )
          VALUES ($1, $2, $3, $4, now())
          ON CONFLICT (circle_id, user_id) DO UPDATE SET
-           last_read_message_seq = COALESCE(EXCLUDED.last_read_message_seq, circle_chat_reads.last_read_message_seq),
-           last_seen_thread_seq = COALESCE(EXCLUDED.last_seen_thread_seq, circle_chat_reads.last_seen_thread_seq),
+           last_read_message_seq = CASE
+             WHEN EXCLUDED.last_read_message_seq IS NULL
+               THEN circle_chat_reads.last_read_message_seq
+             ELSE GREATEST(
+               COALESCE(circle_chat_reads.last_read_message_seq, 0),
+               EXCLUDED.last_read_message_seq
+             )
+           END,
+           last_seen_thread_seq = CASE
+             WHEN EXCLUDED.last_seen_thread_seq IS NULL
+               THEN circle_chat_reads.last_seen_thread_seq
+             ELSE GREATEST(
+               COALESCE(circle_chat_reads.last_seen_thread_seq, 0),
+               EXCLUDED.last_seen_thread_seq
+             )
+           END,
            last_read_at = now()`,
         [
           circleId,
@@ -474,10 +492,11 @@ export function createCircleChatRoutes() {
     const body = await c.req.json<{ title?: string; body?: string; kind?: string }>();
     const client = await pool.connect();
     try {
+      await client.query("BEGIN");
       if (!(await incrementDailyQuota(client, userId, "guest_thread", 5))) {
+        await client.query("ROLLBACK");
         return c.json({ error: "Guest thread daily limit reached" }, 429);
       }
-      await client.query("BEGIN");
       const result = await createThread({
         client,
         userId,
@@ -547,6 +566,7 @@ export function createThreadRoutes() {
         status: row.status,
         replyCount: row.reply_count,
         lastMessageAt: row.last_message_at,
+        lastActivitySeq: Number(row.last_activity_seq),
         rootMessageId: row.root_message_id,
         serviceRepliesAllowed: row.service_replies_allowed,
         muted: Boolean(
@@ -651,7 +671,14 @@ export function createThreadRoutes() {
         `INSERT INTO circle_thread_reads (thread_id, user_id, last_read_seq, last_read_at)
          VALUES ($1, $2, $3, now())
          ON CONFLICT (thread_id, user_id) DO UPDATE SET
-           last_read_seq = COALESCE(EXCLUDED.last_read_seq, circle_thread_reads.last_read_seq),
+           last_read_seq = CASE
+             WHEN EXCLUDED.last_read_seq IS NULL
+               THEN circle_thread_reads.last_read_seq
+             ELSE GREATEST(
+               COALESCE(circle_thread_reads.last_read_seq, 0),
+               EXCLUDED.last_read_seq
+             )
+           END,
            last_read_at = now()`,
         [threadId, userId, body.lastReadSeq ?? null]
       );
@@ -708,9 +735,11 @@ export function createThreadRoutes() {
         return c.json({ error: "Thread not found" }, 404);
       }
       await client.query(
-        `INSERT INTO circle_thread_reads (thread_id, user_id, following, last_read_at)
-         VALUES ($1, $2, true, now())
-         ON CONFLICT (thread_id, user_id) DO UPDATE SET following = true`,
+        `INSERT INTO circle_thread_reads (thread_id, user_id, following, follow_explicit, last_read_at)
+         VALUES ($1, $2, true, true, now())
+         ON CONFLICT (thread_id, user_id) DO UPDATE SET
+           following = true,
+           follow_explicit = true`,
         [threadId, userId]
       );
       return c.json({ ok: true });
@@ -725,7 +754,8 @@ export function createThreadRoutes() {
     const client = await pool.connect();
     try {
       await client.query(
-        `UPDATE circle_thread_reads SET following = false
+        `UPDATE circle_thread_reads
+         SET following = false, follow_explicit = true
          WHERE thread_id = $1 AND user_id = $2`,
         [threadId, userId]
       );
@@ -736,31 +766,8 @@ export function createThreadRoutes() {
   });
 
   app.post("/:threadId/grants", async (c) => {
-    const userId = c.get("user").sub;
-    const threadId = String(c.req.param("threadId"));
-    const body = await c.req.json<{ userId?: string }>();
-    if (!body.userId) return c.json({ error: "userId is required" }, 400);
-    const client = await pool.connect();
-    try {
-      const access = await loadThreadAccess(client, threadId, userId);
-      if (!access || !access.isMember) {
-        return c.json({ error: "Only members can invite guests" }, 403);
-      }
-      if (await isBlocked(client, userId, body.userId)) {
-        return c.json({ error: "Cannot invite this parent" }, 403);
-      }
-      await client.query(
-        `INSERT INTO circle_thread_access_grants (
-           thread_id, user_id, grant_role, granted_by, can_reply
-         )
-         VALUES ($1, $2, 'guest_replier', $3, true)
-         ON CONFLICT DO NOTHING`,
-        [threadId, body.userId, userId]
-      );
-      return c.json({ ok: true });
-    } finally {
-      client.release();
-    }
+    // Manual guest invite is not a v1 product surface.
+    return c.json({ error: "Guest invites are not available yet" }, 403);
   });
 
   app.patch("/:threadId", async (c) => {
@@ -778,10 +785,14 @@ export function createThreadRoutes() {
         return c.json({ error: "Thread not found" }, 404);
       }
       const current = await client.query(
-        `SELECT title, body, created_at, status FROM circle_threads WHERE id = $1`,
+        `SELECT title, body, created_at, status, root_message_id
+         FROM circle_threads WHERE id = $1`,
         [threadId]
       );
       const row = current.rows[0];
+      if (row.status === "moderated" || row.status === "deleted") {
+        return c.json({ error: "This thread cannot be changed" }, 400);
+      }
       const ageMs = Date.now() - new Date(row.created_at).getTime();
       if ((body.title != null || body.body != null) && ageMs > 60 * 60 * 1000) {
         return c.json({ error: "Edit window has closed" }, 400);
@@ -792,13 +803,26 @@ export function createThreadRoutes() {
       if (status !== "open" && status !== "closed") {
         return c.json({ error: "Invalid status" }, 400);
       }
+      await client.query("BEGIN");
       await client.query(
         `UPDATE circle_threads
          SET title = $2, body = $3, status = $4, updated_at = now()
          WHERE id = $1`,
         [threadId, title, text, status]
       );
+      if (body.body != null && row.root_message_id) {
+        await client.query(
+          `UPDATE circle_messages
+           SET body = $2, edited_at = now()
+           WHERE id = $1 AND status = 'visible'`,
+          [row.root_message_id, text]
+        );
+      }
+      await client.query("COMMIT");
       return c.json({ ok: true, status });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
     } finally {
       client.release();
     }
@@ -820,11 +844,27 @@ export function createThreadRoutes() {
       if (Number(replies.rows[0].n) > 0) {
         return c.json({ error: "Close the thread instead of deleting it" }, 400);
       }
-      await client.query(
-        `UPDATE circle_threads SET status = 'deleted', updated_at = now() WHERE id = $1`,
+      await client.query("BEGIN");
+      const thread = await client.query(
+        `UPDATE circle_threads
+         SET status = 'deleted', updated_at = now()
+         WHERE id = $1
+         RETURNING root_message_id`,
         [threadId]
       );
+      if (thread.rows[0]?.root_message_id) {
+        await client.query(
+          `UPDATE circle_messages
+           SET status = 'deleted', body = NULL, deleted_at = now()
+           WHERE id = $1`,
+          [thread.rows[0].root_message_id]
+        );
+      }
+      await client.query("COMMIT");
       return c.json({ ok: true });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
     } finally {
       client.release();
     }
@@ -837,8 +877,27 @@ export function createThreadRoutes() {
     const client = await pool.connect();
     try {
       const access = await loadThreadAccess(client, threadId, userId);
-      if (!access || (!access.isMember && access.authorId !== userId)) {
+      if (!access || !access.isMember) {
         return c.json({ error: "Not allowed" }, 403);
+      }
+      // guest_author revocation is moderator-only in v1.
+      const grant = await client.query(
+        `SELECT grant_role FROM circle_thread_access_grants
+         WHERE thread_id = $1 AND user_id = $2 AND revoked_at IS NULL
+         ORDER BY created_at DESC LIMIT 1`,
+        [threadId, grantUserId]
+      );
+      if (grant.rows[0]?.grant_role === "guest_author") {
+        return c.json(
+          { error: "Guest author access can only be revoked by moderation" },
+          403
+        );
+      }
+      if (
+        grant.rows[0]?.grant_role !== "guest_replier" &&
+        grant.rows[0]?.grant_role !== "provider_responder"
+      ) {
+        return c.json({ error: "No active grant found" }, 404);
       }
       await client.query(
         `UPDATE circle_thread_access_grants
@@ -846,6 +905,17 @@ export function createThreadRoutes() {
          WHERE thread_id = $1 AND user_id = $2 AND revoked_at IS NULL`,
         [threadId, grantUserId]
       );
+      await publishUserInboxEvent(grantUserId, {
+        type: "access.revoked",
+        userId: grantUserId,
+        circleId: access.circleId,
+        threadId,
+      });
+      await publishThreadEvent(threadId, {
+        type: "chat.message",
+        circleId: access.circleId,
+        threadId,
+      });
       return c.json({ ok: true });
     } finally {
       client.release();

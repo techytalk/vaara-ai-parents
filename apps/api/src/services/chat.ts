@@ -88,14 +88,33 @@ function guardText(text: string): { error: string } | null {
 async function followThread(
   client: PoolClient,
   threadId: string,
-  userId: string
+  userId: string,
+  options?: { lastReadSeq?: number | null; explicit?: boolean }
 ): Promise<void> {
+  const lastReadSeq = options?.lastReadSeq ?? null;
+  const explicit = options?.explicit === true;
   await client.query(
-    `INSERT INTO circle_thread_reads (thread_id, user_id, following, last_read_at)
-     VALUES ($1, $2, true, now())
+    `INSERT INTO circle_thread_reads (
+       thread_id, user_id, following, follow_explicit, last_read_seq, last_read_at
+     )
+     VALUES ($1, $2, true, $3, $4, now())
      ON CONFLICT (thread_id, user_id)
-     DO UPDATE SET following = true`,
-    [threadId, userId]
+     DO UPDATE SET
+       following = CASE
+         WHEN circle_thread_reads.follow_explicit AND NOT circle_thread_reads.following
+           THEN circle_thread_reads.following
+         ELSE true
+       END,
+       follow_explicit = CASE
+         WHEN $3 THEN true
+         ELSE circle_thread_reads.follow_explicit
+       END,
+       last_read_seq = CASE
+         WHEN $4::bigint IS NULL THEN circle_thread_reads.last_read_seq
+         ELSE GREATEST(COALESCE(circle_thread_reads.last_read_seq, 0), $4::bigint)
+       END,
+       last_read_at = now()`,
+    [threadId, userId, explicit, lastReadSeq]
   );
 }
 
@@ -224,11 +243,18 @@ export async function editCircleMessage(params: {
      WHERE id = $1 RETURNING *`,
     [params.messageId, body]
   );
+  await params.client.query(
+    `UPDATE circle_threads
+     SET body = COALESCE(NULLIF(btrim(body), ''), $2),
+         updated_at = now()
+     WHERE root_message_id = $1`,
+    [params.messageId, body]
+  );
   const author = await authorView(
     params.client,
     params.userId,
     row.author_role,
-    false
+    updated.rows[0].author_was_guest === true
   );
   return { message: mapMessageRow(updated.rows[0], author) };
 }
@@ -255,6 +281,13 @@ export async function deleteCircleMessage(params: {
     `UPDATE circle_messages
      SET status = 'deleted', body = NULL, deleted_at = now()
      WHERE id = $1`,
+    [params.messageId]
+  );
+  // Deleting a root closes its thread; deleting a reply refreshes counters via trigger.
+  await params.client.query(
+    `UPDATE circle_threads
+     SET status = 'closed', updated_at = now()
+     WHERE root_message_id = $1 AND status = 'open'`,
     [params.messageId]
   );
   return { ok: true };
@@ -469,11 +502,18 @@ export async function createThread(params: {
   const root = await client.query(
     `INSERT INTO circle_messages (
        seq, circle_id, thread_id, author_id, author_role, body,
-       client_message_id, status
+       client_message_id, status, author_was_guest
      )
-     VALUES ($1, $2, NULL, $3, 'parent', $4, $5, 'visible')
-     RETURNING id`,
-    [rootSeq, params.circleId, params.userId, rootBody, randomUUID()]
+     VALUES ($1, $2, NULL, $3, 'parent', $4, $5, 'visible', $6)
+     RETURNING id, seq`,
+    [
+      rootSeq,
+      params.circleId,
+      params.userId,
+      rootBody,
+      randomUUID(),
+      Boolean(params.guest),
+    ]
   );
   await client.query(
     `UPDATE circle_threads
@@ -482,7 +522,9 @@ export async function createThread(params: {
     [thread.id, root.rows[0].id, rootSeq]
   );
   thread.root_message_id = root.rows[0].id;
-  await followThread(client, String(thread.id), params.userId);
+  await followThread(client, String(thread.id), params.userId, {
+    lastReadSeq: Number(root.rows[0].seq),
+  });
   if (params.guest) {
     await client.query(
       `INSERT INTO circle_thread_access_grants (
@@ -526,13 +568,21 @@ export async function createCircleMessage(params: {
     [params.userId, params.clientMessageId]
   );
   if (existing.rows[0]) {
+    const prior = existing.rows[0];
+    if (String(prior.circle_id) !== params.circleId) {
+      return { error: "clientMessageId already used in another group", status: 400 };
+    }
+    const priorThread = prior.thread_id ? String(prior.thread_id) : null;
+    if ((params.threadId ?? null) !== priorThread) {
+      return { error: "clientMessageId already used in another thread", status: 400 };
+    }
     const author = await authorView(
       client,
       params.userId,
-      existing.rows[0].author_role,
-      false
+      prior.author_role,
+      prior.author_was_guest === true
     );
-    return { message: mapMessageRow(existing.rows[0], author) };
+    return { message: mapMessageRow(prior, author) };
   }
 
   if (params.threadId) {
@@ -629,12 +679,16 @@ export async function createCircleMessage(params: {
   }
 
   const seq = await nextCircleSeq(client, params.circleId);
+  const isGuestAuthor = params.threadId
+    ? !(await isCircleMember(client, params.circleId, params.userId))
+    : false;
   const inserted = await client.query(
     `INSERT INTO circle_messages (
        seq, circle_id, thread_id, author_id, author_role, body,
-       reply_to_message_id, parent_message_id, client_message_id, status
+       reply_to_message_id, parent_message_id, client_message_id, status,
+       author_was_guest
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'visible')
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'visible', $10)
      RETURNING *`,
     [
       seq,
@@ -646,6 +700,7 @@ export async function createCircleMessage(params: {
       params.replyToMessageId ?? null,
       parentMessageId,
       params.clientMessageId,
+      isGuestAuthor,
     ]
   );
   const row = inserted.rows[0];
@@ -668,27 +723,19 @@ export async function createCircleMessage(params: {
     }
   }
   if (params.threadId) {
-    await client.query(
-      `UPDATE circle_threads
-       SET last_activity_seq = $2,
-           last_message_at = now(),
-           reply_count = reply_count + 1,
-           updated_at = now()
-       WHERE id = $1`,
-      [params.threadId, seq]
-    );
+    await followThread(client, params.threadId, params.userId, {
+      lastReadSeq: seq,
+    });
   }
   await insertChatOutbox(client, "message.created", "message", String(row.id), {
     circleId: params.circleId,
     threadId: params.threadId ?? null,
+    rootMessageId: parentMessageId,
     messageId: row.id,
     seq,
     authorId: params.userId,
   });
-  const isGuest = params.threadId
-    ? !(await isCircleMember(client, params.circleId, params.userId))
-    : false;
-  const author = await authorView(client, params.userId, authorRole, isGuest);
+  const author = await authorView(client, params.userId, authorRole, isGuestAuthor);
   return { message: mapMessageRow(row, author) };
 }
 
@@ -706,7 +753,7 @@ export async function ensureThreadForMessage(params: {
   if (!member) return { error: "Not a member of this group", status: 403 };
 
   const message = await params.client.query(
-    `SELECT id, circle_id, thread_id, parent_message_id, author_id, author_role, body, status
+    `SELECT id, seq, circle_id, thread_id, parent_message_id, author_id, author_role, body, status
      FROM circle_messages
      WHERE id = $1 AND circle_id = $2`,
     [params.messageId, params.circleId]
@@ -738,35 +785,55 @@ export async function ensureThreadForMessage(params: {
   if (!isParent) return { error: "Parent role required", status: 403 };
 
   const seq = await nextCircleSeq(params.client, params.circleId);
-  const inserted = await params.client.query(
-    `INSERT INTO circle_threads (
-       created_seq, last_activity_seq, circle_id, author_id, author_role,
-       title, body, kind, home_visibility, status, last_message_at, reply_count,
-       root_message_id
-     )
-     VALUES ($1, $1, $2, $3, $4, NULL, $5, 'general', 'member', 'open', now(), 0, $6)
-     RETURNING id`,
-    [
+  try {
+    const inserted = await params.client.query(
+      `INSERT INTO circle_threads (
+         created_seq, last_activity_seq, circle_id, author_id, author_role,
+         title, body, kind, home_visibility, status, last_message_at, reply_count,
+         root_message_id
+       )
+       VALUES ($1, $1, $2, $3, $4, NULL, $5, 'general', 'member', 'open', now(), 0, $6)
+       RETURNING id`,
+      [
+        seq,
+        params.circleId,
+        row.author_id,
+        row.author_role,
+        row.body,
+        params.messageId,
+      ]
+    );
+    const threadId = String(inserted.rows[0].id);
+    await followThread(params.client, threadId, String(row.author_id), {
+      lastReadSeq: Number(row.seq ?? seq),
+    });
+    if (params.userId !== String(row.author_id)) {
+      await followThread(params.client, threadId, params.userId, {
+        lastReadSeq: Number(row.seq ?? seq),
+      });
+    }
+    await insertChatOutbox(params.client, "thread.created", "thread", threadId, {
+      circleId: params.circleId,
+      threadId,
       seq,
-      params.circleId,
-      row.author_id,
-      row.author_role,
-      row.body,
-      params.messageId,
-    ]
-  );
-  const threadId = String(inserted.rows[0].id);
-  await followThread(params.client, threadId, String(row.author_id));
-  if (params.userId !== String(row.author_id)) {
-    await followThread(params.client, threadId, params.userId);
+      rootMessageId: params.messageId,
+    });
+    return { threadId, created: true };
+  } catch (error) {
+    const raced = await params.client.query(
+      `SELECT id FROM circle_threads
+       WHERE root_message_id = $1 AND status <> 'deleted'
+       LIMIT 1`,
+      [params.messageId]
+    );
+    if (raced.rows[0]) {
+      await followThread(params.client, String(raced.rows[0].id), params.userId, {
+        lastReadSeq: Number(row.seq ?? seq),
+      });
+      return { threadId: String(raced.rows[0].id), created: false };
+    }
+    throw error;
   }
-  await insertChatOutbox(params.client, "thread.created", "thread", threadId, {
-    circleId: params.circleId,
-    threadId,
-    seq,
-    rootMessageId: params.messageId,
-  });
-  return { threadId, created: true };
 }
 
 export async function listLinearMessages(params: {
@@ -776,13 +843,16 @@ export async function listLinearMessages(params: {
   beforeSeq?: number;
   afterSeq?: number;
   limit: number;
-}): Promise<{ messages: ChatMessageView[]; nextCursor: number | null }> {
+}): Promise<
+  | { messages: ChatMessageView[]; nextCursor: number | null }
+  | { error: string; status: number }
+> {
   const member = await isCircleMember(
     params.client,
     params.circleId,
     params.userId
   );
-  if (!member) return { messages: [], nextCursor: null };
+  if (!member) return { error: "Not a member of this group", status: 403 };
 
   const filters = [`m.circle_id = $1`, `m.thread_id IS NULL`];
   const values: unknown[] = [params.circleId, params.userId];
@@ -816,9 +886,7 @@ export async function listLinearMessages(params: {
               WHERE g.thread_id = t.id
                 AND g.user_id = m.author_id
                 AND g.grant_role = 'guest_author'
-                AND g.revoked_at IS NULL
-                AND (g.expires_at IS NULL OR g.expires_at > now())
-            ) AS is_guest_author
+            ) OR m.author_was_guest = true AS is_guest_author
      FROM circle_messages m
      LEFT JOIN circle_threads t
        ON t.root_message_id = m.id AND t.status <> 'deleted'
@@ -897,22 +965,11 @@ export async function listThreadMessages(params: {
   const ordered = params.afterSeq != null ? rows : [...rows].reverse();
   const messages: ChatMessageView[] = [];
   for (const row of ordered) {
-    const guestGrant = await params.client.query(
-      `SELECT 1
-       FROM circle_thread_access_grants
-       WHERE thread_id = $1
-         AND user_id = $2
-         AND grant_role IN ('guest_author', 'guest_replier')
-         AND revoked_at IS NULL
-         AND (expires_at IS NULL OR expires_at > now())
-       LIMIT 1`,
-      [params.threadId, row.author_id]
-    );
     const author = await authorView(
       params.client,
       String(row.author_id),
       row.author_role,
-      guestGrant.rows.length > 0
+      row.author_was_guest === true
     );
     messages.push(mapMessageRow(row, author));
   }
@@ -928,9 +985,22 @@ export async function listInbox(client: PoolClient, userId: string) {
   const groups = await client.query(
     `SELECT
        c.id, c.display_name, c.circle_type, c.key,
-       COALESCE(linear.last_at, thread.last_at) AS last_at,
-       COALESCE(linear.preview, thread.preview) AS preview,
-       COALESCE(unread.unread_count, 0)::int AS unread_count
+       CASE
+         WHEN linear.last_at IS NULL THEN thread.last_at
+         WHEN thread.last_at IS NULL THEN linear.last_at
+         WHEN thread.last_at > linear.last_at THEN thread.last_at
+         ELSE linear.last_at
+       END AS last_at,
+       CASE
+         WHEN linear.last_at IS NULL THEN thread.preview
+         WHEN thread.last_at IS NULL THEN linear.preview
+         WHEN thread.last_at > linear.last_at THEN thread.preview
+         ELSE linear.preview
+       END AS preview,
+       (
+         COALESCE(channel_unread.unread_count, 0)
+         + COALESCE(thread_unread.unread_count, 0)
+       )::int AS unread_count
      FROM circle_members cm
      JOIN circles c ON c.id = cm.circle_id
      LEFT JOIN LATERAL (
@@ -948,32 +1018,44 @@ export async function listInbox(client: PoolClient, userId: string) {
        LIMIT 1
      ) thread ON true
      LEFT JOIN LATERAL (
-       SELECT
-         CASE
-           WHEN c.circle_type = 'school_class' THEN (
-             SELECT COUNT(*) FROM circle_messages m
-             LEFT JOIN circle_chat_reads r
-               ON r.circle_id = c.id AND r.user_id = $1
-             WHERE m.circle_id = c.id AND m.thread_id IS NULL
-               AND m.status = 'visible'
-               AND (r.last_read_message_seq IS NULL OR m.seq > r.last_read_message_seq)
-           )
-           ELSE (
-             SELECT COUNT(*) FROM circle_threads t
-             LEFT JOIN circle_thread_reads tr
-               ON tr.thread_id = t.id AND tr.user_id = $1
-             LEFT JOIN circle_chat_reads r
-               ON r.circle_id = c.id AND r.user_id = $1
-             WHERE t.circle_id = c.id AND t.status = 'open'
-               AND (
-                 t.author_id = $1
-                 OR tr.following = true
-                 OR t.created_seq > COALESCE(r.last_seen_thread_seq, 0)
-               )
-               AND t.last_activity_seq > COALESCE(tr.last_read_seq, 0)
-           )
-         END AS unread_count
-     ) unread ON true
+       SELECT COUNT(*)::int AS unread_count
+       FROM circle_messages m
+       LEFT JOIN circle_chat_reads r
+         ON r.circle_id = c.id AND r.user_id = $1
+       WHERE m.circle_id = c.id
+         AND m.thread_id IS NULL
+         AND m.status = 'visible'
+         AND m.author_id <> $1
+         AND (r.last_read_message_seq IS NULL OR m.seq > r.last_read_message_seq)
+         AND m.created_at >= COALESCE((
+           SELECT MAX(joined_at) FROM circle_membership_periods
+           WHERE circle_id = c.id AND user_id = $1 AND left_at IS NULL
+         ), m.created_at)
+         AND NOT EXISTS (
+           SELECT 1 FROM user_blocks ub
+           WHERE (ub.blocker_id = $1 AND ub.blocked_id = m.author_id)
+              OR (ub.blocker_id = m.author_id AND ub.blocked_id = $1)
+         )
+     ) channel_unread ON true
+     LEFT JOIN LATERAL (
+       SELECT COUNT(*)::int AS unread_count
+       FROM circle_threads t
+       LEFT JOIN circle_thread_reads tr
+         ON tr.thread_id = t.id AND tr.user_id = $1
+       WHERE t.circle_id = c.id
+         AND t.status = 'open'
+         AND (
+           t.author_id = $1
+           OR tr.following = true
+         )
+         AND t.reply_count > 0
+         AND t.last_activity_seq > COALESCE(tr.last_read_seq, 0)
+         AND NOT EXISTS (
+           SELECT 1 FROM user_blocks ub
+           WHERE (ub.blocker_id = $1 AND ub.blocked_id = t.author_id)
+              OR (ub.blocker_id = t.author_id AND ub.blocked_id = $1)
+         )
+     ) thread_unread ON true
      WHERE cm.user_id = $1
      ORDER BY last_at DESC NULLS LAST, c.display_name`,
     [userId]
@@ -1327,16 +1409,20 @@ export async function listHome(
 export async function publishChatNudge(payload: {
   circleId: string;
   threadId?: string | null;
+  rootMessageId?: string | null;
   messageId?: string;
   seq?: number;
+  replyCount?: number;
   authorId?: string;
 }) {
   const event: Extract<RealtimeEvent, { type: "chat.message" }> = {
     type: "chat.message",
     circleId: payload.circleId,
     threadId: payload.threadId ?? undefined,
+    rootMessageId: payload.rootMessageId ?? undefined,
     messageId: payload.messageId,
     seq: payload.seq,
+    replyCount: payload.replyCount,
   };
   await publishCircleEvent(payload.circleId, event);
   if (payload.threadId) {

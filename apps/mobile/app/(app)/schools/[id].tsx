@@ -31,10 +31,16 @@ export default function SchoolProfileScreen() {
   const [reviews, setReviews] = useState<SchoolReview[]>([]);
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(true);
+  const [asking, setAsking] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     getToken().then(async (token) => {
-      if (!token) return;
+      if (!token) {
+        setLoadError("Sign in to view this school");
+        setLoading(false);
+        return;
+      }
       try {
         const [p, r] = await Promise.all([
           api.getSchoolProfile(token, id),
@@ -42,6 +48,10 @@ export default function SchoolProfileScreen() {
         ]);
         setProfile(p);
         setReviews(r.reviews);
+      } catch (cause) {
+        setLoadError(
+          cause instanceof Error ? cause.message : "Could not load school"
+        );
       } finally {
         setLoading(false);
       }
@@ -50,7 +60,8 @@ export default function SchoolProfileScreen() {
 
   async function onAsk() {
     const text = question.trim();
-    if (!text) return;
+    if (!text || asking) return;
+    setAsking(true);
     try {
       const token = await getToken();
       if (!token) return;
@@ -69,11 +80,21 @@ export default function SchoolProfileScreen() {
       });
     } catch (cause) {
       Alert.alert("Error", cause instanceof Error ? cause.message : "Could not post");
+    } finally {
+      setAsking(false);
     }
   }
 
-  if (loading || !profile) {
+  if (loading) {
     return <ScreenLoader label="Loading school profile" />;
+  }
+
+  if (!profile) {
+    return (
+      <View style={[styles.screen, styles.content]}>
+        <Text style={styles.meta}>{loadError ?? "School not found"}</Text>
+      </View>
+    );
   }
 
   return (
@@ -175,7 +196,11 @@ export default function SchoolProfileScreen() {
         multiline
         placeholderTextColor={colors.textSubtle}
       />
-      <Button label="Ask this school" onPress={onAsk} />
+      <Button
+        label={asking ? "Posting…" : "Ask this school"}
+        onPress={onAsk}
+        disabled={asking || !question.trim()}
+      />
 
       <Button
         label="School calendar"

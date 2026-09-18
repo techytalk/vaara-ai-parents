@@ -61,6 +61,7 @@ export function ChatThreadScreen({
   const [sheetMode, setSheetMode] = useState<"react" | "more">("react");
   const [pendingDelete, setPendingDelete] = useState<ChatMessage | null>(null);
   const [quoteTarget, setQuoteTarget] = useState<ChatMessage | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const lastSeqRef = useRef(0);
 
   const meQuery = useQuery({
@@ -148,7 +149,11 @@ export function ChatThreadScreen({
           : null,
     onEvent: (event) => {
       if (event.type === "chat.message" || event.type === "access.revoked") {
-        void catchUp();
+        if (mode === "group" && "threadId" in event && event.threadId) {
+          void listQuery.refetch();
+        } else {
+          void catchUp();
+        }
         if (event.type === "access.revoked") {
           void threadQuery.refetch();
         }
@@ -160,20 +165,28 @@ export function ChatThreadScreen({
   });
 
   useEffect(() => {
-    if (mode === "thread" && threadId && maxSeq > 0) {
-      void authed((token) => api.markThreadRead(token, threadId, maxSeq)).catch(
-        () => {}
-      );
+    if (mode === "thread" && threadId) {
+      const readSeq =
+        maxSeq > 0
+          ? maxSeq
+          : Number(threadQuery.data?.lastActivitySeq ?? 0);
+      if (readSeq > 0) {
+        void authed((token) =>
+          api.markThreadRead(token, threadId, readSeq)
+        ).catch(() => {});
+      }
     }
     if (mode === "group" && circleId && maxSeq > 0) {
       void authed((token) =>
         api.markGroupChatRead(token, circleId, { lastReadMessageSeq: maxSeq })
       ).catch(() => {});
     }
-  }, [circleId, maxSeq, mode, threadId]);
+  }, [circleId, maxSeq, mode, threadId, threadQuery.data]);
 
   const canReply =
-    mode === "group" || threadQuery.data?.access.canReply !== false;
+    mode === "group"
+      ? true
+      : Boolean(threadQuery.data?.access.canReply);
 
   async function send() {
     const body = draft.trim();
@@ -207,6 +220,10 @@ export function ChatThreadScreen({
       setDraft("");
       setQuoteTarget(null);
       await catchUp();
+    } catch (error) {
+      setActionError(
+        error instanceof Error ? error.message : "Could not send message"
+      );
     } finally {
       setSending(false);
     }
@@ -286,13 +303,33 @@ export function ChatThreadScreen({
     setSheetMessage(null);
   }
 
-  if (listQuery.isLoading) {
+  if (listQuery.isLoading || (mode === "thread" && threadQuery.isLoading)) {
     return <ScreenLoader label="Loading chat" />;
+  }
+
+  if (mode === "thread" && (threadQuery.isError || listQuery.isError)) {
+    return (
+      <EmptyState
+        icon="alert-circle-outline"
+        title="This thread is no longer available"
+        message="It may have been closed, removed, or your access was revoked."
+      />
+    );
+  }
+
+  if (mode === "group" && listQuery.isError) {
+    return (
+      <EmptyState
+        icon="alert-circle-outline"
+        title="Could not open this group"
+        message="Check your connection and try again."
+      />
+    );
   }
 
   const dockStyle =
     androidDockOffset > 0 ? { marginBottom: androidDockOffset } : null;
-  const canSend = Boolean(draft.trim()) && !sending;
+  const canSend = Boolean(draft.trim()) && !sending && canReply;
 
   return (
     <KeyboardAvoidingView
@@ -366,6 +403,9 @@ export function ChatThreadScreen({
       />
       {canReply ? (
         <View style={[styles.composer, dockStyle]}>
+          {actionError ? (
+            <Text style={styles.actionError}>{actionError}</Text>
+          ) : null}
           {editingId ? (
             <View style={styles.editBanner}>
               <View style={styles.editAccent} />
@@ -1013,6 +1053,13 @@ const styles = StyleSheet.create({
     textAlign: "center",
     padding: spacing.md,
     color: colors.textMuted,
+  },
+  actionError: {
+    color: colors.error,
+    fontFamily: typography.medium,
+    fontSize: 13,
+    marginBottom: 8,
+    paddingHorizontal: 4,
   },
   backdrop: {
     flex: 1,

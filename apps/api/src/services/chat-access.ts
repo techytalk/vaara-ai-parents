@@ -173,10 +173,14 @@ export async function loadThreadAccess(
     discovery = eligible.rows.length > 0;
   }
 
+  // Moderated/deleted threads are unavailable on normal routes.
+  // Non-members need an active grant (or discovery); authorId alone must not
+  // bypass a revoked guest_author grant.
   const canRead =
     !blocked &&
     status !== "deleted" &&
-    (member || grantRole != null || discovery || authorId === userId);
+    status !== "moderated" &&
+    (member || grantRole != null || discovery);
 
   const canReply =
     status === "open" &&
@@ -257,7 +261,9 @@ export async function listCircleInboxRecipients(
   if (threadId) {
     const grants = await client.query(
       `SELECT user_id FROM circle_thread_access_grants
-       WHERE thread_id = $1 AND revoked_at IS NULL`,
+       WHERE thread_id = $1
+         AND revoked_at IS NULL
+         AND (expires_at IS NULL OR expires_at > now())`,
       [threadId]
     );
     for (const row of grants.rows) ids.add(String(row.user_id));

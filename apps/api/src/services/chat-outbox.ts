@@ -16,16 +16,20 @@ export async function drainChatOutbox(client: PoolClient): Promise<number> {
       const payload = row.payload as {
         circleId?: string;
         threadId?: string;
+        rootMessageId?: string;
         messageId?: string;
         seq?: number;
+        replyCount?: number;
         authorId?: string;
       };
       if (payload.circleId) {
         await publishChatNudge({
           circleId: payload.circleId,
           threadId: payload.threadId,
+          rootMessageId: payload.rootMessageId,
           messageId: payload.messageId,
           seq: payload.seq,
+          replyCount: payload.replyCount,
           authorId: payload.authorId,
         });
       }
@@ -66,34 +70,53 @@ async function notifyThreadReply(
   params: { threadId: string; authorId: string; messageId: string }
 ) {
   const thread = await client.query(
-    `SELECT t.id, t.title, t.body, t.author_id, t.circle_id, c.display_name
+    `SELECT t.id, t.title, t.body, t.author_id, t.circle_id, c.display_name,
+            (
+              SELECT LEFT(m.body, 140)
+              FROM circle_messages m
+              WHERE m.id = $2 AND m.status = 'visible'
+            ) AS reply_preview
      FROM circle_threads t
      JOIN circles c ON c.id = t.circle_id
      WHERE t.id = $1`,
-    [params.threadId]
+    [params.threadId, params.messageId]
   );
   if (thread.rows.length === 0) return;
   const recipients = await client.query(
-    `SELECT DISTINCT user_id FROM (
-       SELECT author_id AS user_id FROM circle_threads WHERE id = $1
-       UNION
-       SELECT user_id FROM circle_thread_reads
-       WHERE thread_id = $1 AND following = true
-         AND (muted_until IS NULL OR muted_until < now())
-     ) r
-     WHERE user_id <> $2
+    `SELECT DISTINCT tr.user_id, u.push_token, u.notification_prefs
+     FROM circle_thread_reads tr
+     JOIN users u ON u.id = tr.user_id
+     WHERE tr.thread_id = $1
+       AND tr.following = true
+       AND (tr.muted_until IS NULL OR tr.muted_until < now())
+       AND tr.user_id <> $2
+       AND (
+         EXISTS (
+           SELECT 1 FROM circle_members cm
+           WHERE cm.circle_id = $3 AND cm.user_id = tr.user_id
+         )
+         OR EXISTS (
+           SELECT 1 FROM circle_thread_access_grants g
+           WHERE g.thread_id = $1
+             AND g.user_id = tr.user_id
+             AND g.revoked_at IS NULL
+             AND (g.expires_at IS NULL OR g.expires_at > now())
+         )
+       )
        AND NOT EXISTS (
          SELECT 1 FROM user_blocks ub
-         WHERE (ub.blocker_id = r.user_id AND ub.blocked_id = $2)
-            OR (ub.blocker_id = $2 AND ub.blocked_id = r.user_id)
+         WHERE (ub.blocker_id = tr.user_id AND ub.blocked_id = $2)
+            OR (ub.blocker_id = $2 AND ub.blocked_id = tr.user_id)
        )`,
-    [params.threadId, params.authorId]
+    [params.threadId, params.authorId, thread.rows[0].circle_id]
   );
   if (recipients.rows.length === 0) return;
-  const preview = String(thread.rows[0].title ?? thread.rows[0].body ?? "").slice(
-    0,
-    140
-  );
+  const preview = String(
+    thread.rows[0].reply_preview ??
+      thread.rows[0].title ??
+      thread.rows[0].body ??
+      ""
+  ).slice(0, 140);
   await batchCreateNotifications(
     client,
     "thread_reply",
@@ -101,6 +124,8 @@ async function notifyThreadReply(
       userId: String(row.user_id),
       title: thread.rows[0].display_name,
       body: preview,
+      pushToken: row.push_token,
+      notificationPrefs: row.notification_prefs,
       data: {
         type: "thread_reply",
         threadId: params.threadId,

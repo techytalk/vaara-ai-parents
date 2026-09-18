@@ -42,8 +42,10 @@ export type RealtimeEvent =
       type: "chat.message";
       circleId: string;
       threadId?: string;
+      rootMessageId?: string;
       messageId?: string;
       seq?: number;
+      replyCount?: number;
     }
   | {
       type: "chat.thread";

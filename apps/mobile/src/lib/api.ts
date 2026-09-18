@@ -2295,6 +2295,7 @@ export const api = {
       status: string;
       replyCount: number;
       lastMessageAt: string;
+      lastActivitySeq?: number;
       serviceRepliesAllowed: boolean;
       muted?: boolean;
       access: {

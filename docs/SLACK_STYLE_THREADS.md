@@ -1,6 +1,9 @@
 # Slack-style threads (decision amendment)
 
-**Status:** Implemented in app/API (migration `052_slack_style_threads`).
+**Status:** Implemented in app/API, but **not release-ready**. Migration `052`
+must not be applied until the fixes in
+[`SLACK_STYLE_THREADS_REMEDIATION.md`](./SLACK_STYLE_THREADS_REMEDIATION.md)
+are complete.
 Supersedes the “wide groups = topic list only” interior in
 `docs/GROUP_CHAT_MODEL.md`.
 
@@ -423,7 +426,7 @@ when flipping from topic-boards to Slack threads.
 
 | Item | State |
 |---|---|
-| Slack-style channel + one-level threads for all groups | **Implemented** (migration `052`, API + mobile) |
+| Slack-style channel + one-level threads for all groups | Implemented, remediation required before release |
 | Same-circle members can create/join threads | Accepted |
 | Whole-school guest question (thread-only, persistent) | **Implemented** (school Ask + grant + inbox guest threads + Guest badge) |
 | Class/grade guest questions | **Rejected** — members only |
@@ -432,4 +435,4 @@ when flipping from topic-boards to Slack threads.
 | Manual invite/revoke guest UI | Not required for v1 |
 | Threads can appear on Home/feed like lasting messages | Accepted (roots with replies, or titled Ask threads) |
 | Topic-list-only interiors for wide groups | **Removed** — groups open as channels |
-| Live code / migrations | Apply `052_slack_style_threads` then ship this app/API |
+| Live code / migrations | **Blocked:** complete remediation, then apply corrected `052` and ship app/API together |
