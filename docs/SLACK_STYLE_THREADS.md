@@ -11,6 +11,10 @@ Supersedes the “wide groups = topic list only” interior in
 *Guest* — do **not** say “Slack” in UI copy. This doc uses Slack only as
 the interaction model.
 
+**Attachments:** Channel messages and thread replies use the same composer for
+text, multiple photos, videos, and documents—there is no separate Post or Ask
+mode. See [`CHAT_MESSAGE_ATTACHMENTS.md`](./CHAT_MESSAGE_ATTACHMENTS.md).
+
 ---
 
 ## 1. What we are changing
@@ -54,9 +58,9 @@ scope) — but the **interior** is always channel + optional threads.
 **Rule of thumb for parents**
 
 - Quick chat → channel message.
-- Need a focused side conversation (or lasting ask that should show on
-  Home) → **Start a thread** on that message (or compose a channel
-  message that is immediately the thread root).
+- Need a focused side conversation → **Reply in thread** on that message.
+- Questions use the same channel composer as every other message. There is no
+  separate in-group Ask or Topic composer.
 
 ---
 
@@ -199,12 +203,12 @@ also show up in the feed/Home.**
 
 ### 4.1 What becomes a Home / feed row
 
-Eligible **thread roots** (parent channel messages that have a thread, or
-are marked home-visible) can appear on Home as snippets — same job as
-today’s thread heads / post cards:
+Eligible **thread roots** (parent channel messages that have a thread and are
+home-visible) can appear on Home as snippets — same job as today’s thread
+heads / post cards:
 
-- topic/preview text = parent message body (or title if we keep optional
-  title on roots);
+- preview text = parent message body (legacy migrated roots may retain a title
+  for compatibility, but new chat messages do not ask for one);
 - subtitle = last reply preview + reply count;
 - tap opens **that thread** (and for members, can offer “Also see in
   channel”).
@@ -229,7 +233,7 @@ Optional product switch (decide at implement):
 
 | Option | Behavior |
 |---|---|
-| **A (recommended)** | Only messages that **have a thread** (or were composed as “ask / lasting”) appear on Home. Plain channel chat stays Messages-only. |
+| **A (recommended)** | Only messages that **have a thread** appear on Home. Plain channel chat stays Messages-only. |
 | **B** | Any channel message can be `home_visibility = member` (rare; author opts in). |
 
 Default recommendation: **A**, so Slack threads replace the old “start a
@@ -312,7 +316,7 @@ Compose inside a group:
 
 1. Default: send **channel message**.
 2. On a message: **Reply in thread** / **Start thread**.
-3. Optional: compose “Ask / lasting” that creates a root marked for Home.
+3. Text, questions, photos, videos, and documents all use that same composer.
 
 ---
 
@@ -412,9 +416,9 @@ when flipping from topic-boards to Slack threads.
 | # | Question | Recommendation |
 |---|---|---|
 | 1 | Do plain channel messages ever appear on Home without a thread? | No (option A in §4.3) |
-| 2 | Can you start a thread with no prior channel message (compose → root)? | Yes — create root message + open thread in one action (“Ask”) |
+| 2 | Can you start a thread with no prior channel message (compose → root)? | No separate flow. Send a channel message first; replying starts its thread. |
 | 3 | Do wide groups show full channel history to all members from day one? | Yes for members; guests never open the channel |
-| 4 | Keep optional title/kind on roots for migrated posts / polls? | Yes for migration parity |
+| 4 | Keep optional title/kind on roots for migrated posts / polls? | Legacy compatibility only; new channel messages have no title field |
 | 5 | Guest group membership / pass? | **No** — one guest thread only |
 | 6 | Guest geo / interest gate? | **No** — any parent-role account |
 | 7 | Guest access expiry? | **No** — grant follows the thread lifecycle |
@@ -433,6 +437,6 @@ when flipping from topic-boards to Slack threads.
 | Guest geo/PIN gate | None; parent role still required |
 | Guest group pass / join / expiry | **Rejected** — no group access |
 | Manual invite/revoke guest UI | Not required for v1 |
-| Threads can appear on Home/feed like lasting messages | Accepted (roots with replies, or titled Ask threads) |
+| Threads can appear on Home/feed like lasting messages | Accepted (eligible roots with replies) |
 | Topic-list-only interiors for wide groups | **Removed** — groups open as channels |
 | Live code / migrations | **Blocked:** complete remediation, then apply corrected `052` and ship app/API together |

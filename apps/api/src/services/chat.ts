@@ -19,6 +19,15 @@ import {
 import { isBlocked } from "../lib/author.js";
 import { userHasRole } from "../lib/user-roles.js";
 import {
+  attachmentPreviewText,
+  insertChatAttachments,
+  loadAttachmentPreviewLabels,
+  loadChatAttachments,
+  verifyChatAttachments,
+  type ChatAttachmentInput,
+  type ChatAttachmentView,
+} from "../lib/chat-attachments.js";
+import {
   DISCOVERY_MATCH_SQL,
   insertChatOutbox,
   incrementDailyQuota,
@@ -53,6 +62,8 @@ export type ChatMessageView = {
   createdAt: string;
   editedAt: string | null;
   reactions: Array<{ reaction: string; count: number; mine: boolean }>;
+  /** Always present, `[]` for messages without attachments. */
+  attachments: ChatAttachmentView[];
 };
 
 export type ChatThreadView = {
@@ -178,7 +189,27 @@ export function mapMessageRow(
       ? new Date(String(row.edited_at)).toISOString()
       : null,
     reactions: [],
+    attachments: [],
   };
+}
+
+/**
+ * Hydrate attachments for a page of messages in one query. Hidden messages get
+ * nothing, matching how `mapMessageRow` withholds their body.
+ */
+async function attachAttachments(
+  client: PoolClient,
+  messages: ChatMessageView[]
+): Promise<void> {
+  const visible = messages.filter((message) => message.status === "visible");
+  if (visible.length === 0) return;
+  const byMessage = await loadChatAttachments(
+    client,
+    visible.map((message) => message.id)
+  );
+  for (const message of visible) {
+    message.attachments = byMessage.get(message.id) ?? [];
+  }
 }
 
 async function attachReactions(
@@ -552,16 +583,23 @@ export async function createCircleMessage(params: {
   clientMessageId: string;
   replyToMessageId?: string | null;
   authorRole?: "parent" | "provider";
+  attachments?: ChatAttachmentInput[];
 }): Promise<
   { message: ChatMessageView } | { error: string; status: number }
 > {
   const client = params.client;
   const authorRole = params.authorRole ?? "parent";
   const body = params.body.trim();
-  if (!body) return { error: "Message is required", status: 400 };
+  const attachments = params.attachments ?? [];
+  // A message needs text or at least one attachment, not necessarily both.
+  if (!body && attachments.length === 0) {
+    return { error: "Message is required", status: 400 };
+  }
   if (body.length > 4000) return { error: "Message is too long", status: 400 };
-  const blocked = guardText(body);
-  if (blocked) return { error: blocked.error, status: 400 };
+  if (body) {
+    const blocked = guardText(body);
+    if (blocked) return { error: blocked.error, status: 400 };
+  }
 
   const existing = await client.query(
     `SELECT * FROM circle_messages WHERE author_id = $1 AND client_message_id = $2`,
@@ -582,7 +620,18 @@ export async function createCircleMessage(params: {
       prior.author_role,
       prior.author_was_guest === true
     );
-    return { message: mapMessageRow(prior, author) };
+    // Replay: return the attachments already stored. Never insert them again.
+    const replay = mapMessageRow(prior, author);
+    await attachAttachments(client, [replay]);
+    return { message: replay };
+  }
+
+  const verified = await verifyChatAttachments({
+    userId: params.userId,
+    attachments,
+  });
+  if (!verified.ok) {
+    return { error: verified.error, status: verified.status };
   }
 
   if (params.threadId) {
@@ -696,7 +745,9 @@ export async function createCircleMessage(params: {
       params.threadId ?? null,
       params.userId,
       authorRole,
-      body,
+      // Attachment-only messages store NULL, not "", so preview fallbacks and
+      // `COALESCE` checks behave consistently.
+      body || null,
       params.replyToMessageId ?? null,
       parentMessageId,
       params.clientMessageId,
@@ -704,6 +755,9 @@ export async function createCircleMessage(params: {
     ]
   );
   const row = inserted.rows[0];
+  if (verified.items.length > 0) {
+    await insertChatAttachments(client, String(row.id), verified.items);
+  }
   const handles = [...body.matchAll(/@([A-Za-z0-9_]{3,32})/g)].map((m) =>
     m[1].toLowerCase()
   );
@@ -736,7 +790,9 @@ export async function createCircleMessage(params: {
     authorId: params.userId,
   });
   const author = await authorView(client, params.userId, authorRole, isGuestAuthor);
-  return { message: mapMessageRow(row, author) };
+  const message = mapMessageRow(row, author);
+  await attachAttachments(client, [message]);
+  return { message };
 }
 
 export async function ensureThreadForMessage(params: {
@@ -897,6 +953,13 @@ export async function listLinearMessages(params: {
               ORDER BY r.seq DESC
               LIMIT 1
             ) AS last_reply_preview,
+            (
+              SELECT r.id
+              FROM circle_messages r
+              WHERE r.thread_id = t.id AND r.status = 'visible'
+              ORDER BY r.seq DESC
+              LIMIT 1
+            ) AS last_reply_id,
             EXISTS (
               SELECT 1
               FROM circle_thread_access_grants g
@@ -929,6 +992,25 @@ export async function listLinearMessages(params: {
     messages.push(mapMessageRow(row, author));
   }
   await attachReactions(params.client, messages, params.userId);
+  await attachAttachments(params.client, messages);
+
+  // A last reply that was attachment-only has no body, which would render as a
+  // blank "N replies" preview.
+  const emptyReplyIds = ordered
+    .filter((row) => row.last_reply_id && !String(row.last_reply_preview ?? "").trim())
+    .map((row) => String(row.last_reply_id));
+  if (emptyReplyIds.length > 0) {
+    const labels = await loadAttachmentPreviewLabels(params.client, [
+      ...new Set(emptyReplyIds),
+    ]);
+    for (const [index, row] of ordered.entries()) {
+      if (!row.last_reply_id) continue;
+      if (String(row.last_reply_preview ?? "").trim()) continue;
+      messages[index].lastReplyPreview =
+        labels.get(String(row.last_reply_id)) ?? null;
+    }
+  }
+
   const nextCursor =
     !params.afterSeq && rows.length === params.limit
       ? Number(rows[rows.length - 1].seq)
@@ -991,6 +1073,7 @@ export async function listThreadMessages(params: {
     messages.push(mapMessageRow(row, author));
   }
   await attachReactions(params.client, messages, params.userId);
+  await attachAttachments(params.client, messages);
   const nextCursor =
     !params.afterSeq && rows.length === params.limit
       ? Number(rows[rows.length - 1].seq)
@@ -1014,6 +1097,12 @@ export async function listInbox(client: PoolClient, userId: string) {
          WHEN thread.last_at > linear.last_at THEN thread.preview
          ELSE linear.preview
        END AS preview,
+       CASE
+         WHEN linear.last_at IS NULL THEN thread.preview_message_id
+         WHEN thread.last_at IS NULL THEN linear.preview_message_id
+         WHEN thread.last_at > linear.last_at THEN thread.preview_message_id
+         ELSE linear.preview_message_id
+       END AS preview_message_id,
        (
          COALESCE(channel_unread.unread_count, 0)
          + COALESCE(thread_unread.unread_count, 0)
@@ -1021,14 +1110,16 @@ export async function listInbox(client: PoolClient, userId: string) {
      FROM circle_members cm
      JOIN circles c ON c.id = cm.circle_id
      LEFT JOIN LATERAL (
-       SELECT m.created_at AS last_at, m.body AS preview
+       SELECT m.created_at AS last_at, m.body AS preview, m.id AS preview_message_id
        FROM circle_messages m
        WHERE m.circle_id = c.id AND m.thread_id IS NULL AND m.status = 'visible'
        ORDER BY m.seq DESC
        LIMIT 1
      ) linear ON true
      LEFT JOIN LATERAL (
-       SELECT t.last_message_at AS last_at, COALESCE(t.title, t.body) AS preview
+       SELECT t.last_message_at AS last_at,
+              COALESCE(t.title, t.body) AS preview,
+              t.root_message_id AS preview_message_id
        FROM circle_threads t
        WHERE t.circle_id = c.id AND t.status = 'open'
        ORDER BY t.last_activity_seq DESC
@@ -1146,6 +1237,7 @@ export async function listInbox(client: PoolClient, userId: string) {
        t.body,
        t.last_message_at,
        t.reply_count,
+       t.root_message_id,
        c.id AS circle_id,
        c.display_name AS circle_name,
        COALESCE(tr.last_read_seq, 0) AS last_read_seq,
@@ -1169,13 +1261,33 @@ export async function listInbox(client: PoolClient, userId: string) {
     [userId]
   );
 
+  // Attachment-only messages have no body, so fall back to a label like
+  // "Photo" or the document name rather than showing an empty row.
+  const previewFallbackIds = [
+    ...groups.rows
+      .filter((row) => row.preview_message_id && !String(row.preview ?? "").trim())
+      .map((row) => String(row.preview_message_id)),
+    ...guestThreads.rows
+      .filter(
+        (row) => row.root_message_id && !previewText(row.body, row.title)
+      )
+      .map((row) => String(row.root_message_id)),
+  ];
+  const previewLabels = await loadAttachmentPreviewLabels(client, [
+    ...new Set(previewFallbackIds),
+  ]);
+
   return {
     groups: groups.rows.map((row) => ({
       kind: "group" as const,
       id: row.id,
       name: row.display_name,
       circleType: row.circle_type,
-      preview: row.preview,
+      preview:
+        String(row.preview ?? "").trim() ||
+        (row.preview_message_id
+          ? previewLabels.get(String(row.preview_message_id)) ?? null
+          : null),
       lastAt: row.last_at,
       unreadCount: Number(row.unread_count ?? 0),
     })),
@@ -1185,7 +1297,11 @@ export async function listInbox(client: PoolClient, userId: string) {
       circleId: row.circle_id,
       circleName: row.circle_name,
       title: row.title,
-      preview: previewText(row.body, row.title),
+      preview:
+        previewText(row.body, row.title) ||
+        (row.root_message_id
+          ? previewLabels.get(String(row.root_message_id)) ?? ""
+          : ""),
       lastAt: row.last_message_at,
       replyCount: Number(row.reply_count ?? 0),
       unreadCount:
@@ -1248,6 +1364,10 @@ export async function listHome(
          t.reply_count > 0
          OR NULLIF(btrim(COALESCE(t.title, '')), '') IS NOT NULL
          OR NULLIF(btrim(COALESCE(t.body, '')), '') IS NOT NULL
+         OR EXISTS (
+           SELECT 1 FROM circle_message_media mm
+           WHERE mm.message_id = t.root_message_id AND mm.scan_status = 'clean'
+         )
        )
        AND NOT EXISTS (
          SELECT 1 FROM user_blocks ub
@@ -1275,6 +1395,10 @@ export async function listHome(
          t.reply_count > 0
          OR NULLIF(btrim(COALESCE(t.title, '')), '') IS NOT NULL
          OR NULLIF(btrim(COALESCE(t.body, '')), '') IS NOT NULL
+         OR EXISTS (
+           SELECT 1 FROM circle_message_media mm
+           WHERE mm.message_id = t.root_message_id AND mm.scan_status = 'clean'
+         )
        )
        AND NOT EXISTS (
          SELECT 1 FROM circle_members cm
@@ -1305,6 +1429,23 @@ export async function listHome(
      LIMIT 10`,
     [pin]
   );
+
+  // Roots that are attachment-only have no text to preview on Home.
+  const homePreviewLabels = await loadAttachmentPreviewLabels(client, [
+    ...new Set(
+      [...memberThreads.rows, ...discovery.rows]
+        .filter((row) => row.root_message_id && !previewText(row.body, row.title))
+        .map((row) => String(row.root_message_id))
+    ),
+  ]);
+  const homePreview = (row: Record<string, unknown>): string =>
+    previewText(
+      (row.body as string | null) ?? null,
+      (row.title as string | null) ?? null
+    ) ||
+    (row.root_message_id
+      ? homePreviewLabels.get(String(row.root_message_id)) ?? ""
+      : "");
 
   type Row = {
     kind: "thread" | "service";
@@ -1346,7 +1487,7 @@ export async function listHome(
         circleName: row.display_name,
         circleType: row.circle_type,
         title: row.title,
-        body: previewText(row.body, row.title),
+        body: homePreview(row),
         lastMessageAt: row.last_message_at,
         replyCount: row.reply_count,
         following,
@@ -1370,7 +1511,7 @@ export async function listHome(
         circleName: row.display_name,
         circleType: row.circle_type,
         title: row.title,
-        body: previewText(row.body, row.title),
+        body: homePreview(row),
         lastMessageAt: row.last_message_at,
         replyCount: row.reply_count,
         following: false,

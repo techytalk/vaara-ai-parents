@@ -2267,22 +2267,6 @@ export const api = {
     }>(`/v1/circles/${circleId}/threads${q ? `?${q}` : ""}`, {}, token);
   },
 
-  createGroupThread: (
-    token: string,
-    circleId: string,
-    body: {
-      title: string;
-      body?: string;
-      kind?: string;
-      serviceRepliesAllowed?: boolean;
-    }
-  ) =>
-    request<{ id: string }>(
-      `/v1/circles/${circleId}/threads`,
-      { method: "POST", body: JSON.stringify(body) },
-      token
-    ),
-
   getThread: (token: string, threadId: string) =>
     request<{
       id: string;

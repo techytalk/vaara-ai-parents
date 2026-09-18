@@ -446,25 +446,6 @@ export function ChatThreadScreen({
             </View>
           ) : null}
           <View style={styles.inputRow}>
-            {mode === "group" && circleId && !editingId ? (
-              <Pressable
-                onPress={() =>
-                  router.push({
-                    pathname: "/(app)/messages/groups/[circleId]/new-thread",
-                    params: { circleId },
-                  })
-                }
-                hitSlop={8}
-                accessibilityLabel="Ask — start a lasting thread"
-                style={styles.askBtn}
-              >
-                <Ionicons
-                  name="help-circle-outline"
-                  size={22}
-                  color={colors.primaryDark}
-                />
-              </Pressable>
-            ) : null}
             <TextInput
               style={styles.input}
               placeholder={editingId ? "Update message" : "Message"}

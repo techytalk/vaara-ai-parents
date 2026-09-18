@@ -119,7 +119,7 @@ export function ChatHomeScreen() {
         <EmptyState
           icon="chatbubbles-outline"
           title="Start a conversation"
-          message="Ask something in one of your groups. Lasting questions stay here. If your groups are quiet, we also show relevant threads from nearby parents."
+          message="Open a group and say hello. Active threads from your groups show up here — and nearby ones when your groups are quiet."
         />
       }
       onEndReached={() => {

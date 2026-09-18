@@ -8,6 +8,12 @@ import { getOrCreateConversation } from "../lib/conversations.js";
 import { isBlocked } from "../lib/author.js";
 import { parseReportReason } from "../lib/report-reasons.js";
 import { userHasRole } from "../lib/user-roles.js";
+import { parseChatAttachments } from "../lib/chat-attachments.js";
+import {
+  createChatMediaUrl,
+  createDocumentDownloadUrl,
+  isMediaStorageConfigured,
+} from "../lib/media-storage.js";
 import {
   incrementDailyQuota,
   isCircleMember,
@@ -132,6 +138,76 @@ export function createChatRoutes() {
     }
   });
 
+  /**
+   * Resolve a chat attachment for the current viewer.
+   *
+   * Deliberately separate from `GET /v1/media/:mediaId/download`, which reads
+   * `circle_post_media` and checks post membership. Documents get a 60-second
+   * attachment URL; images and videos get an inline URL on the chat TTL.
+   */
+  app.get("/media/:mediaId/download", async (c) => {
+    if (!isMediaStorageConfigured()) {
+      return c.json({ error: "Attachments are not configured" }, 503);
+    }
+    const userId = c.get("user").sub;
+    const mediaId = String(c.req.param("mediaId"));
+    const client = await pool.connect();
+    try {
+      const { rows } = await client.query(
+        `SELECT mm.storage_key, mm.media_type, mm.mime_type, mm.file_name,
+                mm.scan_status, m.circle_id, m.thread_id, m.author_id, m.status
+         FROM circle_message_media mm
+         JOIN circle_messages m ON m.id = mm.message_id
+         WHERE mm.id = $1`,
+        [mediaId]
+      );
+      const row = rows[0];
+      if (!row || row.scan_status !== "clean" || row.status !== "visible") {
+        return c.json({ error: "Attachment not found" }, 404);
+      }
+
+      if (row.thread_id) {
+        const access = await loadThreadAccess(
+          client,
+          String(row.thread_id),
+          userId
+        );
+        if (!access || !access.canRead) {
+          return c.json({ error: "Attachment not found" }, 404);
+        }
+      } else if (
+        !(await isCircleMember(client, String(row.circle_id), userId))
+      ) {
+        return c.json({ error: "You do not have access to this file" }, 403);
+      }
+      if (await isBlocked(client, userId, String(row.author_id))) {
+        return c.json({ error: "Attachment not found" }, 404);
+      }
+
+      const storageKey = String(row.storage_key);
+      const mimeType = String(row.mime_type);
+      if (row.media_type === "document") {
+        if (!row.file_name) return c.json({ error: "Attachment not found" }, 404);
+        const download = await createDocumentDownloadUrl({
+          storageKey,
+          fileName: String(row.file_name),
+          mimeType,
+        });
+        return c.json(download);
+      }
+      const signed = await createChatMediaUrl({ storageKey, mimeType });
+      return c.json({
+        downloadUrl: signed.url,
+        expiresInSeconds: signed.expiresInSeconds,
+      });
+    } catch (error) {
+      console.error("[chat] attachment download failed", error);
+      return c.json({ error: "Could not prepare download" }, 500);
+    } finally {
+      client.release();
+    }
+  });
+
   return app;
 }
 
@@ -179,7 +255,10 @@ export function createCircleChatRoutes() {
       body?: string;
       clientMessageId?: string;
       replyToMessageId?: string;
+      attachments?: unknown;
     }>();
+    const attachments = parseChatAttachments(body.attachments);
+    if (!attachments.ok) return c.json({ error: attachments.error }, 400);
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -190,6 +269,7 @@ export function createCircleChatRoutes() {
         body: body.body ?? "",
         clientMessageId: body.clientMessageId ?? randomUUID(),
         replyToMessageId: body.replyToMessageId,
+        attachments: attachments.items,
       });
       if ("error" in result) {
         await client.query("ROLLBACK");
@@ -301,6 +381,66 @@ export function createCircleChatRoutes() {
       });
       if ("error" in result) {
         return c.json({ error: result.error }, result.status as 400 | 403 | 404);
+      }
+      return c.json({ ok: true });
+    } finally {
+      client.release();
+    }
+  });
+
+  const reportLimit = rateLimitMiddleware({
+    prefix: "chat-message-report",
+    limit: 30,
+    windowSeconds: 3600,
+  });
+
+  // Reporting a message implicitly reports its attachments. Access rules mirror
+  // setMessageReaction: 404 (not 403) for thread messages the reporter cannot
+  // read, so message IDs cannot be probed.
+  app.post("/:circleId/messages/:messageId/report", reportLimit, async (c) => {
+    const userId = c.get("user").sub;
+    const circleId = String(c.req.param("circleId"));
+    const messageId = String(c.req.param("messageId"));
+    const parsed = parseReportReason(await c.req.json());
+    if (parsed.ok === false) return c.json({ error: parsed.error }, 400);
+    const client = await pool.connect();
+    try {
+      const { rows } = await client.query(
+        `SELECT id, thread_id, author_id FROM circle_messages
+         WHERE id = $1 AND circle_id = $2 AND status = 'visible'`,
+        [messageId, circleId]
+      );
+      const row = rows[0];
+      if (!row) return c.json({ error: "Message not found" }, 404);
+      if (row.thread_id) {
+        const access = await loadThreadAccess(
+          client,
+          String(row.thread_id),
+          userId
+        );
+        if (!access || !access.canRead) {
+          return c.json({ error: "Message not found" }, 404);
+        }
+      } else if (!(await isCircleMember(client, circleId, userId))) {
+        return c.json({ error: "Not a member of this group" }, 403);
+      }
+      if (String(row.author_id) === userId) {
+        return c.json({ error: "You cannot report your own message" }, 400);
+      }
+      // Repeat reports of the same message are idempotent rather than stacking.
+      const existing = await client.query(
+        `SELECT 1 FROM reports
+         WHERE reporter_id = $1 AND target_circle_message_id = $2
+         LIMIT 1`,
+        [userId, messageId]
+      );
+      if (existing.rows.length === 0) {
+        await client.query(
+          `INSERT INTO reports
+             (reporter_id, target_circle_message_id, target_user_id, reason)
+           VALUES ($1, $2, $3, $4)`,
+          [userId, messageId, row.author_id, parsed.reason]
+        );
       }
       return c.json({ ok: true });
     } finally {
@@ -616,7 +756,10 @@ export function createThreadRoutes() {
       clientMessageId?: string;
       replyToMessageId?: string;
       asProvider?: boolean;
+      attachments?: unknown;
     }>();
+    const attachments = parseChatAttachments(body.attachments);
+    if (!attachments.ok) return c.json({ error: attachments.error }, 400);
     const client = await pool.connect();
     try {
       const access = await loadThreadAccess(client, threadId, userId);
@@ -635,6 +778,7 @@ export function createThreadRoutes() {
         clientMessageId: body.clientMessageId ?? randomUUID(),
         replyToMessageId: body.replyToMessageId,
         authorRole,
+        attachments: attachments.items,
       });
       if ("error" in result) {
         await client.query("ROLLBACK");

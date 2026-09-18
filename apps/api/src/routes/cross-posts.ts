@@ -4,7 +4,7 @@ import {
   MAX_POST_DOCUMENTS,
   MAX_POST_MEDIA,
   type MediaType,
-  verifyCleanDocumentForPost,
+  verifyCleanDocument,
   verifyUploadedMedia,
 } from "../lib/media-storage.js";
 import { validatePollInput } from "../lib/polls.js";
@@ -201,7 +201,7 @@ export function createCrossPostRoutes() {
     try {
       verifiedDocuments = await Promise.all(
         requestedDocuments.map(async (item) => {
-          const verified = await verifyCleanDocumentForPost({
+          const verified = await verifyCleanDocument({
             userId,
             storageKey: item.storageKey as string,
             fileName: item.fileName as string,

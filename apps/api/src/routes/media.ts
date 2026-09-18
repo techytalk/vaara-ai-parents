@@ -123,7 +123,7 @@ export function createMediaRoutes() {
       mediaType?: MediaType;
       mimeType?: string;
       sizeBytes?: number;
-      purpose?: "post" | "listing";
+      purpose?: "post" | "listing" | "chat";
     }>();
 
     const fileName = body.fileName?.trim() || "upload";
@@ -172,6 +172,7 @@ export function createMediaRoutes() {
           mediaType,
           mimeType,
           sizeBytes,
+          scope: body.purpose === "chat" ? "chat" : "circle",
         })
       );
     } catch (error) {

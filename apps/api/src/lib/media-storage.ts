@@ -20,6 +20,18 @@ export const MAX_OFFICE_BYTES = 10 * 1024 * 1024;
 export const MAX_POST_MEDIA = 4;
 export const MAX_POST_DOCUMENTS = 3;
 
+/**
+ * Where uploaded image/video objects live.
+ *
+ * `circle` → `circle-media/`, which CloudFront serves publicly (posts render
+ * straight from the CDN). `chat` → `chat-media/`, which falls outside the CDN
+ * allow-list and is therefore private; chat reads go through
+ * `createChatMediaUrl` after an access check.
+ */
+export type MediaScope = "circle" | "chat";
+
+export const CHAT_MEDIA_PREFIX = "chat-media/";
+
 export const DOCUMENT_MIME_TYPES = {
   pdf: "application/pdf",
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -77,6 +89,11 @@ export function isMediaStorageConfigured(): boolean {
 
 export function mediaPublicUrl(storageKey: string): string {
   if (!cdnBaseUrl) throw new Error("CDN_BASE_URL is not configured");
+  // Chat media is private by design. A public URL for it is always a bug, so
+  // fail loudly here rather than leaking a permanent link.
+  if (storageKey.startsWith(CHAT_MEDIA_PREFIX)) {
+    throw new Error("CHAT_MEDIA_IS_NOT_PUBLIC");
+  }
   return `${cdnBaseUrl}/${storageKey}`;
 }
 
@@ -163,6 +180,7 @@ export async function createMediaUpload(params: {
   mediaType: MediaType;
   mimeType: string;
   sizeBytes: number;
+  scope?: MediaScope;
 }) {
   if (!s3 || !bucket || !cdnBaseUrl) {
     throw new Error("MEDIA_STORAGE_NOT_CONFIGURED");
@@ -177,10 +195,14 @@ export async function createMediaUpload(params: {
   if (error) throw new Error(error);
 
   const extension = extensionFor(params.fileName, params.mimeType);
+  // Documents always land in quarantine and are promoted to post-docs/ after
+  // scanning, whatever the scope; only image/video prefixes differ.
   const prefix =
     params.mediaType === "document"
       ? `quarantine/${params.userId}`
-      : `circle-media/${params.userId}`;
+      : params.scope === "chat"
+        ? `${CHAT_MEDIA_PREFIX}${params.userId}`
+        : `circle-media/${params.userId}`;
   const storageKey = `${prefix}/${randomUUID()}.${extension}`;
   const command = new PutObjectCommand({
     Bucket: bucket,
@@ -194,7 +216,9 @@ export async function createMediaUpload(params: {
   });
 
   const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 600 });
-  if (params.mediaType === "document") {
+  // Documents and chat media have no public URL: both are read through an
+  // authenticated route that issues a signed GET.
+  if (params.mediaType === "document" || params.scope === "chat") {
     return {
       storageKey,
       uploadUrl,
@@ -215,9 +239,14 @@ export async function verifyUploadedMedia(params: {
   storageKey: string;
   mediaType: Exclude<MediaType, "document">;
   mimeType: string;
+  scope?: MediaScope;
 }) {
   if (!s3 || !bucket) throw new Error("MEDIA_STORAGE_NOT_CONFIGURED");
-  if (!params.storageKey.startsWith(`circle-media/${params.userId}/`)) {
+  const expectedPrefix =
+    params.scope === "chat"
+      ? `${CHAT_MEDIA_PREFIX}${params.userId}/`
+      : `circle-media/${params.userId}/`;
+  if (!params.storageKey.startsWith(expectedPrefix)) {
     throw new Error("INVALID_MEDIA_OWNER");
   }
 
@@ -646,7 +675,12 @@ export async function applyGuardDutyScanResult(params: {
   return "ignored";
 }
 
-export async function verifyCleanDocumentForPost(params: {
+/**
+ * Verify a document the caller already uploaded and had scanned. Used by posts
+ * and chat messages alike — clean documents share one `post-docs/` namespace,
+ * which is private and never served from the CDN.
+ */
+export async function verifyCleanDocument(params: {
   userId: string;
   storageKey: string;
   fileName: string;
@@ -698,7 +732,52 @@ export async function createDocumentDownloadUrl(params: {
   return { downloadUrl, expiresInSeconds };
 }
 
-/** Best-effort removal of uploaded circle/listing/document media objects from S3. */
+/**
+ * Signature window for chat media URLs. The signing date is quantised to this
+ * window so the same object yields a byte-identical URL for every caller and
+ * every API instance inside it — React Native's `Image` caches by URL string,
+ * so a per-request signature would re-download every photo on every scroll.
+ */
+const CHAT_MEDIA_URL_WINDOW_SECONDS = 3600;
+const CHAT_MEDIA_URL_TTL_SECONDS = 7200;
+
+/**
+ * Short-lived inline GET for a private chat image/video. Callers must have
+ * already authorized the viewer against the parent message.
+ *
+ * Validity is between one and two hours depending on where "now" falls in the
+ * window, so a viewer who loses access keeps a working URL for up to two hours.
+ */
+export async function createChatMediaUrl(params: {
+  storageKey: string;
+  mimeType: string;
+}): Promise<{ url: string; expiresInSeconds: number }> {
+  if (!s3 || !bucket) throw new Error("MEDIA_STORAGE_NOT_CONFIGURED");
+  if (!params.storageKey.startsWith(CHAT_MEDIA_PREFIX)) {
+    throw new Error("INVALID_MEDIA_KEY");
+  }
+
+  const windowStart =
+    Math.floor(Date.now() / 1000 / CHAT_MEDIA_URL_WINDOW_SECONDS) *
+    CHAT_MEDIA_URL_WINDOW_SECONDS;
+  const url = await getSignedUrl(
+    s3,
+    new GetObjectCommand({
+      Bucket: bucket,
+      Key: params.storageKey,
+      ResponseContentType: params.mimeType,
+      // Inline, not attachment: the OS should view/play this, not download it.
+      ResponseContentDisposition: "inline",
+    }),
+    {
+      expiresIn: CHAT_MEDIA_URL_TTL_SECONDS,
+      signingDate: new Date(windowStart * 1000),
+    }
+  );
+  return { url, expiresInSeconds: CHAT_MEDIA_URL_TTL_SECONDS };
+}
+
+/** Best-effort removal of uploaded circle/chat/listing/document media objects from S3. */
 export async function deleteStoredMedia(storageKeys: string[]): Promise<void> {
   if (!s3 || !bucket || storageKeys.length === 0) return;
 
@@ -707,6 +786,7 @@ export async function deleteStoredMedia(storageKeys: string[]): Promise<void> {
       storageKeys.filter(
         (key) =>
           key.startsWith("circle-media/") ||
+          key.startsWith(CHAT_MEDIA_PREFIX) ||
           key.startsWith("listing-media/") ||
           key.startsWith("quarantine/") ||
           key.startsWith("post-docs/")

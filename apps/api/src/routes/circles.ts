@@ -69,7 +69,7 @@ import {
   MAX_POST_MEDIA,
   mediaPublicUrl,
   type MediaType,
-  verifyCleanDocumentForPost,
+  verifyCleanDocument,
   verifyUploadedMedia,
 } from "../lib/media-storage.js";
 import {
@@ -454,7 +454,7 @@ export function createCirclesRoutes() {
     try {
       verifiedDocuments = await Promise.all(
         requestedDocuments.map(async (item) => {
-          const verified = await verifyCleanDocumentForPost({
+          const verified = await verifyCleanDocument({
             userId,
             storageKey: item.storageKey as string,
             fileName: item.fileName as string,
@@ -1020,7 +1020,7 @@ export function createCirclesRoutes() {
             if (!item.storageKey || !item.fileName || !item.mimeType) {
               throw new Error("INVALID_DOCUMENT");
             }
-            const verified = await verifyCleanDocumentForPost({
+            const verified = await verifyCleanDocument({
               userId,
               storageKey: item.storageKey,
               fileName: item.fileName,
