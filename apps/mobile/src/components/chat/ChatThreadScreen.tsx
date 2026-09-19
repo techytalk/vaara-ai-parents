@@ -1130,7 +1130,13 @@ function Bubble({
       ) : (
         <View style={styles.avatarSpacer} />
       )}
-      <View style={[styles.stack, mine && styles.stackMine]}>
+      <View
+        style={[
+          styles.stack,
+          hasVisualMedia && styles.stackWithMedia,
+          mine && styles.stackMine,
+        ]}
+      >
         {!mine ? (
           <Text style={styles.author} numberOfLines={1}>
             {message.author.displayName}
@@ -1455,6 +1461,7 @@ const styles = StyleSheet.create({
   rowMine: { justifyContent: "flex-end" },
   avatarSpacer: { width: 32 },
   stack: { maxWidth: "74%", alignItems: "flex-start" },
+  stackWithMedia: { maxWidth: "82%" },
   stackMine: { alignItems: "flex-end" },
   author: {
     fontFamily: typography.semibold,

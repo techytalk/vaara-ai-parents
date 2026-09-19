@@ -2,7 +2,6 @@ import { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Dimensions,
   FlatList,
   Image,
   Linking,
@@ -10,6 +9,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -23,6 +23,11 @@ const DOCX_MIME =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const XLSX_MIME =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const MEDIA_WIDTH_RATIO = 0.72;
+const MAX_MEDIA_WIDTH = 280;
+const MIN_SINGLE_HEIGHT = 120;
+const MAX_SINGLE_HEIGHT = 320;
+const MEDIA_GAP = 2;
 
 function formatDuration(ms: number | null | undefined): string {
   if (!ms || ms <= 0) return "";
@@ -126,6 +131,7 @@ export function ChatMessageAttachments({
 }) {
   const [galleryIndex, setGalleryIndex] = useState<number | null>(null);
   const [openingDocId, setOpeningDocId] = useState<string | null>(null);
+  const { width: windowWidth } = useWindowDimensions();
   const list = attachments ?? [];
   if (list.length === 0) return null;
 
@@ -133,13 +139,18 @@ export function ChatMessageAttachments({
     (item) => item.type === "image" || item.type === "video"
   );
   const documents = list.filter((item) => item.type === "document");
+  const mediaWidth = Math.min(
+    Math.floor(windowWidth * MEDIA_WIDTH_RATIO),
+    MAX_MEDIA_WIDTH
+  );
 
   return (
-    <View style={styles.wrap}>
+    <View style={[styles.wrap, media.length > 0 && { width: mediaWidth }]}>
       {media.length > 0 ? (
         <MediaGrid
           items={media}
           mine={mine}
+          width={mediaWidth}
           onOpen={(index) => setGalleryIndex(index)}
         />
       ) : null}
@@ -194,32 +205,52 @@ export function ChatMessageAttachments({
 function MediaGrid({
   items,
   mine,
+  width,
   onOpen,
 }: {
   items: ChatMessageAttachment[];
   mine: boolean;
+  width: number;
   onOpen: (index: number) => void;
 }) {
   const count = items.length;
   if (count === 1) {
+    const item = items[0];
+    const sourceWidth = item.width;
+    const sourceHeight = item.height;
+    const hasDimensions =
+      typeof sourceWidth === "number" &&
+      sourceWidth > 0 &&
+      typeof sourceHeight === "number" &&
+      sourceHeight > 0;
+    const naturalHeight = hasDimensions
+      ? width * (sourceHeight / sourceWidth)
+      : width * 0.75;
+    const height = Math.max(
+      MIN_SINGLE_HEIGHT,
+      Math.min(MAX_SINGLE_HEIGHT, Math.round(naturalHeight))
+    );
     return (
       <MediaTile
-        item={items[0]}
-        style={styles.single}
+        item={item}
+        style={{ width, height }}
         mine={mine}
+        rounded
         onPress={() => onOpen(0)}
-        label={`Photo 1 of 1`}
+        label={`${item.type === "video" ? "Video" : "Photo"} 1 of 1`}
       />
     );
   }
   if (count === 2) {
+    const cellWidth = Math.floor((width - MEDIA_GAP) / 2);
+    const height = Math.min(180, Math.round(width * 0.6));
     return (
-      <View style={styles.two}>
+      <View style={[styles.mediaGroup, styles.two, { width }]}>
         {items.map((item, index) => (
           <MediaTile
             key={item.id}
             item={item}
-            style={styles.half}
+            style={{ width: cellWidth, height }}
             mine={mine}
             onPress={() => onOpen(index)}
             label={`${item.type === "video" ? "Video" : "Photo"} ${index + 1} of 2`}
@@ -229,21 +260,26 @@ function MediaGrid({
     );
   }
   if (count === 3) {
+    const height = Math.min(220, Math.round(width * 0.78));
+    const availableWidth = width - MEDIA_GAP;
+    const mainWidth = Math.round(availableWidth * 0.55);
+    const sideWidth = availableWidth - mainWidth;
+    const sideHeight = Math.floor((height - MEDIA_GAP) / 2);
     return (
-      <View style={styles.three}>
+      <View style={[styles.mediaGroup, styles.three, { width, height }]}>
         <MediaTile
           item={items[0]}
-          style={styles.threeMain}
+          style={{ width: mainWidth, height }}
           mine={mine}
           onPress={() => onOpen(0)}
           label={`${items[0].type === "video" ? "Video" : "Photo"} 1 of 3`}
         />
-        <View style={styles.threeSide}>
+        <View style={[styles.threeSide, { width: sideWidth, height }]}>
           {items.slice(1).map((item, index) => (
             <MediaTile
               key={item.id}
               item={item}
-              style={styles.threeSideTile}
+              style={{ width: sideWidth, height: sideHeight }}
               mine={mine}
               onPress={() => onOpen(index + 1)}
               label={`${item.type === "video" ? "Video" : "Photo"} ${index + 2} of 3`}
@@ -253,13 +289,14 @@ function MediaGrid({
       </View>
     );
   }
+  const cellSize = Math.floor((width - MEDIA_GAP) / 2);
   return (
-    <View style={styles.grid}>
+    <View style={[styles.mediaGroup, styles.grid, { width }]}>
       {items.slice(0, 4).map((item, index) => (
         <MediaTile
           key={item.id}
           item={item}
-          style={styles.quarter}
+          style={{ width: cellSize, height: cellSize }}
           mine={mine}
           onPress={() => onOpen(index)}
           label={`${item.type === "video" ? "Video" : "Photo"} ${index + 1} of ${Math.min(count, 4)}`}
@@ -273,19 +310,26 @@ function MediaTile({
   item,
   style,
   mine,
+  rounded = false,
   onPress,
   label,
 }: {
   item: ChatMessageAttachment;
   style: object;
   mine: boolean;
+  rounded?: boolean;
   onPress: () => void;
   label: string;
 }) {
   const isVideo = item.type === "video";
   return (
     <Pressable
-      style={[styles.tile, style, mine && styles.tileMine]}
+      style={[
+        styles.tile,
+        rounded && styles.tileRounded,
+        style,
+        mine && styles.tileMine,
+      ]}
       onPress={onPress}
       accessibilityLabel={label}
     >
@@ -324,8 +368,8 @@ function GalleryModal({
   index: number | null;
   onClose: () => void;
 }) {
+  const { width } = useWindowDimensions();
   if (index == null || items.length === 0) return null;
-  const width = Dimensions.get("window").width;
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
@@ -374,20 +418,16 @@ function GalleryModal({
 
 const styles = StyleSheet.create({
   wrap: { gap: 4, marginBottom: 2 },
-  single: { width: "100%", height: 240 },
-  two: { flexDirection: "row", gap: 2 },
-  half: { flex: 1, height: 168 },
-  three: { flexDirection: "row", gap: 2, height: 220 },
-  threeMain: { flex: 1.15 },
-  threeSide: { flex: 1, gap: 2 },
-  threeSideTile: { flex: 1 },
-  grid: { flexDirection: "row", flexWrap: "wrap", gap: 2 },
-  quarter: { width: "49.4%", height: 118 },
+  mediaGroup: { borderRadius: 12, overflow: "hidden" },
+  two: { flexDirection: "row", gap: MEDIA_GAP },
+  three: { flexDirection: "row", gap: MEDIA_GAP },
+  threeSide: { gap: MEDIA_GAP },
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: MEDIA_GAP },
   tile: {
-    borderRadius: 12,
     overflow: "hidden",
     backgroundColor: "#1a1a1a",
   },
+  tileRounded: { borderRadius: 12 },
   tileMine: { backgroundColor: "rgba(0,0,0,0.25)" },
   tileImage: { width: "100%", height: "100%" },
   tileFallback: {
