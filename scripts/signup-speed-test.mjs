@@ -217,9 +217,36 @@ async function measureSignupRun(index) {
     )
   );
 
-  // School screen uses the onboarding draft for location — no refetch.
-  const nearby = await leg(trace, "School picker (nearby schools)", true, async () =>
-    assertOk(await call("GET", "/v1/schools/nearby?city=Bengaluru&pin=560102&limit=5", { token }))
+  // After location Continue the app prefetches shortlist + school catalogue
+  // (see prefetchSchoolsForLocation / ensureSchoolCatalog). Measure that path
+  // instead of the legacy authenticated /v1/schools/nearby endpoint.
+  const schoolPick = await leg(
+    trace,
+    "School picker (shortlist + catalog)",
+    true,
+    async () => {
+      const [shortlist, manifest] = await Promise.all([
+        assertOk(
+          await call(
+            "GET",
+            "/v1/reference/schools/shortlist?country=IN&pin=560102&locality=HSR%20Layout"
+          )
+        ),
+        assertOk(await call("GET", "/v1/reference/schools/manifest")),
+      ]);
+      const generation = manifest.body?.generation;
+      const catalog =
+        typeof generation === "number"
+          ? assertOk(
+              await call("GET", `/v1/reference/schools/catalog/v${generation}`)
+            )
+          : null;
+      // Search-first UI: parent types ≥3 chars → public search (CDN-cacheable).
+      const search = assertOk(
+        await call("GET", "/v1/reference/schools/search?q=Delhi&limit=5")
+      );
+      return { shortlist, catalog, search };
+    }
   );
 
   // onboarding/class.tsx mount. Sent without a token, like the app does, so
@@ -228,11 +255,17 @@ async function measureSignupRun(index) {
     assertOk(await call("GET", "/v1/reference/curricula"))
   );
 
-  const schoolId = (Array.isArray(nearby.body) ? nearby.body : nearby.body?.schools ?? [])[0]?.id;
+  const shortlistRows = Array.isArray(schoolPick.shortlist.body)
+    ? schoolPick.shortlist.body
+    : [];
+  const searchRows = Array.isArray(schoolPick.search.body) ? schoolPick.search.body : [];
+  const schoolId = (shortlistRows[0] ?? searchRows[0])?.id;
   const curriculum = (Array.isArray(curricula.body) ? curricula.body : curricula.body?.curricula ?? [])[0];
   const gradeId = curriculum?.grades?.[0]?.id;
   if (!schoolId || !curriculum?.id || !gradeId) {
-    throw new Error("Missing school/curriculum/grade fixtures — run `npm run db:seed` against this env.");
+    throw new Error(
+      "Missing school/curriculum/grade fixtures — shortlist and public search both empty, or curricula missing grades."
+    );
   }
 
   // POST /children now returns { child, user, circles } — no follow-up GET /me.
