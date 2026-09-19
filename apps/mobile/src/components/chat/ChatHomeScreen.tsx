@@ -15,6 +15,7 @@ import { EmptyState, InlineError, ScreenLoader } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import { useRealtimeChannel } from "@/hooks/useRealtimeChannel";
 import { api, type ChatHomeItem } from "@/lib/api";
+import { circleTypeIcon } from "@/lib/circle-icons";
 import { getToken } from "@/lib/session";
 import { formatPostTime } from "@/components/circles/ui";
 
@@ -166,9 +167,10 @@ function HomeRow({
   const title = isService
     ? item.name ?? "Tutor"
     : item.title || item.body || "Thread";
+  const circleLabel = isService ? null : item.circleName ?? null;
   const subtitle = isService
     ? item.preview ?? "Services"
-    : item.circleName ?? "Group";
+    : item.preview ?? "Open conversation";
   return (
     <Pressable style={styles.row} onPress={onPress}>
       <View
@@ -178,22 +180,33 @@ function HomeRow({
         ]}
       >
         <Ionicons
-          name={isService ? "briefcase-outline" : "chatbubble-ellipses-outline"}
+          name={
+            isService
+              ? "briefcase-outline"
+              : item.circleType
+                ? circleTypeIcon(item.circleType)
+                : "chatbubble-ellipses-outline"
+          }
           size={20}
-          color={isService ? colors.warning : colors.primaryDark}
+          color={isService ? colors.warning : colors.primary}
         />
       </View>
       <View style={styles.copy}>
         <View style={styles.topline}>
-          <Text style={styles.title} numberOfLines={1}>
+          <Text style={styles.title} numberOfLines={2}>
             {title}
           </Text>
           {item.lastMessageAt ? (
             <Text style={styles.time}>{formatPostTime(item.lastMessageAt)}</Text>
           ) : null}
         </View>
-        <Text style={styles.subtitle} numberOfLines={2}>
-          {item.access === "discovery" ? "Guest preview · " : ""}
+        {circleLabel ? (
+          <Text style={styles.circleName} numberOfLines={2}>
+            {item.access === "discovery" ? "Guest · " : ""}
+            {circleLabel}
+          </Text>
+        ) : null}
+        <Text style={styles.subtitle} numberOfLines={1}>
           {subtitle}
         </Text>
       </View>
@@ -236,9 +249,17 @@ const styles = StyleSheet.create({
     flex: 1,
     fontFamily: typography.semibold,
     color: colors.text,
-    fontSize: 16,
+    fontSize: 15,
+    lineHeight: 20,
   },
   time: { fontFamily: typography.regular, color: colors.textSubtle, fontSize: 12 },
+  circleName: {
+    marginTop: 3,
+    fontFamily: typography.medium,
+    color: colors.text,
+    fontSize: 13,
+    lineHeight: 18,
+  },
   subtitle: {
     marginTop: 2,
     fontFamily: typography.regular,

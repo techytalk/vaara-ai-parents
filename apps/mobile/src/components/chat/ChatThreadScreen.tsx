@@ -91,10 +91,13 @@ export function ChatThreadScreen({
   mode,
   circleId,
   threadId,
+  title,
 }: {
   mode: "group" | "thread";
   circleId?: string;
   threadId?: string;
+  /** Optional header title (e.g. circle display name for group chats). */
+  title?: string;
 }) {
   const queryClient = useQueryClient();
   const router = useRouter();
@@ -131,6 +134,38 @@ export function ChatThreadScreen({
       tabs?.setOptions({ tabBarStyle: tabBarStyleForInsets(bottomChrome) });
     };
   }, [bottomChrome, navigation]);
+
+  useLayoutEffect(() => {
+    if (title?.trim()) {
+      navigation.setOptions({
+        title: title.trim(),
+        headerTitleStyle: {
+          fontSize: 16,
+          fontFamily: typography.semibold,
+        },
+      });
+      return;
+    }
+    if (mode !== "group" || !circleId) return;
+    let cancelled = false;
+    void authed((token) => api.getCircles(token))
+      .then((circles) => {
+        if (cancelled) return;
+        const match = circles.find((circle) => circle.id === circleId);
+        if (!match?.displayName) return;
+        navigation.setOptions({
+          title: match.displayName,
+          headerTitleStyle: {
+            fontSize: 16,
+            fontFamily: typography.semibold,
+          },
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [circleId, mode, navigation, title]);
 
   const meQuery = useQuery({
     queryKey: ["sessionUser"],

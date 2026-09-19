@@ -6,7 +6,10 @@ export default function MessagesLayout() {
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="new" options={{ title: "New message" }} />
       <Stack.Screen name="[conversationId]" options={{ title: "Chat" }} />
-      <Stack.Screen name="groups/[circleId]/index" options={{ title: "Group" }} />
+      <Stack.Screen
+        name="groups/[circleId]/index"
+        options={{ title: "Group chat" }}
+      />
       <Stack.Screen name="threads/[threadId]" options={{ title: "Thread" }} />
       <Stack.Screen name="channels/[providerId]" options={{ title: "Tutor" }} />
     </Stack>
