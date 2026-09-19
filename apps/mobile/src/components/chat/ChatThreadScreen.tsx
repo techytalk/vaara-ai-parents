@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -17,16 +17,26 @@ import {
 import { useHeaderHeight } from "@react-navigation/elements";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "expo-router";
+import { useNavigation, useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { Avatar, EmptyState, ScreenLoader } from "@/components/ui";
 import {
   ChatMessageAttachments,
   attachmentQuoteLabel,
 } from "@/components/chat/ChatMessageAttachments";
-import { colors, radii, shadows, spacing, typography } from "@/constants/theme";
+import {
+  colors,
+  radii,
+  shadows,
+  spacing,
+  tabBarStyleForInsets,
+  typography,
+} from "@/constants/theme";
 import { useBottomChromeInset } from "@/hooks/useBottomChromeInset";
-import { useAndroidImeDockOffset } from "@/hooks/useKeyboardHeight";
+import {
+  useAndroidImeDockOffset,
+  useKeyboardHeight,
+} from "@/hooks/useKeyboardHeight";
 import { useRealtimeChannel } from "@/hooks/useRealtimeChannel";
 import { api, type ChatMessage } from "@/lib/api";
 import {
@@ -88,9 +98,13 @@ export function ChatThreadScreen({
 }) {
   const queryClient = useQueryClient();
   const router = useRouter();
+  const navigation = useNavigation();
   const headerHeight = useHeaderHeight();
   const bottomChrome = useBottomChromeInset();
-  const androidDockOffset = useAndroidImeDockOffset(bottomChrome);
+  const keyboardHeight = useKeyboardHeight();
+  // Keyboard-closed inset belongs on the composer only, because the tab bar
+  // is hidden in chat. Passing it here would stack a second copy.
+  const androidDockOffset = useAndroidImeDockOffset(0);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -103,6 +117,20 @@ export function ChatThreadScreen({
   const [pendingMedia, setPendingMedia] = useState<PendingChatMedia[]>([]);
   const [pendingDocs, setPendingDocs] = useState<PendingDocument[]>([]);
   const lastSeqRef = useRef(0);
+
+  useLayoutEffect(() => {
+    let current = navigation;
+    let tabs = navigation.getParent();
+    while (tabs) {
+      if (tabs.getState()?.type === "tab") break;
+      current = tabs;
+      tabs = current.getParent();
+    }
+    tabs?.setOptions({ tabBarStyle: { display: "none" } });
+    return () => {
+      tabs?.setOptions({ tabBarStyle: tabBarStyleForInsets(bottomChrome) });
+    };
+  }, [bottomChrome, navigation]);
 
   const meQuery = useQuery({
     queryKey: ["sessionUser"],
@@ -603,6 +631,8 @@ export function ChatThreadScreen({
 
   const dockStyle =
     androidDockOffset > 0 ? { marginBottom: androidDockOffset } : null;
+  const composerPad =
+    keyboardHeight > 0 ? spacing.xs : Math.max(bottomChrome, spacing.sm);
   const canSend =
     !sending &&
     canReply &&
@@ -684,7 +714,7 @@ export function ChatThreadScreen({
         )}
       />
       {canReply ? (
-        <View style={[styles.composer, dockStyle]}>
+        <View style={[styles.composer, dockStyle, { paddingBottom: composerPad }]}>
           {actionError ? (
             <Text style={styles.actionError}>{actionError}</Text>
           ) : null}
@@ -886,7 +916,7 @@ export function ChatThreadScreen({
           </View>
         </View>
       ) : (
-        <Text style={[styles.readonly, dockStyle]}>
+        <Text style={[styles.readonly, dockStyle, { paddingBottom: composerPad }]}>
           You can read this thread, not reply.
         </Text>
       )}
@@ -901,34 +931,36 @@ export function ChatThreadScreen({
           style={styles.backdrop}
           onPress={() => setAttachSheetOpen(false)}
         >
-          <Pressable style={styles.attachSheet} onPress={() => {}}>
-            <Text style={styles.sheetTitle}>Add to message</Text>
-            <Pressable style={styles.sheetAction} onPress={() => void pickChatMedia()}>
-              <View style={styles.sheetIcon}>
-                <Ionicons name="images-outline" size={18} color={colors.primaryDark} />
-              </View>
-              <View>
-                <Text style={styles.sheetActionLabel}>Photos & videos</Text>
-                <Text style={styles.sheetHint}>
-                  Choose up to {MAX_CHAT_MEDIA - pendingMedia.length} more
-                </Text>
-              </View>
-            </Pressable>
-            <Pressable style={styles.sheetAction} onPress={() => void pickChatDocs()}>
-              <View style={styles.sheetIcon}>
-                <Ionicons name="document-outline" size={18} color={colors.primaryDark} />
-              </View>
-              <View>
-                <Text style={styles.sheetActionLabel}>Document</Text>
-                <Text style={styles.sheetHint}>PDF, Word, or Excel</Text>
-              </View>
-            </Pressable>
-            <Pressable
-              style={styles.sheetAction}
-              onPress={() => setAttachSheetOpen(false)}
-            >
-              <Text style={styles.sheetActionLabel}>Done</Text>
-            </Pressable>
+          <Pressable
+            style={[styles.attachSheet, { paddingBottom: Math.max(bottomChrome, spacing.md) }]}
+            onPress={() => {}}
+          >
+            <View style={styles.attachChoices}>
+              <Pressable
+                style={styles.attachChoice}
+                onPress={() => void pickChatMedia()}
+                accessibilityLabel="Photos and videos"
+              >
+                <View style={styles.attachChoiceIcon}>
+                  <Ionicons name="images" size={26} color={colors.primaryDark} />
+                </View>
+                <Text style={styles.attachChoiceLabel}>Photos & videos</Text>
+              </Pressable>
+              <Pressable
+                style={styles.attachChoice}
+                onPress={() => void pickChatDocs()}
+                accessibilityLabel="Document"
+              >
+                <View style={styles.attachChoiceIcon}>
+                  <Ionicons
+                    name="document-text"
+                    size={26}
+                    color={colors.primaryDark}
+                  />
+                </View>
+                <Text style={styles.attachChoiceLabel}>Document</Text>
+              </Pressable>
+            </View>
           </Pressable>
         </Pressable>
       </Modal>
@@ -1542,9 +1574,32 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    padding: spacing.md,
-    paddingBottom: spacing.xl,
-    gap: 4,
+    paddingTop: spacing.lg,
+    paddingHorizontal: spacing.md,
+  },
+  attachChoices: {
+    flexDirection: "row",
+    justifyContent: "space-evenly",
+    alignItems: "flex-start",
+  },
+  attachChoice: {
+    width: 108,
+    alignItems: "center",
+    gap: 8,
+  },
+  attachChoiceIcon: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.primaryLight,
+  },
+  attachChoiceLabel: {
+    fontFamily: typography.medium,
+    color: colors.text,
+    fontSize: 12,
+    textAlign: "center",
   },
   composer: {
     borderTopWidth: 1,
