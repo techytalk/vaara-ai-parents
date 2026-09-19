@@ -101,7 +101,6 @@ export function ChatThreadScreen({
   const navigation = useNavigation();
   const headerHeight = useHeaderHeight();
   const bottomChrome = useBottomChromeInset();
-  // Same dock as Post / Save: closed → nav inset; open → IME remainder / full height.
   const androidDockOffset = useAndroidImeDockOffset(bottomChrome);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
