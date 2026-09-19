@@ -98,6 +98,10 @@ const MIGRATIONS = [
     version: "053_circle_message_media_hardening",
     file: "053_circle_message_media_hardening.sql",
   },
+  {
+    version: "054_children_curriculum_grade_fk",
+    file: "054_children_curriculum_grade_fk.sql",
+  },
 ];
 
 async function isMigrationApplied(
