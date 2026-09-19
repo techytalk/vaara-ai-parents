@@ -13,8 +13,9 @@ Parents should pick **Preschool (3–4)** vs **School** once, then pick a campus
 from one list. Asking “Campus type: Preschool / School” again is confusing, and
 filtering by `schools.kind` is unreliable while catalog kinds are incomplete.
 
-Suggested schools already load behind a closed dropdown; keep that pattern and
-make it feel like the locality dropdown (closed trigger → open list).
+Suggested schools already load behind a closed dropdown; **search-first** is the
+current school sheet pattern (type a name; no shortlist dump on open). See
+Issue 2.
 
 On location, after a valid PIN lookup the area control appears below the fold —
 parents must scroll manually. Auto-scroll after lookup so the next required
@@ -84,49 +85,76 @@ On `/onboarding/school`, after **What describes your child?**
 
 ---
 
-## Issue 2 — Suggested schools in a closed dropdown (like locality)
-
-### Current behavior
-
-`SchoolPicker` already uses a closed trigger (“Select preschool/school”) and
-opens search + suggested list when tapped. Locality on location uses a similar
-closed dropdown that opens a modal/list of areas.
-
-### Problem / polish goal
-
-Make school selection **read the same** as location’s area dropdown:
-
-- Closed by default (no always-visible suggested list)
-- Tap trigger → show suggestions (and search)
-- Select → close, show chosen label on trigger
-- Clear / re-open to change
+## Issue 2 — School picker: search-first (revised 19 Sep 2026)
 
 ### Decision
 
-1. Keep **closed-by-default** school dropdown (already mostly true).
-2. Match the locality interaction, not only its styling:
-   - Same trigger row pattern (label + chevron)
-   - Tap opens a modal / sheet containing search + school choices
-   - Empty query shows suggested schools first
-   - Typing filters; “Not here / Other” remains at the end
-   - Backdrop / close dismisses without changing the current selection
-3. No second “suggested schools” panel outside the dropdown.
-4. Selected state: trigger shows `displayLabel`; remove the duplicate selected
-   card and use **trigger-only**.
+School is **not** the same decision as home PIN / area. Do not open with a long
+“nearby” shortlist.
 
-### Files likely touched
+1. Closed trigger on the school screen (“Select school”).
+2. Tap → sheet with **search only** (placeholder: “Search for school name”).
+3. Empty query: hint “Type a school name to search” — **no school list**.
+4. Typing thresholds:
+   - 0–1 characters: no results; prompt for at least 2 characters
+   - 2 characters: local-catalog matches only
+   - 3+ characters: local matches immediately + debounced remote search
+5. After a successful 3+ character search settles: footer
+   **“Can’t find your school?”** → existing create form (“Add it”). Shown
+   whether results are empty or present (school might still be missing).
+   Never show this escape after only one or two characters, or after a search
+   error.
+6. Select → close sheet; trigger shows `displayLabel`.
+
+### ASCII
+
+```text
+Open sheet
+┌─────────────────────────────┐
+│ Search for school name…     │
+│ Type a school name to search│
+└─────────────────────────────┘
+
+After typing with matches
+┌─────────────────────────────┐
+│ DPS_                        │
+│ DPS Kollur                  │
+│ DPS Miyapur                 │
+│ Can’t find your school?     │
+│ Add it                      │
+└─────────────────────────────┘
+
+No matches
+┌─────────────────────────────┐
+│ No schools match “XYZ”      │
+│ Can’t find your school?     │
+│ Add it                      │
+└─────────────────────────────┘
+```
+
+### Files
 
 - `apps/mobile/src/components/onboarding/SchoolPicker.tsx`
-- Optionally share dropdown styles with `location.tsx` locality control
 
 ### Acceptance
 
-- Opening school screen with preschool or school track: **no** expanded school
-  list until user taps the dropdown
-- Tap → modal / sheet opens with suggestions visible
-- Type → filtered results
-- Select → dropdown closes; Continue enables
-- Re-open and dismiss → prior selection remains
+- Open picker: no big list of schools
+- Type 2 characters → local matches; 3+ → full search
+- Missing school → “Can’t find your school?” → create flow
+- Prior selection remains if sheet is dismissed
+- The same search-first behavior applies anywhere the shared `SchoolPicker` is
+  used, including child profile editing.
+
+---
+
+## Issue 2 (superseded) — Suggested schools shortlist on open
+
+> Previous decision dumped PIN shortlist when the query was empty and used
+> “Not here / Other”. Replaced by search-first above. Shortlist API may still
+> exist server-side; the onboarding sheet no longer displays it on open.
+
+~~Empty query shows suggested schools first~~
+~~“Not here / Other” at the end of the shortlist~~
 
 ---
 

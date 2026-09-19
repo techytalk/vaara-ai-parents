@@ -21,7 +21,6 @@ import { ensureOnboardingAttemptId } from "@/lib/onboarding-draft";
 import {
   ensureSchoolCatalog,
   filterLocalCatalog,
-  getSchoolShortlistCached,
 } from "@/lib/reference-cache";
 import { colors, FieldInput, FieldLabel } from "@/components/onboarding/ui";
 
@@ -81,9 +80,8 @@ export function SchoolPicker({
 }: Props) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SchoolListItem[]>([]);
-  const [shortlist, setShortlist] = useState<SchoolListItem[]>([]);
+  const [catalogReady, setCatalogReady] = useState(false);
   const [searching, setSearching] = useState(false);
-  const [shortlistReady, setShortlistReady] = useState(false);
   const [searchSettled, setSearchSettled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [showAddNew, setShowAddNew] = useState(false);
@@ -120,32 +118,18 @@ export function SchoolPicker({
     }
   }, [selected?.id]);
 
-  // Prefetch shortlist + catalogue
+  // Warm local catalog for instant typeahead (search-first; no shortlist dump).
   useEffect(() => {
     let cancelled = false;
-    setShortlistReady(false);
-    Promise.all([
-      getSchoolShortlistCached({
-        country: defaultCountry,
-        pin: defaultPin,
-        locality: defaultLocality || undefined,
-        list,
-      }).catch(() => [] as SchoolListItem[]),
-      ensureSchoolCatalog().catch(() => null),
-    ]).then(([listRows]) => {
-      if (cancelled) return;
-      setShortlist(listRows);
-      setShortlistReady(true);
-      const q = query.trim();
-      if (q.length > 0 && q.length < 3 && !list) {
-        setResults(filterLocalCatalog(q, 20));
-        setSearchSettled(true);
-      }
-    });
+    ensureSchoolCatalog()
+      .catch(() => null)
+      .finally(() => {
+        if (!cancelled) setCatalogReady(true);
+      });
     return () => {
       cancelled = true;
     };
-  }, [defaultCountry, defaultPin, defaultLocality, list]);
+  }, []);
 
   // Typed search: local first (unless list filter), remote after 3 chars with abort
   useEffect(() => {
@@ -160,8 +144,23 @@ export function SchoolPicker({
       return;
     }
 
+    setError(null);
+    if (q.length < 2) {
+      setResults([]);
+      setSearching(false);
+      setSearchSettled(false);
+      return;
+    }
+
+    if (!catalogReady && q.length < 3 && !list) {
+      setResults([]);
+      setSearching(true);
+      setSearchSettled(false);
+      return;
+    }
+
     setSearchSettled(false);
-    const local = list ? [] : filterLocalCatalog(q, 20);
+    const local = list || !catalogReady ? [] : filterLocalCatalog(q, 20);
     setResults(local);
     trackEvent("school_query", {
       ms: 0,
@@ -169,7 +168,7 @@ export function SchoolPicker({
       results: local.length,
     });
 
-    if (q.length < 3) {
+    if (q.length === 2) {
       setSearching(false);
       setSearchSettled(true);
       return;
@@ -231,7 +230,7 @@ export function SchoolPicker({
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [query, list, token, defaultCity, defaultPin]);
+  }, [query, list, token, defaultCity, defaultPin, catalogReady]);
 
   function closeMenu() {
     setMenuOpen(false);
@@ -331,12 +330,13 @@ export function SchoolPicker({
     }
   }
 
+  const trimmedQuery = query.trim();
+  const hasQuery = trimmedQuery.length > 0;
+  // Search-first: never dump the shortlist. Results appear only after typing.
   const listData: SchoolListItem[] =
-    query.trim().length === 0 ? shortlist : results;
-  const showOther =
-    query.trim().length === 0
-      ? shortlistReady
-      : searchSettled && !searching;
+    trimmedQuery.length >= 2 ? results : [];
+  const showCantFind =
+    trimmedQuery.length >= 3 && searchSettled && !searching && !error;
 
   return (
     <View style={styles.wrap}>
@@ -385,7 +385,7 @@ export function SchoolPicker({
             <Ionicons name="search-outline" size={18} color={colors.textMuted} />
             <TextInput
               style={styles.input}
-              placeholder="Type to search"
+              placeholder="Search for school name"
               placeholderTextColor={colors.textSubtle}
               value={query}
               onChangeText={setQuery}
@@ -413,72 +413,76 @@ export function SchoolPicker({
             <ActivityIndicator style={styles.loader} color={colors.primary} />
           ) : null}
 
-          {query.trim().length === 0 && !shortlistReady ? (
-            <Text style={styles.suggestEmpty}>Loading…</Text>
-          ) : (
-            <FlatList
-              data={listData}
-              keyExtractor={(item) => item.id}
-              keyboardShouldPersistTaps="handled"
-              ListEmptyComponent={
-                query.trim().length === 0 || searchSettled ? (
-                  <Text style={styles.suggestEmpty}>
-                    {query.trim().length === 0
-                      ? "No suggestions yet — type a name."
-                      : "No matches"}
-                  </Text>
-                ) : null
-              }
-              ListFooterComponent={
-                showOther ? (
-                  <Pressable style={styles.otherRow} onPress={openCreateForm}>
-                    <Text style={styles.otherTitle}>Not here / Other</Text>
-                    <Text style={styles.otherMeta}>
-                      {createLabel ?? "Add your school"}
-                    </Text>
-                  </Pressable>
-                ) : null
-              }
-              renderItem={({ item, index }) => (
+          <FlatList
+            data={listData}
+            keyExtractor={(item) => item.id}
+            keyboardShouldPersistTaps="handled"
+            ListEmptyComponent={
+              searching ? null : (
+                <Text style={styles.suggestEmpty}>
+                  {!hasQuery
+                    ? "Type a school name to search"
+                    : trimmedQuery.length < 2
+                      ? "Enter at least 2 characters"
+                      : !searchSettled
+                        ? "Searching…"
+                        : trimmedQuery.length === 2
+                          ? "Type one more character to search all schools"
+                          : `No schools match “${trimmedQuery}”`}
+                </Text>
+              )
+            }
+            ListFooterComponent={
+              showCantFind ? (
                 <Pressable
-                  style={[
-                    styles.resultRow,
-                    item.id === selected?.id && styles.resultRowActive,
-                  ]}
-                  onPress={() => {
-                    if (query.trim().length === 0) {
-                      trackEvent("shortlist_tapped", { rank: index + 1 });
-                      selectSchool(toSchool(item), "shortlist");
-                    } else {
-                      selectSchool(toSchool(item), "search");
-                    }
-                  }}
+                  style={styles.otherRow}
+                  onPress={openCreateForm}
+                  accessibilityRole="button"
+                  accessibilityLabel="Can't find your school? Add it"
                 >
-                  <View style={styles.resultCopy}>
-                    <Text
-                      style={[
-                        styles.resultTitle,
-                        item.id === selected?.id && styles.resultTitleActive,
-                      ]}
-                    >
-                      {item.name}
-                    </Text>
-                    <Text style={styles.resultMeta}>
-                      {[item.branch, item.city].filter(Boolean).join(" · ")}
-                      {!item.verified ? " · Pending review" : ""}
-                    </Text>
-                  </View>
-                  {item.id === selected?.id ? (
-                    <Ionicons
-                      name="checkmark"
-                      size={20}
-                      color={colors.primary}
-                    />
-                  ) : null}
+                  <Text style={styles.otherTitle}>
+                    Can&apos;t find your school?
+                  </Text>
+                  <Text style={styles.otherMeta}>
+                    {createLabel ?? "Add it"}
+                  </Text>
                 </Pressable>
-              )}
-            />
-          )}
+              ) : null
+            }
+            renderItem={({ item }) => (
+              <Pressable
+                style={[
+                  styles.resultRow,
+                  item.id === selected?.id && styles.resultRowActive,
+                ]}
+                onPress={() => selectSchool(toSchool(item), "search")}
+                accessibilityRole="button"
+                accessibilityLabel={item.displayLabel || item.name}
+              >
+                <View style={styles.resultCopy}>
+                  <Text
+                    style={[
+                      styles.resultTitle,
+                      item.id === selected?.id && styles.resultTitleActive,
+                    ]}
+                  >
+                    {item.name}
+                  </Text>
+                  <Text style={styles.resultMeta}>
+                    {[item.branch, item.city].filter(Boolean).join(" · ")}
+                    {!item.verified ? " · Pending review" : ""}
+                  </Text>
+                </View>
+                {item.id === selected?.id ? (
+                  <Ionicons
+                    name="checkmark"
+                    size={20}
+                    color={colors.primary}
+                  />
+                ) : null}
+              </Pressable>
+            )}
+          />
 
           {error ? <Text style={styles.modalError}>{error}</Text> : null}
         </View>
