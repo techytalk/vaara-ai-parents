@@ -12,25 +12,25 @@ import {
  * Android is the hard case: whether the app window shrinks when the keyboard
  * opens depends on the OS version *and* on whether the app opted out of
  * edge-to-edge enforcement, which cannot be derived from `Platform.Version`
- * alone. So the window behaviour is measured once, the first time the keyboard
- * opens, by comparing the window height against its keyboard-closed baseline.
+ * alone. We measure the shrink once against the keyboard-closed baseline, then
+ * lift the dock by only the uncovered remainder.
+ *
+ * That remainder matters for Gboard's suggestion bar: the window often resizes
+ * for the key grid, then the suggestion strip grows on top without a further
+ * window shrink — leaving Post / Save / chat composers half-covered.
  *
  * Heights come from `endCoordinates.height` only — never screen/window
- * arithmetic, which OEM skins report inconsistently.
+ * arithmetic for the IME itself, which OEM skins report inconsistently.
  */
 
 type ImeState = {
   height: number;
-  /**
-   * True when the window shrinks for the IME (`adjustResize` is in effect), so
-   * a dock is already lifted and must not be offset again. `null` until the
-   * keyboard has been opened at least once.
-   */
-  windowResizesForIme: boolean | null;
+  /** How many px the window height fell since the keyboard-closed baseline. */
+  windowShrink: number;
 };
 
 let subscribed = false;
-let current: ImeState = { height: 0, windowResizesForIme: null };
+let current: ImeState = { height: 0, windowShrink: 0 };
 let closedWindowHeight: number | null = null;
 const subscribers = new Set<(state: ImeState) => void>();
 
@@ -42,10 +42,15 @@ function heightFromEvent(event: KeyboardEvent): number {
   return Math.max(0, Math.round(event.endCoordinates.height));
 }
 
+function measuredShrink(): number {
+  if (closedWindowHeight == null) return 0;
+  return Math.max(0, Math.round(closedWindowHeight - windowHeight()));
+}
+
 function publish(next: ImeState) {
   if (
     next.height === current.height &&
-    next.windowResizesForIme === current.windowResizesForIme
+    next.windowShrink === current.windowShrink
   ) {
     return;
   }
@@ -55,23 +60,16 @@ function publish(next: ImeState) {
 
 function handleShow(height: number) {
   if (height <= 0) {
-    publish({ ...current, height: 0 });
+    publish({ height: 0, windowShrink: 0 });
     return;
   }
 
-  let resizes = current.windowResizesForIme;
-  if (Platform.OS === "android" && closedWindowHeight != null) {
-    // A window that resizes loses roughly the IME height. Half of it is a safe
-    // threshold: well above measurement noise, well below a real resize.
-    resizes = closedWindowHeight - windowHeight() >= height / 2;
-  }
-
-  publish({ height, windowResizesForIme: resizes });
+  publish({ height, windowShrink: measuredShrink() });
 }
 
 function handleHide() {
   closedWindowHeight = windowHeight();
-  publish({ ...current, height: 0 });
+  publish({ height: 0, windowShrink: 0 });
 }
 
 function ensureKeyboardSubscription() {
@@ -79,6 +77,14 @@ function ensureKeyboardSubscription() {
   subscribed = true;
 
   closedWindowHeight = windowHeight();
+
+  Dimensions.addEventListener("change", () => {
+    // Keep the closed baseline fresh when layout changes (e.g. tab bar
+    // hidden in chat) so the next keyboard open measures shrink correctly.
+    if (current.height === 0) {
+      closedWindowHeight = windowHeight();
+    }
+  });
 
   const showEvent =
     Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
@@ -127,18 +133,18 @@ export function useKeyboardHeight(): number {
  * Space that must remain below an Android composer. Apply this as margin,
  * never padding: padding leaves children inside the IME-covered region.
  * Keyboard closed → nav/chrome inset. iOS callers get 0 and use KAV.
+ *
+ * When the keyboard is open, returns only the part of the IME the window
+ * resize did not already clear — so suggestion-bar growth still lifts the
+ * dock even if adjustResize already handled the key grid.
  */
 export function useAndroidImeDockOffset(closedInset: number): number {
-  const { height, windowResizesForIme } = useImeState();
+  const { height, windowShrink } = useImeState();
 
   if (Platform.OS !== "android") return 0;
 
   const navInset = Math.max(closedInset, 0);
   if (height <= 0) return navInset;
 
-  // Window already shrank for the IME, so the dock is lifted; offsetting again
-  // would double-count and strand a keyboard-sized gap under the composer.
-  if (windowResizesForIme !== false) return 0;
-
-  return height + navInset;
+  return Math.max(0, height - windowShrink);
 }

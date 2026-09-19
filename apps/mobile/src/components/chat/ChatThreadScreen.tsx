@@ -102,8 +102,8 @@ export function ChatThreadScreen({
   const headerHeight = useHeaderHeight();
   const bottomChrome = useBottomChromeInset();
   const keyboardHeight = useKeyboardHeight();
-  // Keyboard-closed inset belongs on the composer only, because the tab bar
-  // is hidden in chat. Passing it here would stack a second copy.
+  // Tabs are hidden in chat, so the closed inset lives on the composer as
+  // paddingBottom — same Post/Save dock pattern, without double-counting.
   const androidDockOffset = useAndroidImeDockOffset(0);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
