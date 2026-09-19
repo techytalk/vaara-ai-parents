@@ -28,6 +28,14 @@ import {
 } from "@/lib/auth-navigation";
 import { beginAuthenticatedSession } from "@/lib/authenticated-state";
 import { isGoogleSignInConfigured } from "@/constants/google-auth";
+import {
+  isValidEmail,
+  MIN_PASSWORD_LENGTH,
+  MAX_PASSWORD_LENGTH,
+  MAX_DISPLAY_NAME_LENGTH,
+  MAX_EMAIL_LENGTH,
+  passwordError,
+} from "@vaara/shared/auth-input";
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -64,10 +72,19 @@ export default function RegisterScreen() {
 
   async function onRegister() {
     setError(null);
+    if (!isValidEmail(email)) {
+      setError("Enter a valid email address, like you@example.com");
+      return;
+    }
+    const passwordProblem = passwordError(password);
+    if (passwordProblem) {
+      setError(passwordProblem);
+      return;
+    }
     setLoading(true);
     try {
       const result = await api.register({
-        email,
+        email: email.trim(),
         password,
         role,
         displayName: displayName.trim() || undefined,
@@ -79,6 +96,11 @@ export default function RegisterScreen() {
       setLoading(false);
     }
   }
+
+  const canRegister =
+    isValidEmail(email) &&
+    password.length >= MIN_PASSWORD_LENGTH &&
+    password.length <= MAX_PASSWORD_LENGTH;
 
   const displayError = error ?? googleError;
 
@@ -132,6 +154,9 @@ export default function RegisterScreen() {
                 style={styles.input}
                 placeholder="Your name"
                 placeholderTextColor={colors.textSubtle}
+                autoComplete="name"
+                textContentType="name"
+                maxLength={MAX_DISPLAY_NAME_LENGTH}
                 value={displayName}
                 onChangeText={setDisplayName}
                 testID="clarity-mask"
@@ -142,8 +167,11 @@ export default function RegisterScreen() {
                 placeholder="you@example.com"
                 placeholderTextColor={colors.textSubtle}
                 autoCapitalize="none"
+                autoCorrect={false}
                 autoComplete="email"
+                textContentType="emailAddress"
                 keyboardType="email-address"
+                maxLength={MAX_EMAIL_LENGTH}
                 value={email}
                 onChangeText={setEmail}
                 testID="clarity-mask"
@@ -151,10 +179,12 @@ export default function RegisterScreen() {
               <Text style={styles.label}>Password</Text>
               <TextInput
                 style={styles.input}
-                placeholder="At least 8 characters"
+                placeholder={`At least ${MIN_PASSWORD_LENGTH} characters`}
                 placeholderTextColor={colors.textSubtle}
                 autoComplete="new-password"
+                textContentType="newPassword"
                 secureTextEntry
+                maxLength={MAX_PASSWORD_LENGTH}
                 value={password}
                 onChangeText={setPassword}
                 testID="clarity-mask"
@@ -166,7 +196,7 @@ export default function RegisterScreen() {
                 label="Create account"
                 onPress={onRegister}
                 loading={loading}
-                disabled={!email.trim() || password.length < 8}
+                disabled={!canRegister}
                 style={styles.button}
               />
 

@@ -13,6 +13,11 @@
       "react-native": "./report-reasons.ts",
       "types": "./dist/report-reasons.d.ts",
       "default": "./dist/report-reasons.js"
+    },
+    "./auth-input": {
+      "react-native": "./auth-input.ts",
+      "types": "./dist/auth-input.d.ts",
+      "default": "./dist/auth-input.js"
     }
   },
   "scripts": {

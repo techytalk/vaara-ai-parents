@@ -2,11 +2,21 @@ import { Hono } from "hono";
 import bcrypt from "bcryptjs";
 import type { PoolClient } from "pg";
 import { pool } from "@vaara/db";
+import {
+  isValidEmail,
+  normalizeDisplayName,
+  normalizeEmail,
+  passwordError,
+} from "@vaara/shared/auth-input";
 import { generateAnonymousHandle } from "../lib/anonymity.js";
 import { defaultAvatarKeyForHandle } from "../lib/avatar.js";
 import { verifyAppleIdentityToken } from "../lib/apple-auth.js";
 import { buildAuthResponse } from "../lib/auth-response.js";
 import { verifyGoogleIdToken } from "../lib/google-auth.js";
+import {
+  clientIp,
+  rateLimitMiddleware,
+} from "../middleware/rate-limit.js";
 
 async function generateUniqueHandle(client: PoolClient): Promise<string> {
   let handle = generateAnonymousHandle();
@@ -21,23 +31,62 @@ async function generateUniqueHandle(client: PoolClient): Promise<string> {
   return handle;
 }
 
+async function readJson<T>(c: {
+  req: { json: () => Promise<unknown> };
+}): Promise<T | null> {
+  try {
+    return (await c.req.json()) as T;
+  } catch {
+    return null;
+  }
+}
+
 export function createAuthRoutes() {
   const app = new Hono();
+  const registerLimit = rateLimitMiddleware({
+    prefix: "auth-register",
+    limit: 8,
+    windowSeconds: 60 * 60,
+    keyFn: clientIp,
+  });
+  const loginLimit = rateLimitMiddleware({
+    prefix: "auth-login",
+    limit: 20,
+    windowSeconds: 15 * 60,
+    keyFn: clientIp,
+  });
+  const oauthLimit = rateLimitMiddleware({
+    prefix: "auth-oauth",
+    limit: 30,
+    windowSeconds: 15 * 60,
+    keyFn: clientIp,
+  });
 
-  app.post("/register", async (c) => {
-    const body = await c.req.json<{
+  app.post("/register", registerLimit, async (c) => {
+    const body = await readJson<{
       email?: string;
       password?: string;
       role?: "parent" | "provider";
       displayName?: string;
-    }>();
+    }>(c);
+    if (!body) {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
 
-    const email = body.email?.trim().toLowerCase();
+    const email = normalizeEmail(body.email);
     const password = body.password;
     const role = body.role ?? "parent";
 
-    if (!email || !password || password.length < 8) {
-      return c.json({ error: "Email and password (min 8 chars) required" }, 400);
+    if (!isValidEmail(email)) {
+      return c.json(
+        { error: "Enter a valid email address, like you@example.com" },
+        400
+      );
+    }
+
+    const passwordProblem = passwordError(password);
+    if (passwordProblem) {
+      return c.json({ error: passwordProblem }, 400);
     }
 
     if (role !== "parent" && role !== "provider") {
@@ -60,10 +109,10 @@ export function createAuthRoutes() {
       const handleMs = performance.now() - handleStarted;
 
       const hashStarted = performance.now();
-      const passwordHash = await bcrypt.hash(password, 10);
+      const passwordHash = await bcrypt.hash(password!, 10);
       const hashMs = performance.now() - hashStarted;
 
-      const displayName = body.displayName?.trim() || null;
+      const displayName = normalizeDisplayName(body.displayName);
       const avatarKey = defaultAvatarKeyForHandle(handle);
 
       const insertStarted = performance.now();
@@ -96,12 +145,15 @@ export function createAuthRoutes() {
     }
   });
 
-  app.post("/login", async (c) => {
-    const body = await c.req.json<{ email?: string; password?: string }>();
-    const email = body.email?.trim().toLowerCase();
+  app.post("/login", loginLimit, async (c) => {
+    const body = await readJson<{ email?: string; password?: string }>(c);
+    if (!body) {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    const email = normalizeEmail(body.email);
     const password = body.password;
 
-    if (!email || !password) {
+    if (!isValidEmail(email) || !password) {
       return c.json({ error: "Email and password required" }, 400);
     }
 
@@ -141,12 +193,15 @@ export function createAuthRoutes() {
     }
   });
 
-  app.post("/google", async (c) => {
-    const body = await c.req.json<{
+  app.post("/google", oauthLimit, async (c) => {
+    const body = await readJson<{
       idToken?: string;
       role?: "parent" | "provider";
       displayName?: string;
-    }>();
+    }>(c);
+    if (!body) {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
 
     if (!body.idToken) {
       return c.json({ error: "idToken is required" }, 400);
@@ -165,7 +220,8 @@ export function createAuthRoutes() {
 
     const role = body.role === "provider" ? "provider" : "parent";
     const displayName =
-      body.displayName?.trim() || identity.name?.trim() || null;
+      normalizeDisplayName(body.displayName) ||
+      normalizeDisplayName(identity.name);
 
     const client = await pool.connect();
     try {
@@ -219,15 +275,18 @@ export function createAuthRoutes() {
     }
   });
 
-  app.post("/apple", async (c) => {
-    const body = await c.req.json<{
+  app.post("/apple", oauthLimit, async (c) => {
+    const body = await readJson<{
       identityToken?: string;
       role?: "parent" | "provider";
       displayName?: string;
-    }>();
+    }>(c);
+    if (!body) {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
 
     if (!body.identityToken) {
-      return c.json({ error: "identityToken is required" }, 400);
+      return c.json({ error: "idToken is required" }, 400);
     }
 
     let identity;
@@ -238,7 +297,7 @@ export function createAuthRoutes() {
     }
 
     const role = body.role === "provider" ? "provider" : "parent";
-    const displayName = body.displayName?.trim() || null;
+    const displayName = normalizeDisplayName(body.displayName);
 
     const client = await pool.connect();
     try {

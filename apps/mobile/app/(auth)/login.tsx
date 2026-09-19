@@ -28,6 +28,11 @@ import {
 } from "@/lib/auth-navigation";
 import { beginAuthenticatedSession } from "@/lib/authenticated-state";
 import { isGoogleSignInConfigured } from "@/constants/google-auth";
+import {
+  isValidEmail,
+  MAX_EMAIL_LENGTH,
+  MAX_PASSWORD_LENGTH,
+} from "@vaara/shared/auth-input";
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -57,9 +62,17 @@ export default function LoginScreen() {
 
   async function onLogin() {
     setError(null);
+    if (!isValidEmail(email)) {
+      setError("Enter a valid email address, like you@example.com");
+      return;
+    }
+    if (!password) {
+      setError("Enter your password");
+      return;
+    }
     setLoading(true);
     try {
-      const result = await api.login({ email, password });
+      const result = await api.login({ email: email.trim(), password });
       await completeAuth(result);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Login failed");
@@ -108,8 +121,11 @@ export default function LoginScreen() {
                 placeholder="you@example.com"
                 placeholderTextColor={colors.textSubtle}
                 autoCapitalize="none"
+                autoCorrect={false}
                 autoComplete="email"
+                textContentType="emailAddress"
                 keyboardType="email-address"
+                maxLength={MAX_EMAIL_LENGTH}
                 value={email}
                 onChangeText={setEmail}
                 testID="clarity-mask"
@@ -120,7 +136,9 @@ export default function LoginScreen() {
                 placeholder="Your password"
                 placeholderTextColor={colors.textSubtle}
                 autoComplete="current-password"
+                textContentType="password"
                 secureTextEntry
+                maxLength={MAX_PASSWORD_LENGTH}
                 value={password}
                 onChangeText={setPassword}
                 testID="clarity-mask"
@@ -132,7 +150,7 @@ export default function LoginScreen() {
                 label="Sign in with email"
                 onPress={onLogin}
                 loading={loading}
-                disabled={!email.trim() || !password}
+                disabled={!isValidEmail(email) || !password}
                 style={styles.button}
               />
 
