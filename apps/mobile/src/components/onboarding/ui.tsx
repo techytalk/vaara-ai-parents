@@ -12,6 +12,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import type { ComponentProps, ReactNode } from "react";
+import { forwardRef } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, layout, radii, typography } from "@/constants/theme";
 
@@ -159,15 +160,15 @@ export function FieldLabel({ children }: { children: ReactNode }) {
   return <Text style={fieldStyles.label}>{children}</Text>;
 }
 
-export function FieldInput({
-  label,
-  hint,
-  ...props
-}: TextInputProps & { label?: string; hint?: string }) {
+export const FieldInput = forwardRef<
+  TextInput,
+  TextInputProps & { label?: string; hint?: string }
+>(function FieldInput({ label, hint, ...props }, ref) {
   return (
     <View style={fieldStyles.wrap}>
       {label ? <FieldLabel>{label}</FieldLabel> : null}
       <TextInput
+        ref={ref}
         style={fieldStyles.input}
         placeholderTextColor={colors.textSubtle}
         {...props}
@@ -176,7 +177,7 @@ export function FieldInput({
       {hint ? <Text style={fieldStyles.hint}>{hint}</Text> : null}
     </View>
   );
-}
+});
 
 export function PrimaryButton({
   label,

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -9,6 +10,8 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { useHeaderHeight } from "@react-navigation/elements";
@@ -17,7 +20,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { api, type PostalCountry } from "@/lib/api";
 import { trackEvent, trackOnboardingBegin } from "@/lib/analytics";
 import { invalidateFamilyMeta } from "@/lib/authenticated-state";
-import { useAndroidImeDockOffset } from "@/hooks/useKeyboardHeight";
+import {
+  useAndroidImeDockOffset,
+  useKeyboardHeight,
+} from "@/hooks/useKeyboardHeight";
 import { getToken, getStoredUser, saveSession } from "@/lib/session";
 import {
   getOnboardingLocation,
@@ -40,6 +46,14 @@ import {
 import { OnboardingAccountSwitch } from "@/components/SignOutButton";
 
 const FEATURED_COUNTRY_CODES = ["IN", "US", "GB", "CA", "AU", "SG", "AE", "DE"];
+const AREA_ROW_HEIGHT = 48;
+
+/** How many area rows fit without crowding the form (short / regular / tall). */
+function areaInlineBudget(usableHeight: number): number {
+  if (usableHeight < 560) return 4;
+  if (usableHeight > 700) return 8;
+  return 6;
+}
 
 function isReadyForLookup(country: PostalCountry | null, postalCode: string): boolean {
   const value = postalCode.trim();
@@ -133,15 +147,21 @@ const hookAccent = {
 export default function LocationScreen() {
   const router = useRouter();
   const headerHeight = useHeaderHeight();
+  const { height: windowHeight } = useWindowDimensions();
+  const keyboardHeight = useKeyboardHeight();
   const androidDockOffset = useAndroidImeDockOffset(0);
   const contentStyle = useOnboardingContentStyle();
   const footerContentStyle = useOnboardingContentStyle({
     includeVertical: false,
   });
+  const inlineBudget = areaInlineBudget(windowHeight - headerHeight);
   const [countries, setCountries] = useState<PostalCountry[]>([]);
   const [countryCode, setCountryCode] = useState("IN");
   const [countryOpen, setCountryOpen] = useState(false);
   const [localityOpen, setLocalityOpen] = useState(false);
+  const [areaFilter, setAreaFilter] = useState("");
+  const [areaNotListed, setAreaNotListed] = useState(false);
+  const [localityAutoFocus, setLocalityAutoFocus] = useState(false);
   const [pinCode, setPinCode] = useState("");
   const [locality, setLocality] = useState("");
   const [city, setCity] = useState("");
@@ -159,8 +179,12 @@ export default function LocationScreen() {
   const lookupRequestRef = useRef(0);
   const skipNextLookupRef = useRef(false);
   const scrollRef = useRef<ScrollView>(null);
+  const pinFocusedRef = useRef(false);
+  const pinSectionYRef = useRef<number | null>(null);
   const areaSectionYRef = useRef<number | null>(null);
   const pendingAreaScrollRef = useRef(false);
+  const localityInputRef = useRef<TextInput>(null);
+  const localityRef = useRef("");
 
   const selectedCountry = useMemo(
     () => countries.find((country) => country.code === countryCode) ?? null,
@@ -248,6 +272,22 @@ export default function LocationScreen() {
   }, [alreadyComplete, prefillLoading]);
 
   useEffect(() => {
+    localityRef.current = locality;
+  }, [locality]);
+
+  useEffect(() => {
+    if (keyboardHeight <= 0 || !pinFocusedRef.current) return;
+    const pinY = pinSectionYRef.current;
+    if (pinY == null) return;
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({
+        y: Math.max(0, pinY - 12),
+        animated: true,
+      });
+    });
+  }, [keyboardHeight]);
+
+  useEffect(() => {
     const postal = pinCode.trim();
     if (skipNextLookupRef.current) {
       skipNextLookupRef.current = false;
@@ -255,6 +295,7 @@ export default function LocationScreen() {
     }
 
     if (!selectedCountry?.lookupSupported || !isReadyForLookup(selectedCountry, postal)) {
+      setLookupLoading(false);
       setLocalityOptions([]);
       setCommunitySuggestions([]);
       setLookupError(null);
@@ -262,9 +303,9 @@ export default function LocationScreen() {
     }
 
     const requestId = ++lookupRequestRef.current;
+    setLookupLoading(true);
+    setLookupError(null);
     const timer = setTimeout(async () => {
-      setLookupLoading(true);
-      setLookupError(null);
       const started = Date.now();
       try {
         const lookup = await api.lookupPostalCode(countryCode, postal);
@@ -276,22 +317,27 @@ export default function LocationScreen() {
         });
         setCity(lookup.city);
         setState(lookup.state);
-        setLocalityOptions(lookup.localities.map((item) => item.name));
+        const names = lookup.localities.map((item) => item.name);
+        setLocalityOptions(names);
         setCommunitySuggestions(lookup.communities ?? []);
-        setLocality((current) => {
-          if (lookup.localities.length === 1) {
-            return lookup.localities[0].name;
-          }
-          if (
-            current &&
-            lookup.localities.some((item) => item.name === current)
-          ) {
-            return current;
-          }
-          return current;
-        });
+        const currentLocality = localityRef.current.trim();
+        const isSavedCustomArea =
+          currentLocality.length > 0 &&
+          names.length > 0 &&
+          !names.includes(currentLocality);
 
-        if (lookup.localities.length >= 1) {
+        if (isSavedCustomArea) {
+          setAreaNotListed(true);
+        } else if (names.length === 1) {
+          setLocality(names[0]);
+          setAreaNotListed(false);
+        } else {
+          setAreaNotListed(false);
+        }
+
+        if (names.length >= 1) {
+          setLocalityAutoFocus(false);
+          Keyboard.dismiss();
           pendingAreaScrollRef.current = true;
           const areaY = areaSectionYRef.current;
           if (areaY !== null) {
@@ -303,6 +349,12 @@ export default function LocationScreen() {
               });
             });
           }
+        } else {
+          setAreaNotListed(false);
+          setLocalityAutoFocus(true);
+          requestAnimationFrame(() => {
+            localityInputRef.current?.focus();
+          });
         }
 
         if (alreadyComplete) {
@@ -329,11 +381,16 @@ export default function LocationScreen() {
         });
         setLocalityOptions([]);
         setCommunitySuggestions([]);
+        setAreaNotListed(false);
         setLookupError(
           e instanceof Error
             ? e.message
             : `Could not look up this ${selectedCountry?.postalLabel.toLowerCase() ?? "postal code"}`
         );
+        setLocalityAutoFocus(true);
+        requestAnimationFrame(() => {
+          localityInputRef.current?.focus();
+        });
       } finally {
         if (requestId === lookupRequestRef.current) {
           setLookupLoading(false);
@@ -346,12 +403,41 @@ export default function LocationScreen() {
 
   function resetArea() {
     setLocality("");
+    localityRef.current = "";
     setCity("");
     setState("");
     setLocalityOptions([]);
     setCommunitySuggestions([]);
+    setLookupLoading(false);
     setLookupError(null);
     setLocalityOpen(false);
+    setAreaFilter("");
+    setAreaNotListed(false);
+    setLocalityAutoFocus(false);
+  }
+
+  function selectListedArea(option: string, source: "list" | "sheet") {
+    setLocality(option);
+    localityRef.current = option;
+    setAreaNotListed(false);
+    setLocalityOpen(false);
+    setAreaFilter("");
+    trackEvent("area_selected", { source });
+  }
+
+  function openAreaNotListed(from: "list" | "sheet") {
+    if (localityOptions.includes(locality)) {
+      setLocality("");
+      localityRef.current = "";
+    }
+    setAreaNotListed(true);
+    setLocalityOpen(false);
+    setAreaFilter("");
+    setLocalityAutoFocus(true);
+    trackEvent("area_selected", { source: "not_listed", from });
+    requestAnimationFrame(() => {
+      localityInputRef.current?.focus();
+    });
   }
 
   function selectCountry(code: string) {
@@ -469,6 +555,33 @@ export default function LocationScreen() {
     countryCode === "AU" ||
     countryCode === "SG";
 
+  const hasOverflow =
+    localityOptions.length > 1 && localityOptions.length > inlineBudget;
+  const inlineAreas = hasOverflow
+    ? localityOptions.slice(0, Math.max(1, inlineBudget - 1))
+    : localityOptions.length > 1
+      ? localityOptions
+      : [];
+  const filterNorm = areaFilter.trim().toLowerCase();
+  const filteredSheetAreas = filterNorm
+    ? localityOptions.filter((name) => name.toLowerCase().includes(filterNorm))
+    : localityOptions;
+  const showFreeTextLocality =
+    !lookupLoading && (localityOptions.length === 0 || areaNotListed);
+  const listedSelected =
+    !areaNotListed && localityOptions.includes(locality);
+
+  function scrollPinAboveKeyboard() {
+    const pinY = pinSectionYRef.current;
+    if (pinY == null) return;
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({
+        y: Math.max(0, pinY - 12),
+        animated: true,
+      });
+    });
+  }
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -478,7 +591,11 @@ export default function LocationScreen() {
       <ScrollView
         ref={scrollRef}
         style={styles.scroll}
-        contentContainerStyle={[styles.content, contentStyle]}
+        contentContainerStyle={[
+          styles.content,
+          contentStyle,
+          { paddingBottom: 28 + keyboardHeight },
+        ]}
         keyboardShouldPersistTaps="handled"
       >
       <OnboardingPayoff
@@ -501,23 +618,42 @@ export default function LocationScreen() {
         <Ionicons name="chevron-down" size={20} color={colors.textMuted} />
       </Pressable>
 
-      <FieldInput
-        label={postalLabel}
-        placeholder={postalPlaceholder}
-        keyboardType={usesNumericPostal ? "number-pad" : "default"}
-        autoCapitalize={usesNumericPostal ? "none" : "characters"}
-        value={pinCode}
-        onChangeText={(value) => {
-          const next = usesNumericPostal
-            ? value.replace(/\D/g, "")
-            : value.toUpperCase();
-          setPinCode(next);
-          if (!isReadyForLookup(selectedCountry, next)) {
-            resetArea();
-          }
+      <View
+        onLayout={(event) => {
+          pinSectionYRef.current = event.nativeEvent.layout.y;
         }}
-        hint="We use your PIN to find nearby parents — never your street address."
-      />
+      >
+        <FieldInput
+          label={postalLabel}
+          placeholder={postalPlaceholder}
+          keyboardType={usesNumericPostal ? "number-pad" : "default"}
+          autoCapitalize={usesNumericPostal ? "none" : "characters"}
+          value={pinCode}
+          onFocus={() => {
+            pinFocusedRef.current = true;
+            scrollPinAboveKeyboard();
+          }}
+          onBlur={() => {
+            pinFocusedRef.current = false;
+          }}
+          onChangeText={(value) => {
+            const next = usesNumericPostal
+              ? value.replace(/\D/g, "")
+              : value.toUpperCase();
+            if (next !== pinCode) {
+              resetArea();
+            }
+            setPinCode(next);
+            if (
+              selectedCountry?.lookupSupported &&
+              isReadyForLookup(selectedCountry, next)
+            ) {
+              setLookupLoading(true);
+            }
+          }}
+          hint="We use your PIN to find nearby parents — never your street address."
+        />
+      </View>
 
       {placeLine && !lookupLoading && !lookupError ? (
         <View style={styles.placeLine}>
@@ -558,52 +694,120 @@ export default function LocationScreen() {
 
           {lookupError ? <Text style={styles.lookupError}>{lookupError}</Text> : null}
 
-          {localityOptions.length > 0 ? (
+          {localityOptions.length > 1 ? (
             <View style={styles.optionBlock}>
-              <FieldLabel>
-                {localityOptions.length > 1
-                  ? "Where do your parent conversations happen?"
-                  : "Your area"}
-              </FieldLabel>
+              <FieldLabel>Choose your area</FieldLabel>
               <Text style={styles.optionHint}>
-                {localityOptions.length > 1
-                  ? "Choose your area to find parents nearby:"
-                  : "Suggested area for this pin:"}
+                Choose your area to find parents nearby:
               </Text>
+              <View style={styles.areaList}>
+                {inlineAreas.map((option) => {
+                  const selected = listedSelected && option === locality;
+                  return (
+                    <Pressable
+                      key={option}
+                      style={[styles.areaRow, selected && styles.areaRowActive]}
+                      onPress={() => selectListedArea(option, "list")}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected }}
+                      accessibilityLabel={option}
+                    >
+                      <Ionicons
+                        name={selected ? "radio-button-on" : "radio-button-off"}
+                        size={20}
+                        color={selected ? colors.primary : colors.textMuted}
+                      />
+                      <Text
+                        style={[
+                          styles.areaRowText,
+                          selected && styles.areaRowTextActive,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {option}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+                {hasOverflow ? (
+                  <Pressable
+                    style={styles.areaRow}
+                    onPress={() => {
+                      setAreaFilter("");
+                      setLocalityOpen(true);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Show all ${localityOptions.length} areas`}
+                  >
+                    <Ionicons
+                      name="search-outline"
+                      size={20}
+                      color={colors.primary}
+                    />
+                    <Text style={styles.areaShowAllText}>
+                      Show all {localityOptions.length} areas
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
+
               <Pressable
-                style={styles.dropdown}
-                onPress={() => setLocalityOpen(true)}
+                style={styles.notListedLink}
+                onPress={() => openAreaNotListed("list")}
                 accessibilityRole="button"
-                accessibilityLabel="Choose locality or area"
-                accessibilityState={{ expanded: localityOpen }}
+                accessibilityLabel="My area isn't listed"
               >
-                <Text style={styles.dropdownText}>
-                  {localityOptions.includes(locality)
-                    ? locality
-                    : "Select area"}
+                <Text
+                  style={[
+                    styles.notListedLinkText,
+                    areaNotListed && styles.notListedLinkTextActive,
+                  ]}
+                >
+                  My area isn&apos;t listed
                 </Text>
-                <Ionicons name="chevron-down" size={20} color={colors.textMuted} />
+                {areaNotListed ? (
+                  <Ionicons name="checkmark" size={16} color={colors.primary} />
+                ) : null}
               </Pressable>
             </View>
-          ) : (
+          ) : localityOptions.length === 1 ? (
+            <View style={styles.optionBlock}>
+              <Pressable
+                style={styles.notListedLink}
+                onPress={() => openAreaNotListed("list")}
+                accessibilityRole="button"
+                accessibilityLabel="My area isn't listed"
+              >
+                <Text
+                  style={[
+                    styles.notListedLinkText,
+                    areaNotListed && styles.notListedLinkTextActive,
+                  ]}
+                >
+                  My area isn&apos;t listed
+                </Text>
+                {areaNotListed ? (
+                  <Ionicons name="checkmark" size={16} color={colors.primary} />
+                ) : null}
+              </Pressable>
+            </View>
+          ) : null}
+
+          {showFreeTextLocality ? (
             <FieldInput
+              ref={localityInputRef}
               label="Locality / area *"
               placeholder="e.g. Indiranagar, Koramangala"
               value={locality}
-              onChangeText={setLocality}
-            />
-          )}
-
-          {localityOptions.length > 0 ? (
-            <FieldInput
-              label="Or type a different area"
-              placeholder="e.g. Indiranagar"
-              value={
-                localityOptions.includes(locality) ? "" : locality
-              }
+              autoFocus={localityAutoFocus}
               onChangeText={(v) => {
                 setLocality(v);
-                if (v.trim()) trackEvent("area_selected", { source: "typed" });
+                localityRef.current = v;
+                if (v.trim()) {
+                  trackEvent("area_selected", {
+                    source: areaNotListed ? "not_listed" : "typed",
+                  });
+                }
               }}
             />
           ) : null}
@@ -669,7 +873,9 @@ export default function LocationScreen() {
       {error ? <Text style={styles.error}>{error}</Text> : null}
       {!canContinue ? (
         <Text style={styles.pinHint}>
-          Enter your current PIN code and area to continue.
+          {pinReady && (areaNotListed || localityOptions.length === 0)
+            ? "Type your area to continue."
+            : "Enter your current PIN code and area to continue."}
         </Text>
       ) : null}
       </ScrollView>
@@ -740,44 +946,90 @@ export default function LocationScreen() {
         visible={localityOpen}
         animationType="slide"
         presentationStyle="pageSheet"
-        onRequestClose={() => setLocalityOpen(false)}
+        onRequestClose={() => {
+          setLocalityOpen(false);
+          setAreaFilter("");
+        }}
       >
         <View style={styles.modal}>
           <View style={styles.modalHead}>
             <Text style={styles.modalTitle}>Select your area</Text>
-            <Pressable onPress={() => setLocalityOpen(false)} accessibilityRole="button">
+            <Pressable
+              onPress={() => {
+                setLocalityOpen(false);
+                setAreaFilter("");
+              }}
+              accessibilityRole="button"
+            >
               <Text style={styles.modalClose}>Done</Text>
             </Pressable>
           </View>
+          <TextInput
+            style={styles.areaSearch}
+            placeholder="Search areas…"
+            placeholderTextColor={colors.textSubtle}
+            value={areaFilter}
+            onChangeText={setAreaFilter}
+            autoFocus={false}
+            autoCorrect={false}
+            clearButtonMode="while-editing"
+            testID="clarity-mask"
+          />
           <FlatList
-            data={localityOptions}
+            data={filteredSheetAreas}
             keyExtractor={(option) => option}
             keyboardShouldPersistTaps="handled"
-            renderItem={({ item }) => (
+            ListEmptyComponent={
               <Pressable
-                style={[
-                  styles.countryRow,
-                  item === locality && styles.countryRowActive,
-                ]}
-                onPress={() => {
-                  setLocality(item);
-                  setLocalityOpen(false);
-                  trackEvent("area_selected", { source: "dropdown" });
-                }}
+                style={styles.sheetEmpty}
+                onPress={() => openAreaNotListed("sheet")}
+                accessibilityRole="button"
               >
-                <Text
-                  style={[
-                    styles.countryName,
-                    item === locality && styles.countryNameActive,
-                  ]}
-                >
-                  {item}
+                <Text style={styles.sheetEmptyText}>
+                  No areas match — My area isn&apos;t listed
                 </Text>
-                {item === locality ? (
-                  <Ionicons name="checkmark" size={20} color={colors.primary} />
-                ) : null}
               </Pressable>
-            )}
+            }
+            ListFooterComponent={
+              filteredSheetAreas.length > 0 ? (
+                <Pressable
+                  style={styles.countryRow}
+                  onPress={() => openAreaNotListed("sheet")}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.notListedLinkText}>
+                    My area isn&apos;t listed
+                  </Text>
+                </Pressable>
+              ) : null
+            }
+            renderItem={({ item }) => {
+              const selected = listedSelected && item === locality;
+              return (
+                <Pressable
+                  style={[
+                    styles.countryRow,
+                    selected && styles.countryRowActive,
+                  ]}
+                  onPress={() => selectListedArea(item, "sheet")}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected }}
+                >
+                  <Text
+                    style={[
+                      styles.countryName,
+                      selected && styles.countryNameActive,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {item}
+                  </Text>
+                  {selected ? (
+                    <Ionicons name="checkmark" size={20} color={colors.primary} />
+                  ) : null}
+                </Pressable>
+              );
+            }}
           />
         </View>
       </Modal>
@@ -889,6 +1141,78 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     marginBottom: 8,
   },
+  areaList: {
+    gap: 8,
+    marginBottom: 4,
+  },
+  areaRow: {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+    minHeight: AREA_ROW_HEIGHT,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  areaRowActive: {
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.primary,
+  },
+  areaRowText: {
+    fontSize: 16,
+    color: colors.text,
+    flex: 1,
+  },
+  areaRowTextActive: {
+    fontWeight: "700",
+    color: colors.primaryDark,
+  },
+  areaShowAllText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: colors.primary,
+    flex: 1,
+  },
+  notListedLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 10,
+  },
+  notListedLinkText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: colors.primary,
+  },
+  notListedLinkTextActive: {
+    color: colors.primaryDark,
+  },
+  areaSearch: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 8,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+    minHeight: 44,
+    paddingHorizontal: 14,
+    fontSize: 16,
+    color: colors.text,
+  },
+  sheetEmpty: {
+    paddingHorizontal: 20,
+    paddingVertical: 24,
+  },
+  sheetEmptyText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: colors.primary,
+    textAlign: "center",
+  },
   chipRow: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -941,6 +1265,8 @@ const styles = StyleSheet.create({
   countryName: {
     fontSize: 16,
     color: colors.text,
+    flex: 1,
+    marginRight: 8,
   },
   countryNameActive: {
     fontWeight: "700",
