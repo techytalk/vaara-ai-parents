@@ -67,8 +67,8 @@ function locationHook(opts: {
     return {
       title: (
         <>
-          Enter your <Text style={hookAccent}>PIN code</Text> to find parents
-          from different schools in your area.
+          Enter your <Text style={hookAccent}>current PIN code</Text> to find
+          parents from different schools in your area.
         </>
       ),
       body: "Compare experiences, ask questions and discover what's happening nearby.",
@@ -79,8 +79,8 @@ function locationHook(opts: {
     return {
       title: (
         <>
-          Enter your <Text style={hookAccent}>PIN code</Text> to find parents
-          from different schools in your area.
+          Enter your <Text style={hookAccent}>current PIN code</Text> to find
+          parents from different schools in your area.
         </>
       ),
       body: "Finding your area…",
@@ -458,7 +458,10 @@ export default function LocationScreen() {
     );
   }
 
-  const postalLabel = selectedCountry?.postalLabel ?? "Postal code";
+  const postalLabel =
+    countryCode === "IN"
+      ? "Current PIN code"
+      : `Current ${selectedCountry?.postalLabel ?? "postal code"}`;
   const postalPlaceholder = selectedCountry?.placeholder ?? "Enter postal code";
   const usesNumericPostal =
     countryCode === "IN" ||
@@ -666,7 +669,7 @@ export default function LocationScreen() {
       {error ? <Text style={styles.error}>{error}</Text> : null}
       {!canContinue ? (
         <Text style={styles.pinHint}>
-          Enter your Pincode and area to continue.
+          Enter your current PIN code and area to continue.
         </Text>
       ) : null}
       </ScrollView>
