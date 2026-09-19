@@ -290,7 +290,7 @@ function MediaTile({
       accessibilityLabel={label}
     >
       {item.url && !isVideo ? (
-        <Image source={{ uri: item.url }} style={styles.tileImage} />
+        <Image source={{ uri: item.url }} style={styles.tileImage} resizeMode="cover" />
       ) : (
         <View style={[styles.tileFallback, isVideo && styles.tileVideo]}>
           <Ionicons
@@ -373,22 +373,22 @@ function GalleryModal({
 }
 
 const styles = StyleSheet.create({
-  wrap: { gap: 6, marginBottom: 4 },
-  single: { width: "100%", height: 200 },
-  two: { flexDirection: "row", gap: 4 },
-  half: { flex: 1, height: 140 },
-  three: { flexDirection: "row", gap: 4, height: 180 },
-  threeMain: { flex: 1.2 },
-  threeSide: { flex: 1, gap: 4 },
+  wrap: { gap: 4, marginBottom: 2 },
+  single: { width: "100%", height: 240 },
+  two: { flexDirection: "row", gap: 2 },
+  half: { flex: 1, height: 168 },
+  three: { flexDirection: "row", gap: 2, height: 220 },
+  threeMain: { flex: 1.15 },
+  threeSide: { flex: 1, gap: 2 },
   threeSideTile: { flex: 1 },
-  grid: { flexDirection: "row", flexWrap: "wrap", gap: 4 },
-  quarter: { width: "48.5%", height: 110 },
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: 2 },
+  quarter: { width: "49.4%", height: 118 },
   tile: {
-    borderRadius: radii.md,
+    borderRadius: 12,
     overflow: "hidden",
-    backgroundColor: colors.border,
+    backgroundColor: "#1a1a1a",
   },
-  tileMine: { backgroundColor: "rgba(255,255,255,0.2)" },
+  tileMine: { backgroundColor: "rgba(0,0,0,0.25)" },
   tileImage: { width: "100%", height: "100%" },
   tileFallback: {
     flex: 1,
@@ -422,6 +422,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+    marginHorizontal: 6,
     paddingVertical: 8,
     paddingHorizontal: 10,
     borderRadius: radii.md,

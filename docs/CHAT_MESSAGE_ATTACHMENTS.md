@@ -433,6 +433,14 @@ listed there as a **pending** manual step. Confirm it is actually deployed befor
 release. If it was never applied, `chat-media/` is publicly fetchable and this
 whole decision silently reverts to the unsafe option.
 
+**IAM (required for chat uploads):** the API credentials used by Vercel must
+allow `s3:PutObject`, `s3:GetObject`, and `s3:DeleteObject` on
+`arn:aws:s3:::vaara-parents-connect/chat-media/*`. Without PutObject, the app
+still receives a presigned URL but the phone’s PUT returns 403 and no row is
+written to `circle_message_media`. Full policy JSON, console steps, CLI smoke
+tests, and the CloudFront OAC privacy check live in
+[`S3_MEDIA_SETUP.md`](./S3_MEDIA_SETUP.md) §2.
+
 ### 4.1 Message create
 
 Extend both:

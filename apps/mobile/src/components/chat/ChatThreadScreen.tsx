@@ -292,8 +292,12 @@ export function ChatThreadScreen({
     pendingDocs.some(
       (item) => item.status === "failed" || item.status === "blocked"
     );
-  const readyMedia = pendingMedia.filter((item) => item.status === "ready");
-  const readyDocs = pendingDocs.filter((item) => item.status === "clean");
+  const readyMedia = pendingMedia.filter(
+    (item) => item.status === "ready" && Boolean(item.storageKey)
+  );
+  const readyDocs = pendingDocs.filter(
+    (item) => item.status === "clean" && Boolean(item.storageKey)
+  );
   const hasAttachments = pendingMedia.length > 0 || pendingDocs.length > 0;
   const attachmentsReady =
     hasAttachments &&
@@ -460,23 +464,36 @@ export function ChatThreadScreen({
         return;
       }
       const attachments = [
-        ...readyMedia.map((item) => ({
-          storageKey: item.storageKey as string,
-          mediaType: item.mediaType,
-          mimeType: item.mimeType,
-          fileName: item.fileName,
-          width: item.width,
-          height: item.height,
-          durationMs: item.durationMs,
-        })),
-        ...readyDocs.map((item) => ({
-          storageKey: item.storageKey as string,
-          mediaType: "document" as const,
-          mimeType: item.mimeType,
-          fileName: item.fileName,
-        })),
+        ...readyMedia.flatMap((item) =>
+          item.storageKey
+            ? [
+                {
+                  storageKey: item.storageKey,
+                  mediaType: item.mediaType,
+                  mimeType: item.mimeType,
+                  fileName: item.fileName,
+                  width: item.width,
+                  height: item.height,
+                  durationMs: item.durationMs,
+                },
+              ]
+            : []
+        ),
+        ...readyDocs.flatMap((item) =>
+          item.storageKey
+            ? [
+                {
+                  storageKey: item.storageKey,
+                  mediaType: "document" as const,
+                  mimeType: item.mimeType,
+                  fileName: item.fileName,
+                },
+              ]
+            : []
+        ),
       ];
-      await authed((token) =>
+      if (!body && attachments.length === 0) return;
+      const sent = await authed((token) =>
         mode === "thread" && threadId
           ? api.sendThreadMessage(token, threadId, {
               body,
@@ -489,6 +506,19 @@ export function ChatThreadScreen({
               replyToMessageId: quoteTarget?.id,
               attachments: attachments.length > 0 ? attachments : undefined,
             })
+      );
+      queryClient.setQueryData(
+        ["chatMessages", mode, circleId, threadId],
+        (current: { messages: ChatMessage[]; nextCursor: number | null } | undefined) => {
+          const existing = current?.messages ?? [];
+          if (existing.some((item) => item.id === sent.id)) {
+            return current ?? { messages: existing, nextCursor: null };
+          }
+          return {
+            messages: [...existing, sent],
+            nextCursor: current?.nextCursor ?? null,
+          };
+        }
       );
       setDraft("");
       setQuoteTarget(null);
@@ -1076,6 +1106,12 @@ function Bubble({
   const ageMs = Date.now() - new Date(message.createdAt).getTime();
   const canManage = mine && ageMs <= 24 * 60 * 60 * 1000;
   const canReport = !mine && visible;
+  const hasVisualMedia = Boolean(
+    visible &&
+      message.attachments?.some(
+        (item) => item.type === "image" || item.type === "video"
+      )
+  );
   const role =
     message.author.role === "provider"
       ? "Tutor"
@@ -1107,6 +1143,8 @@ function Bubble({
           style={[
             styles.bubble,
             mine ? styles.bubbleMine : styles.bubbleTheir,
+            hasVisualMedia && styles.bubbleHasMedia,
+            hasVisualMedia && !message.body && styles.bubbleMediaOnly,
             highlight && styles.bubbleEditing,
             !visible && styles.bubbleDeleted,
           ]}
@@ -1118,7 +1156,13 @@ function Bubble({
             />
           ) : null}
           {visible && message.body ? (
-            <Text style={[styles.body, mine && styles.bodyMine]}>
+            <Text
+              style={[
+                styles.body,
+                mine && styles.bodyMine,
+                hasVisualMedia && styles.bodyAfterMedia,
+              ]}
+            >
               {message.body}
             </Text>
           ) : null}
@@ -1425,6 +1469,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingTop: 8,
     paddingBottom: 6,
+    overflow: "hidden",
+  },
+  bubbleHasMedia: {
+    paddingHorizontal: 3,
+    paddingTop: 3,
+  },
+  bubbleMediaOnly: {
+    paddingBottom: 4,
   },
   bubbleTheir: {
     backgroundColor: colors.card,
@@ -1450,6 +1502,10 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 21,
   },
+  bodyAfterMedia: {
+    paddingHorizontal: 11,
+    paddingTop: 6,
+  },
   bodyMine: { color: colors.textInverse },
   bodyDeleted: {
     fontFamily: typography.medium,
@@ -1458,6 +1514,7 @@ const styles = StyleSheet.create({
   },
   time: {
     marginTop: 4,
+    marginHorizontal: 8,
     alignSelf: "flex-end",
     fontFamily: typography.regular,
     color: colors.textSubtle,

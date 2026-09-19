@@ -159,8 +159,13 @@ export async function uploadMediaBytes(
       detail.match(/<Code>([^<]+)<\/Code>/i)?.[1] ??
       detail.match(/"Code"\s*:\s*"([^"]+)"/)?.[1];
     if (response.status === 403) {
+      // Presigned PUTs fail with AccessDenied when the API IAM user cannot
+      // PutObject on the target prefix (commonly chat-media/*). See
+      // docs/S3_MEDIA_SETUP.md §2.
       throw new Error(
-        `Could not upload ${fileName} (access denied${code ? `: ${code}` : ""})`
+        code === "AccessDenied" || !code
+          ? `Could not upload ${fileName} — storage access denied. Check IAM PutObject for this upload prefix.`
+          : `Could not upload ${fileName} (access denied: ${code})`
       );
     }
     throw new Error(
