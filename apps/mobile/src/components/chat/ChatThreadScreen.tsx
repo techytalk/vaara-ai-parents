@@ -33,10 +33,7 @@ import {
   typography,
 } from "@/constants/theme";
 import { useBottomChromeInset } from "@/hooks/useBottomChromeInset";
-import {
-  useAndroidImeDockOffset,
-  useKeyboardHeight,
-} from "@/hooks/useKeyboardHeight";
+import { useAndroidImeDockOffset } from "@/hooks/useKeyboardHeight";
 import { useRealtimeChannel } from "@/hooks/useRealtimeChannel";
 import { api, type ChatMessage } from "@/lib/api";
 import {
@@ -104,10 +101,8 @@ export function ChatThreadScreen({
   const navigation = useNavigation();
   const headerHeight = useHeaderHeight();
   const bottomChrome = useBottomChromeInset();
-  const keyboardHeight = useKeyboardHeight();
-  // Tabs are hidden in chat, so the closed inset lives on the composer as
-  // paddingBottom — same Post/Save dock pattern, without double-counting.
-  const androidDockOffset = useAndroidImeDockOffset(0);
+  // Same dock as Post / Save: closed → nav inset; open → IME remainder / full height.
+  const androidDockOffset = useAndroidImeDockOffset(bottomChrome);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -666,8 +661,6 @@ export function ChatThreadScreen({
 
   const dockStyle =
     androidDockOffset > 0 ? { marginBottom: androidDockOffset } : null;
-  const composerPad =
-    keyboardHeight > 0 ? spacing.xs : Math.max(bottomChrome, spacing.sm);
   const canSend =
     !sending &&
     canReply &&
@@ -749,7 +742,7 @@ export function ChatThreadScreen({
         )}
       />
       {canReply ? (
-        <View style={[styles.composer, dockStyle, { paddingBottom: composerPad }]}>
+        <View style={[styles.composer, dockStyle]}>
           {actionError ? (
             <Text style={styles.actionError}>{actionError}</Text>
           ) : null}
@@ -951,7 +944,7 @@ export function ChatThreadScreen({
           </View>
         </View>
       ) : (
-        <Text style={[styles.readonly, dockStyle, { paddingBottom: composerPad }]}>
+        <Text style={[styles.readonly, dockStyle]}>
           You can read this thread, not reply.
         </Text>
       )}

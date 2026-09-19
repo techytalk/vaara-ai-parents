@@ -7,31 +7,37 @@ import {
 } from "react-native";
 
 /**
- * Shared IME state for composer docks.
+ * Shared IME state for composer docks (Post / Save / chat).
  *
- * Android is the hard case: whether the app window shrinks when the keyboard
- * opens depends on the OS version *and* on whether the app opted out of
- * edge-to-edge enforcement, which cannot be derived from `Platform.Version`
- * alone. We measure the shrink once against the keyboard-closed baseline, then
- * lift the dock by only the uncovered remainder.
+ * Android: whether the window shrinks for the IME cannot be derived from
+ * `Platform.Version` alone. Measure shrink against the keyboard-closed
+ * baseline, then:
+ *   - no resize → lift by the full IME height (Post / Save path)
+ *   - resize    → lift only the uncovered remainder
  *
- * That remainder matters for Gboard's suggestion bar: the window often resizes
- * for the key grid, then the suggestion strip grows on top without a further
- * window shrink — leaving Post / Save / chat composers half-covered.
- *
- * Heights come from `endCoordinates.height` only — never screen/window
- * arithmetic for the IME itself, which OEM skins report inconsistently.
+ * Gboard’s suggestion strip is the extra case: it often paints above the key
+ * grid without growing `endCoordinates.height` or shrinking the window, so
+ * the dock still needs a strip-sized lift.
  */
+
+/** One Gboard / Samsung suggestion row. Better a small gap than a covered dock. */
+const SUGGESTION_STRIP = 56;
 
 type ImeState = {
   height: number;
-  /** How many px the window height fell since the keyboard-closed baseline. */
+  /** True when the window shrinks for the IME. Null until first open. */
+  windowResizesForIme: boolean | null;
   windowShrink: number;
 };
 
 let subscribed = false;
-let current: ImeState = { height: 0, windowShrink: 0 };
+let current: ImeState = {
+  height: 0,
+  windowResizesForIme: null,
+  windowShrink: 0,
+};
 let closedWindowHeight: number | null = null;
+let lastImeHeight = 0;
 const subscribers = new Set<(state: ImeState) => void>();
 
 function windowHeight(): number {
@@ -50,6 +56,7 @@ function measuredShrink(): number {
 function publish(next: ImeState) {
   if (
     next.height === current.height &&
+    next.windowResizesForIme === current.windowResizesForIme &&
     next.windowShrink === current.windowShrink
   ) {
     return;
@@ -59,17 +66,26 @@ function publish(next: ImeState) {
 }
 
 function handleShow(height: number) {
-  if (height <= 0) {
-    publish({ height: 0, windowShrink: 0 });
-    return;
+  if (height <= 0) return;
+
+  lastImeHeight = height;
+  const shrink = measuredShrink();
+  let resizes = current.windowResizesForIme;
+  if (Platform.OS === "android" && closedWindowHeight != null) {
+    resizes = shrink >= height / 2;
   }
 
-  publish({ height, windowShrink: measuredShrink() });
+  publish({ height, windowResizesForIme: resizes, windowShrink: shrink });
 }
 
 function handleHide() {
+  lastImeHeight = 0;
   closedWindowHeight = windowHeight();
-  publish({ height: 0, windowShrink: 0 });
+  publish({
+    height: 0,
+    windowResizesForIme: current.windowResizesForIme,
+    windowShrink: 0,
+  });
 }
 
 function ensureKeyboardSubscription() {
@@ -79,11 +95,12 @@ function ensureKeyboardSubscription() {
   closedWindowHeight = windowHeight();
 
   Dimensions.addEventListener("change", () => {
-    // Keep the closed baseline fresh when layout changes (e.g. tab bar
-    // hidden in chat) so the next keyboard open measures shrink correctly.
     if (current.height === 0) {
       closedWindowHeight = windowHeight();
+      return;
     }
+    // Window resized while the IME is up (tab bar hide, adjustResize).
+    if (lastImeHeight > 0) handleShow(lastImeHeight);
   });
 
   const showEvent =
@@ -99,8 +116,9 @@ function ensureKeyboardSubscription() {
   if (Platform.OS === "android") {
     Keyboard.addListener("keyboardDidChangeFrame", (event) => {
       const next = heightFromEvent(event);
-      // Ignore junk frames; keep suggestion-bar growth (~IME height).
-      if (next === 0 || next >= 80) handleShow(next);
+      // Suggestion-bar growth is a real frame. Height 0 here is a junk frame —
+      // treating it as hide drops the dock while Gboard is still open.
+      if (next >= 80) handleShow(next);
     });
   }
 
@@ -130,21 +148,25 @@ export function useKeyboardHeight(): number {
 }
 
 /**
- * Space that must remain below an Android composer. Apply this as margin,
- * never padding: padding leaves children inside the IME-covered region.
+ * Space that must remain below an Android composer. Apply as margin, never
+ * padding: padding leaves children inside the IME-covered region.
  * Keyboard closed → nav/chrome inset. iOS callers get 0 and use KAV.
- *
- * When the keyboard is open, returns only the part of the IME the window
- * resize did not already clear — so suggestion-bar growth still lifts the
- * dock even if adjustResize already handled the key grid.
  */
 export function useAndroidImeDockOffset(closedInset: number): number {
-  const { height, windowShrink } = useImeState();
+  const { height, windowResizesForIme, windowShrink } = useImeState();
 
   if (Platform.OS !== "android") return 0;
 
   const navInset = Math.max(closedInset, 0);
   if (height <= 0) return navInset;
 
-  return Math.max(0, height - windowShrink);
+  // Window did not shrink: same lift as Post / Save, plus the suggestion strip
+  // that Gboard paints above the reported key-grid height.
+  if (windowResizesForIme === false) {
+    return height + navInset + SUGGESTION_STRIP;
+  }
+
+  // Window already shrank for the key grid. Lift the leftover (strip growth)
+  // and never less than one suggestion row.
+  return Math.max(SUGGESTION_STRIP, height - windowShrink);
 }
