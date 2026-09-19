@@ -1,25 +1,24 @@
 import { useCallback, useState } from "react";
 import {
-  KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { Link, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SocialAuthSection } from "@/components/SocialAuthSection";
 import { AuthHookHeadline } from "@/components/AuthHookHeadline";
-import { AuthPitchStrip } from "@/components/AuthPitchStrip";
+import {
+  AuthScreenShell,
+  useAuthDensityBand,
+} from "@/components/AuthScreenShell";
 import { LegalFooter } from "@/components/LegalFooter";
 import { VaaraLogo } from "@/components/VaaraLogo";
 import { Button, InlineError } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
-import { useOnboardingContentStyle } from "@/components/onboarding/ui";
 import { api } from "@/lib/api";
 import { trackAuthConversion } from "@/lib/analytics";
 import {
@@ -36,6 +35,7 @@ import {
 
 export default function LoginScreen() {
   const router = useRouter();
+  const band = useAuthDensityBand();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showEmail, setShowEmail] = useState(
@@ -44,7 +44,6 @@ export default function LoginScreen() {
   const [error, setError] = useState<string | null>(null);
   const [googleError, setGoogleError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const contentStyle = useOnboardingContentStyle();
 
   const completeAuth = useCallback(
     async (
@@ -84,19 +83,15 @@ export default function LoginScreen() {
   const displayError = error ?? googleError;
 
   return (
-    <SafeAreaView style={styles.safe} edges={["bottom", "left", "right"]}>
-      <KeyboardAvoidingView
-        style={styles.safe}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
-        <ScrollView
-          contentContainerStyle={[styles.container, contentStyle]}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
+    <AuthScreenShell
+      band={band}
+      scrollBody={showEmail}
+      body={
+        <>
           <VaaraLogo compact />
 
           <AuthHookHeadline
+            band={band}
             kicker="Welcome back"
             headline={[
               { text: "Your parent " },
@@ -106,14 +101,25 @@ export default function LoginScreen() {
             lead="Sign in to see what parents from your school, neighbourhood and class are talking about."
           />
 
-          <SocialAuthSection
-            onSuccess={(result, method) => completeAuth(result, method)}
-            onError={setGoogleError}
-            googleLabel="Sign in with Google"
-            appleButtonType="signIn"
-          />
-
-          {showEmail ? (
+          {!showEmail ? (
+            <>
+              <SocialAuthSection
+                onSuccess={(result, method) => completeAuth(result, method)}
+                onError={setGoogleError}
+                googleLabel="Sign in with Google"
+                appleButtonType="signIn"
+              />
+              {displayError ? <InlineError message={displayError} /> : null}
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setShowEmail(true)}
+                style={styles.emailButton}
+              >
+                <Ionicons name="mail-outline" size={18} color={colors.text} />
+                <Text style={styles.emailButtonText}>Sign in with email</Text>
+              </Pressable>
+            </>
+          ) : (
             <View style={styles.emailForm}>
               <Text style={styles.label}>Email address</Text>
               <TextInput
@@ -164,20 +170,11 @@ export default function LoginScreen() {
                 </Text>
               </Pressable>
             </View>
-          ) : (
-            <>
-              {displayError ? <InlineError message={displayError} /> : null}
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => setShowEmail(true)}
-                style={styles.emailButton}
-              >
-                <Ionicons name="mail-outline" size={18} color={colors.text} />
-                <Text style={styles.emailButtonText}>Sign in with email</Text>
-              </Pressable>
-            </>
           )}
-
+        </>
+      }
+      footer={
+        <>
           <View style={styles.meta}>
             <Link href="/(auth)/register" asChild>
               <Pressable accessibilityRole="link" style={styles.loginRow}>
@@ -186,20 +183,17 @@ export default function LoginScreen() {
               </Pressable>
             </Link>
           </View>
-
-          <AuthPitchStrip />
-          <LegalFooter extra="Your real name stays private in circles." />
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+          <LegalFooter
+            compact
+            extra="Your real name stays private in circles."
+          />
+        </>
+      }
+    />
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
-  container: {
-    flexGrow: 1,
-  },
   emailForm: {
     marginTop: spacing.xs,
   },
@@ -222,12 +216,11 @@ const styles = StyleSheet.create({
     fontFamily: typography.regular,
   },
   meta: {
-    marginTop: spacing.xl,
     alignItems: "center",
   },
   emailButton: {
     minHeight: 48,
-    marginTop: 10,
+    marginTop: 4,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",

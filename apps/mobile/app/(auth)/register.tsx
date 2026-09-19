@@ -1,25 +1,24 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { Link, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SocialAuthSection } from "@/components/SocialAuthSection";
 import { AuthHookHeadline } from "@/components/AuthHookHeadline";
-import { AuthPitchStrip } from "@/components/AuthPitchStrip";
+import {
+  AuthScreenShell,
+  useAuthDensityBand,
+} from "@/components/AuthScreenShell";
 import { LegalFooter } from "@/components/LegalFooter";
 import { VaaraLogo } from "@/components/VaaraLogo";
 import { Button, InlineError } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
-import { useOnboardingContentStyle } from "@/components/onboarding/ui";
 import { api } from "@/lib/api";
 import { trackAuthConversion, trackEvent } from "@/lib/analytics";
 import {
@@ -39,6 +38,7 @@ import {
 
 export default function RegisterScreen() {
   const router = useRouter();
+  const band = useAuthDensityBand();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<"parent" | "provider">("parent");
@@ -49,7 +49,6 @@ export default function RegisterScreen() {
   const [error, setError] = useState<string | null>(null);
   const [googleError, setGoogleError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const contentStyle = useOnboardingContentStyle();
 
   useEffect(() => {
     trackEvent("signup_view");
@@ -103,51 +102,77 @@ export default function RegisterScreen() {
     password.length <= MAX_PASSWORD_LENGTH;
 
   const displayError = error ?? googleError;
+  const parentHeadline =
+    band === "short"
+      ? [
+          { text: "Find parents from your child’s " },
+          { text: "school", accent: true },
+          { text: " and " },
+          { text: "neighbourhood", accent: true },
+          { text: "." },
+        ]
+      : [
+          { text: "Find other parents from your child’s " },
+          { text: "school", accent: true },
+          { text: " and " },
+          { text: "neighbourhood", accent: true },
+          { text: ", and get real opinions and experiences." },
+        ];
 
   return (
-    <SafeAreaView style={styles.safe} edges={["bottom", "left", "right"]}>
-      <KeyboardAvoidingView
-        style={styles.safe}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
-        <ScrollView
-          contentContainerStyle={[styles.container, contentStyle]}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
+    <AuthScreenShell
+      band={band}
+      scrollBody={showEmail}
+      body={
+        <>
           <VaaraLogo compact />
 
           {role === "parent" ? (
             <AuthHookHeadline
+              band={band}
               kicker="Create your Vaara account"
-              headline={[
-                { text: "Find other parents from your child’s " },
-                { text: "school", accent: true },
-                { text: " and " },
-                { text: "neighbourhood", accent: true },
-                { text: ", and get real opinions and experiences." },
-              ]}
+              headline={parentHeadline}
             />
           ) : (
             <AuthHookHeadline
+              band={band}
               kicker="For schools & trainers"
               headline={[
-                { text: "Create your school, trainer or institution account" },
+                {
+                  text:
+                    band === "short"
+                      ? "Create your school or trainer account"
+                      : "Create your school, trainer or institution account",
+                },
               ]}
               lead="For teachers, schools, trainers and institutions. You’ll add your organisation after sign-up."
             />
           )}
 
-          <SocialAuthSection
-            onSuccess={(result, method) => completeAuth(result, method)}
-            onError={setGoogleError}
-            role={role}
-            displayName={displayName}
-            googleLabel="Continue with Google"
-            appleButtonType="signUp"
-          />
-
-          {showEmail ? (
+          {!showEmail ? (
+            <>
+              <SocialAuthSection
+                onSuccess={(result, method) => completeAuth(result, method)}
+                onError={setGoogleError}
+                role={role}
+                displayName={displayName}
+                googleLabel="Continue with Google"
+                appleButtonType="signUp"
+              />
+              {displayError ? <InlineError message={displayError} /> : null}
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  trackEvent("signup_method_selected", { method: "email" });
+                  setShowEmail(true);
+                }}
+                style={styles.emailButton}
+              >
+                <Ionicons name="mail-outline" size={18} color={colors.text} />
+                <Text style={styles.emailButtonText}>Continue with email</Text>
+              </Pressable>
+            </>
+          ) : (
             <View style={styles.emailForm}>
               <Text style={styles.label}>Your name (kept private)</Text>
               <TextInput
@@ -210,23 +235,11 @@ export default function RegisterScreen() {
                 </Text>
               </Pressable>
             </View>
-          ) : (
-            <>
-              {displayError ? <InlineError message={displayError} /> : null}
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => {
-                  trackEvent("signup_method_selected", { method: "email" });
-                  setShowEmail(true);
-                }}
-                style={styles.emailButton}
-              >
-                <Ionicons name="mail-outline" size={18} color={colors.text} />
-                <Text style={styles.emailButtonText}>Continue with email</Text>
-              </Pressable>
-            </>
           )}
-
+        </>
+      }
+      footer={
+        <>
           <View style={styles.meta}>
             <Link href="/(auth)/login" asChild>
               <Pressable accessibilityRole="link" style={styles.loginRow}>
@@ -240,10 +253,22 @@ export default function RegisterScreen() {
             <Pressable
               accessibilityRole="button"
               onPress={() => setRole("provider")}
-              style={styles.providerRow}
+              style={band === "short" ? styles.providerLink : styles.providerRow}
             >
-              <Ionicons name="school-outline" size={18} color={colors.primaryDark} />
-              <Text style={styles.providerRowText}>
+              {band !== "short" ? (
+                <Ionicons
+                  name="school-outline"
+                  size={18}
+                  color={colors.primaryDark}
+                />
+              ) : null}
+              <Text
+                style={
+                  band === "short"
+                    ? styles.providerLinkText
+                    : styles.providerRowText
+                }
+              >
                 I&apos;m a teacher, school or trainer
               </Text>
             </Pressable>
@@ -251,27 +276,38 @@ export default function RegisterScreen() {
             <Pressable
               accessibilityRole="button"
               onPress={() => setRole("parent")}
-              style={styles.providerRow}
+              style={band === "short" ? styles.providerLink : styles.providerRow}
             >
-              <Ionicons name="people-outline" size={18} color={colors.primaryDark} />
-              <Text style={styles.providerRowText}>
+              {band !== "short" ? (
+                <Ionicons
+                  name="people-outline"
+                  size={18}
+                  color={colors.primaryDark}
+                />
+              ) : null}
+              <Text
+                style={
+                  band === "short"
+                    ? styles.providerLinkText
+                    : styles.providerRowText
+                }
+              >
                 I&apos;m a parent
               </Text>
-            </Pressable>          )}
+            </Pressable>
+          )}
 
-          <AuthPitchStrip />
-          <LegalFooter extra="Your real name stays private in circles." />
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+          <LegalFooter
+            compact
+            extra="Your real name stays private in circles."
+          />
+        </>
+      }
+    />
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
-  container: {
-    flexGrow: 1,
-  },
   emailForm: {
     marginTop: spacing.xs,
   },
@@ -295,12 +331,11 @@ const styles = StyleSheet.create({
   },
   button: { marginTop: spacing.sm },
   meta: {
-    marginTop: spacing.xl,
     alignItems: "center",
   },
   emailButton: {
     minHeight: 48,
-    marginTop: 10,
+    marginTop: 4,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -329,7 +364,7 @@ const styles = StyleSheet.create({
   loginRow: {
     flexDirection: "row",
     alignItems: "center",
-    minHeight: 44,
+    minHeight: 40,
   },
   loginMuted: {
     ...typography.body,
@@ -342,7 +377,6 @@ const styles = StyleSheet.create({
     fontFamily: typography.bold,
   },
   providerRow: {
-    marginTop: spacing.lg,
     minHeight: 48,
     flexDirection: "row",
     alignItems: "center",
@@ -357,39 +391,15 @@ const styles = StyleSheet.create({
     color: colors.primaryDark,
     fontFamily: typography.semibold,
   },
-  providerNote: {
-    marginTop: spacing.lg,
-    gap: spacing.xs,
-    backgroundColor: colors.primarySoft,
-    borderRadius: radii.md,
-    padding: spacing.md,
-  },
-  providerNoteHeader: {
-    flexDirection: "row",
+  providerLink: {
+    minHeight: 36,
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
   },
-  providerNoteTitle: {
-    ...typography.body,
-    color: colors.primaryDark,
-    fontFamily: typography.bold,
-    textAlign: "center",
-  },
-  providerNoteText: {
+  providerLinkText: {
     ...typography.supporting,
     color: colors.primaryDark,
-    fontFamily: typography.regular,
-    textAlign: "center",
-  },
-  providerSwitchHit: {
-    minHeight: 40,
-    justifyContent: "center",
-  },
-  providerSwitch: {
-    ...typography.body,
-    color: colors.primaryDark,
-    fontFamily: typography.bold,
+    fontFamily: typography.semibold,
     textAlign: "center",
   },
 });
