@@ -67,6 +67,10 @@ async function requireAdminAuth(c: {
   return null;
 }
 
+function seedFail(result: { ok: false; error: string; status: number }) {
+  return result;
+}
+
 function mergesEnabled(): boolean {
   return process.env.SCHOOL_MERGES_ENABLED === "true";
 }
@@ -1070,13 +1074,13 @@ export function createInternalRoutes() {
         pinCode: body.pinCode,
         actor: body.actor ?? "admin",
       });
-      if (!result.ok) {
-        const { error, status } = result;
-        await client.query("ROLLBACK");
-        return c.json({ error }, status as 400 | 404);
+      if (result.ok === true) {
+        await client.query("COMMIT");
+        return c.json(result, 201);
       }
-      await client.query("COMMIT");
-      return c.json(result, 201);
+      const fail = seedFail(result as { ok: false; error: string; status: number });
+      await client.query("ROLLBACK");
+      return c.json({ error: fail.error }, fail.status as 400 | 404);
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;
@@ -1110,13 +1114,13 @@ export function createInternalRoutes() {
         body.status,
         body.actor ?? "admin"
       );
-      if (!result.ok) {
-        const { error, status } = result;
-        await client.query("ROLLBACK");
-        return c.json({ error }, status as 400 | 404);
+      if (result.ok === true) {
+        await client.query("COMMIT");
+        return c.json(result);
       }
-      await client.query("COMMIT");
-      return c.json(result);
+      const fail = seedFail(result as { ok: false; error: string; status: number });
+      await client.query("ROLLBACK");
+      return c.json({ error: fail.error }, fail.status as 400 | 404);
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;
@@ -1162,17 +1166,17 @@ export function createInternalRoutes() {
         replyToMessageId: body.replyToMessageId,
         actor: body.actor ?? "admin",
       });
-      if (!result.ok) {
-        const { error, status } = result;
-        await client.query("ROLLBACK");
-        return c.json({ error }, status as 400 | 403 | 404 | 429);
+      if (result.ok === true) {
+        await client.query("COMMIT");
+        await publishChatNudge(result.nudge);
+        return c.json(
+          { ok: true, mode: result.mode, result: result.result },
+          201
+        );
       }
-      await client.query("COMMIT");
-      await publishChatNudge(result.nudge);
-      return c.json(
-        { ok: true, mode: result.mode, result: result.result },
-        201
-      );
+      const fail = seedFail(result as { ok: false; error: string; status: number });
+      await client.query("ROLLBACK");
+      return c.json({ error: fail.error }, fail.status as 400 | 403 | 404 | 429);
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;
