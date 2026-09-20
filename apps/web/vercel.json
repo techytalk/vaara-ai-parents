@@ -12,6 +12,14 @@
   ],
   "rewrites": [
     {
+      "source": "/support",
+      "destination": "/support.html"
+    },
+    {
+      "source": "/support/",
+      "destination": "/support.html"
+    },
+    {
       "source": "/p/:shareId",
       "destination": "https://api.vaara.ai/v1/shares/:shareId/page"
     }
