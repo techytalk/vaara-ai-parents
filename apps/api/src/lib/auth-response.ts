@@ -9,6 +9,7 @@ type UserAuthRow = {
   anonymous_handle: string;
   onboarding_complete: boolean;
   avatar_key?: string | null;
+  session_version?: number | null;
 };
 
 export async function buildAuthResponse(
@@ -19,6 +20,7 @@ export async function buildAuthResponse(
     sub: user.id,
     email: user.email,
     role: user.role,
+    sessionVersion: Number(user.session_version ?? 0),
   });
 
   return {

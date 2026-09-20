@@ -102,11 +102,22 @@ export async function batchCreateNotifications(
   });
   if (eligible.length === 0) return [];
 
-  const userIds = eligible.map((item) => item.userId);
-  const types = eligible.map(() => type);
-  const titles = eligible.map((item) => item.title);
-  const bodies = eligible.map((item) => item.body);
-  const dataJson = eligible.map((item) =>
+  const candidateIds = eligible.map((item) => item.userId);
+  const active = await client.query(
+    `SELECT id FROM users
+     WHERE id = ANY($1::uuid[])
+       AND (is_internal IS NOT TRUE OR internal_status = 'active')`,
+    [candidateIds]
+  );
+  const activeIds = new Set(active.rows.map((row) => String(row.id)));
+  const filtered = eligible.filter((item) => activeIds.has(item.userId));
+  if (filtered.length === 0) return [];
+
+  const userIds = filtered.map((item) => item.userId);
+  const types = filtered.map(() => type);
+  const titles = filtered.map((item) => item.title);
+  const bodies = filtered.map((item) => item.body);
+  const dataJson = filtered.map((item) =>
     JSON.stringify({ ...item.data, type })
   );
 
@@ -129,8 +140,8 @@ export async function batchCreateNotifications(
       notificationPrefs?: NotificationPrefs | null;
     }> = [];
 
-    for (let i = 0; i < eligible.length; i++) {
-      const item = eligible[i];
+    for (let i = 0; i < filtered.length; i++) {
+      const item = filtered[i];
       if (!item.pushToken) continue;
       outboxItems.push({
         notificationId: notificationIds[i],

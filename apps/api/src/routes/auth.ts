@@ -31,6 +31,18 @@ async function generateUniqueHandle(client: PoolClient): Promise<string> {
   return handle;
 }
 
+const AUTH_USER_COLS =
+  `id, email, role, display_name, anonymous_handle, onboarding_complete, avatar_key, session_version, is_internal, internal_status`;
+
+function rejectIfInactive(
+  user: { is_internal?: boolean; internal_status?: string }
+): { error: string } | null {
+  if (user.is_internal === true && user.internal_status === "inactive") {
+    return { error: "Account deactivated" };
+  }
+  return null;
+}
+
 async function readJson<T>(c: {
   req: { json: () => Promise<unknown> };
 }): Promise<T | null> {
@@ -119,7 +131,7 @@ export function createAuthRoutes() {
       const { rows } = await client.query(
         `INSERT INTO users (email, password_hash, role, display_name, anonymous_handle, avatar_key)
          VALUES ($1, $2, $3, $4, $5, $6)
-         RETURNING id, email, role, display_name, anonymous_handle, onboarding_complete, avatar_key`,
+         RETURNING ${AUTH_USER_COLS}`,
         [email, passwordHash, role, displayName, handle, avatarKey]
       );
       const insertMs = performance.now() - insertStarted;
@@ -160,7 +172,8 @@ export function createAuthRoutes() {
     const client = await pool.connect();
     try {
       const { rows } = await client.query(
-        `SELECT id, email, role, display_name, anonymous_handle, onboarding_complete, avatar_key, password_hash, google_sub, apple_sub
+        `SELECT id, email, role, display_name, anonymous_handle, onboarding_complete, avatar_key, password_hash, google_sub, apple_sub,
+                session_version, is_internal, internal_status
          FROM users WHERE email = $1`,
         [email]
       );
@@ -170,6 +183,9 @@ export function createAuthRoutes() {
       }
 
       const user = rows[0];
+      if (user.is_internal === true && user.internal_status === "inactive") {
+        return c.json({ error: "Account deactivated" }, 401);
+      }
       if (!user.password_hash) {
         const usesApple = Boolean(user.apple_sub);
         const usesGoogle = Boolean(user.google_sub);
@@ -226,23 +242,27 @@ export function createAuthRoutes() {
     const client = await pool.connect();
     try {
       const byGoogle = await client.query(
-        `SELECT id, email, role, display_name, anonymous_handle, onboarding_complete, avatar_key
+        `SELECT ${AUTH_USER_COLS}
          FROM users WHERE google_sub = $1`,
         [identity.sub]
       );
 
       if (byGoogle.rows.length > 0) {
+        const blocked = rejectIfInactive(byGoogle.rows[0]);
+        if (blocked) return c.json(blocked, 401);
         return c.json(await buildAuthResponse(byGoogle.rows[0], { isNewUser: false }));
       }
 
       const byEmail = await client.query(
-        `SELECT id, email, role, display_name, anonymous_handle, onboarding_complete, avatar_key, google_sub
+        `SELECT ${AUTH_USER_COLS}, google_sub
          FROM users WHERE email = $1`,
         [identity.email]
       );
 
       if (byEmail.rows.length > 0) {
         const existing = byEmail.rows[0];
+        const blocked = rejectIfInactive(existing);
+        if (blocked) return c.json(blocked, 401);
         if (existing.google_sub && existing.google_sub !== identity.sub) {
           return c.json({ error: "Email already linked to another Google account" }, 409);
         }
@@ -253,7 +273,7 @@ export function createAuthRoutes() {
                display_name = COALESCE(display_name, $3),
                updated_at = now()
            WHERE id = $1
-           RETURNING id, email, role, display_name, anonymous_handle, onboarding_complete, avatar_key`,
+           RETURNING ${AUTH_USER_COLS}`,
           [existing.id, identity.sub, displayName]
         );
 
@@ -265,7 +285,7 @@ export function createAuthRoutes() {
       const { rows } = await client.query(
         `INSERT INTO users (email, role, display_name, anonymous_handle, google_sub, avatar_key)
          VALUES ($1, $2, $3, $4, $5, $6)
-         RETURNING id, email, role, display_name, anonymous_handle, onboarding_complete, avatar_key`,
+         RETURNING ${AUTH_USER_COLS}`,
         [identity.email, role, displayName, handle, identity.sub, avatarKey]
       );
 
@@ -302,12 +322,14 @@ export function createAuthRoutes() {
     const client = await pool.connect();
     try {
       const byApple = await client.query(
-        `SELECT id, email, role, display_name, anonymous_handle, onboarding_complete, avatar_key
+        `SELECT ${AUTH_USER_COLS}
          FROM users WHERE apple_sub = $1`,
         [identity.sub]
       );
 
       if (byApple.rows.length > 0) {
+        const blocked = rejectIfInactive(byApple.rows[0]);
+        if (blocked) return c.json(blocked, 401);
         return c.json(await buildAuthResponse(byApple.rows[0], { isNewUser: false }));
       }
 
@@ -322,13 +344,15 @@ export function createAuthRoutes() {
       }
 
       const byEmail = await client.query(
-        `SELECT id, email, role, display_name, anonymous_handle, onboarding_complete, avatar_key, apple_sub
+        `SELECT ${AUTH_USER_COLS}, apple_sub
          FROM users WHERE email = $1`,
         [identity.email]
       );
 
       if (byEmail.rows.length > 0) {
         const existing = byEmail.rows[0];
+        const blocked = rejectIfInactive(existing);
+        if (blocked) return c.json(blocked, 401);
         if (existing.apple_sub && existing.apple_sub !== identity.sub) {
           return c.json(
             { error: "Email already linked to another Apple account" },
@@ -342,7 +366,7 @@ export function createAuthRoutes() {
                display_name = COALESCE(display_name, $3),
                updated_at = now()
            WHERE id = $1
-           RETURNING id, email, role, display_name, anonymous_handle, onboarding_complete, avatar_key`,
+           RETURNING ${AUTH_USER_COLS}`,
           [existing.id, identity.sub, displayName]
         );
 
@@ -354,7 +378,7 @@ export function createAuthRoutes() {
       const { rows } = await client.query(
         `INSERT INTO users (email, role, display_name, anonymous_handle, apple_sub, avatar_key)
          VALUES ($1, $2, $3, $4, $5, $6)
-         RETURNING id, email, role, display_name, anonymous_handle, onboarding_complete, avatar_key`,
+         RETURNING ${AUTH_USER_COLS}`,
         [identity.email, role, displayName, handle, identity.sub, avatarKey]
       );
 

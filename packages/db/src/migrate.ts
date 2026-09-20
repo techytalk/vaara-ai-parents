@@ -102,6 +102,10 @@ const MIGRATIONS = [
     version: "054_children_curriculum_grade_fk",
     file: "054_children_curriculum_grade_fk.sql",
   },
+  {
+    version: "055_internal_seed_parents",
+    file: "055_internal_seed_parents.sql",
+  },
 ];
 
 async function isMigrationApplied(

@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from "node:crypto";
 import { Hono } from "hono";
 import { pool } from "@vaara/db";
 import { processBackgroundJobs } from "../services/notifications.js";
@@ -15,6 +16,16 @@ import {
   summarizeCompare,
   type CatalogSchool,
 } from "../services/school-list-compare.js";
+import {
+  findSeedGaps,
+  listInternalSeeds,
+  postAsInternal,
+  setInternalStatus,
+  spawnInternalPair,
+  type SeedTarget,
+} from "../services/internal-seed.js";
+import { publishChatNudge } from "../services/chat.js";
+import { signAdminToken, verifyAdminToken } from "../lib/jwt.js";
 
 function requireCronSecret(c: { req: { header: (n: string) => string | undefined } }) {
   const secret = c.req.header("X-Cron-Secret");
@@ -22,13 +33,38 @@ function requireCronSecret(c: { req: { header: (n: string) => string | undefined
   return Boolean(expected && secret === expected);
 }
 
-function requireAdminSecret(c: {
+function safeEqualString(a: string, b: string): boolean {
+  const ha = createHash("sha256").update(a).digest();
+  const hb = createHash("sha256").update(b).digest();
+  return timingSafeEqual(ha, hb);
+}
+
+function extractBearer(c: { req: { header: (n: string) => string | undefined } }) {
+  const auth = c.req.header("Authorization") ?? "";
+  const m = /^Bearer\s+(.+)$/i.exec(auth.trim());
+  return m?.[1]?.trim() || null;
+}
+
+/** Login session (Bearer) or legacy X-Admin-Secret for scripts. */
+async function requireAdminAuth(c: {
   req: { header: (n: string) => string | undefined };
-}) {
-  // Fail closed: cron secret must not authorize destructive admin tools.
+}): Promise<{ email: string } | null> {
+  const bearer = extractBearer(c);
+  if (bearer) {
+    try {
+      const admin = await verifyAdminToken(bearer);
+      return { email: admin.email };
+    } catch {
+      /* fall through */
+    }
+  }
+
   const secret = c.req.header("X-Admin-Secret");
   const expected = process.env.ADMIN_API_SECRET;
-  return Boolean(expected && secret === expected);
+  if (expected && secret && safeEqualString(secret, expected)) {
+    return { email: "admin-secret" };
+  }
+  return null;
 }
 
 function mergesEnabled(): boolean {
@@ -37,6 +73,49 @@ function mergesEnabled(): boolean {
 
 export function createInternalRoutes() {
   const app = new Hono();
+
+  // ---- Ops admin login (email + password from env) ----
+  app.post("/admin/login", async (c) => {
+    const expectedEmail = (process.env.ADMIN_LOGIN_EMAIL ?? "").trim().toLowerCase();
+    const expectedPassword = process.env.ADMIN_LOGIN_PASSWORD ?? "";
+    if (!expectedEmail || !expectedPassword) {
+      return c.json(
+        { error: "Admin login is not configured (ADMIN_LOGIN_EMAIL / ADMIN_LOGIN_PASSWORD)" },
+        503
+      );
+    }
+
+    let body: { email?: string; password?: string };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
+    const email = (body.email ?? "").trim().toLowerCase();
+    const password = body.password ?? "";
+    if (!email || !password) {
+      return c.json({ error: "email and password required" }, 400);
+    }
+
+    if (!safeEqualString(email, expectedEmail) || !safeEqualString(password, expectedPassword)) {
+      return c.json({ error: "Invalid email or password" }, 401);
+    }
+
+    const token = await signAdminToken(email);
+    return c.json({
+      ok: true,
+      token,
+      email,
+      expiresIn: "12h",
+    });
+  });
+
+  app.get("/admin/me", async (c) => {
+    const admin = await requireAdminAuth(c);
+    if (!admin) return c.json({ error: "Unauthorized" }, 401);
+    return c.json({ ok: true, email: admin.email });
+  });
 
   app.post("/cron/reminders", async (c) => {
     if (!requireCronSecret(c)) {
@@ -102,7 +181,7 @@ export function createInternalRoutes() {
   // ---- Admin school moderation (secret-gated) ----
 
   app.get("/admin/schools/duplicates", async (c) => {
-    if (!requireAdminSecret(c)) return c.json({ error: "Unauthorized" }, 401);
+    if (!(await requireAdminAuth(c))) return c.json({ error: "Unauthorized" }, 401);
     const status = c.req.query("status") ?? "open";
     const client = await pool.connect();
     try {
@@ -114,7 +193,7 @@ export function createInternalRoutes() {
   });
 
   app.post("/admin/schools/duplicates/:id/dismiss", async (c) => {
-    if (!requireAdminSecret(c)) return c.json({ error: "Unauthorized" }, 401);
+    if (!(await requireAdminAuth(c))) return c.json({ error: "Unauthorized" }, 401);
     const id = c.req.param("id");
     const body = (await c.req
       .json<{ note?: string; reviewer?: string }>()
@@ -137,7 +216,7 @@ export function createInternalRoutes() {
   });
 
   app.post("/admin/schools/duplicates/:id/investigate", async (c) => {
-    if (!requireAdminSecret(c)) return c.json({ error: "Unauthorized" }, 401);
+    if (!(await requireAdminAuth(c))) return c.json({ error: "Unauthorized" }, 401);
     const id = c.req.param("id");
     const body = (await c.req
       .json<{ note?: string; reviewer?: string }>()
@@ -160,7 +239,7 @@ export function createInternalRoutes() {
   });
 
   app.post("/admin/schools/merge/dry-run", async (c) => {
-    if (!requireAdminSecret(c)) return c.json({ error: "Unauthorized" }, 401);
+    if (!(await requireAdminAuth(c))) return c.json({ error: "Unauthorized" }, 401);
     const body = await c.req.json<{
       sourceId?: string;
       survivorId?: string;
@@ -187,7 +266,7 @@ export function createInternalRoutes() {
   });
 
   app.post("/admin/schools/merge", async (c) => {
-    if (!requireAdminSecret(c)) return c.json({ error: "Unauthorized" }, 401);
+    if (!(await requireAdminAuth(c))) return c.json({ error: "Unauthorized" }, 401);
     const body = await c.req.json<{
       sourceId?: string;
       survivorId?: string;
@@ -235,7 +314,7 @@ export function createInternalRoutes() {
   });
 
   app.get("/admin/schools/unverified", async (c) => {
-    if (!requireAdminSecret(c)) return c.json({ error: "Unauthorized" }, 401);
+    if (!(await requireAdminAuth(c))) return c.json({ error: "Unauthorized" }, 401);
     const client = await pool.connect();
     try {
       const { rows } = await client.query(
@@ -257,7 +336,7 @@ export function createInternalRoutes() {
   });
 
   app.post("/admin/schools/:id/verify", async (c) => {
-    if (!requireAdminSecret(c)) return c.json({ error: "Unauthorized" }, 401);
+    if (!(await requireAdminAuth(c))) return c.json({ error: "Unauthorized" }, 401);
     const id = c.req.param("id");
     const body = await c.req
       .json<{
@@ -315,9 +394,10 @@ export function createInternalRoutes() {
     }
   });
 
-  // ---- Admin parent signups (open for now; re-gate later) ----
+  // ---- Admin parent signups ----
 
   app.get("/admin/parents", async (c) => {
+    if (!(await requireAdminAuth(c))) return c.json({ error: "Unauthorized" }, 401);
     const dateParam = (c.req.query("date") ?? "").trim();
     const status = (c.req.query("status") ?? "all").trim().toLowerCase();
     const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 200), 1), 500);
@@ -424,9 +504,10 @@ export function createInternalRoutes() {
     }
   });
 
-  // ---- Admin school list compare (analysis only; open for now) ----
+  // ---- Admin school list compare (analysis only) ----
 
   app.post("/admin/schools/compare", async (c) => {
+    if (!(await requireAdminAuth(c))) return c.json({ error: "Unauthorized" }, 401);
     let body: {
       text?: string;
       area?: string | null;
@@ -520,9 +601,10 @@ export function createInternalRoutes() {
     }
   });
 
-  // ---- Admin school directory by region/locality (open for now) ----
+  // ---- Admin school directory by region/locality ----
 
   app.get("/admin/schools/directory", async (c) => {
+    if (!(await requireAdminAuth(c))) return c.json({ error: "Unauthorized" }, 401);
     const regionParam = (c.req.query("region") ?? "").trim();
     const localityParam = (c.req.query("locality") ?? "").trim();
     const verifiedParam = (c.req.query("verified") ?? "all").trim().toLowerCase();
@@ -671,12 +753,17 @@ export function createInternalRoutes() {
   }
 
   app.get("/admin/circles", async (c) => {
+    if (!(await requireAdminAuth(c))) return c.json({ error: "Unauthorized" }, 401);
     const typeParam = (c.req.query("type") ?? "all").trim().toLowerCase();
     const q = (c.req.query("q") ?? "").trim();
     const minMembers = Math.max(Number(c.req.query("minMembers") ?? 1), 0);
     const excludeTest =
       ["1", "true", "yes"].includes(
         (c.req.query("excludeTest") ?? "").trim().toLowerCase()
+      );
+    const excludeInternal =
+      ["1", "true", "yes"].includes(
+        (c.req.query("excludeInternal") ?? "").trim().toLowerCase()
       );
     const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 500), 1), 2000);
 
@@ -685,12 +772,15 @@ export function createInternalRoutes() {
     }
 
     const testU = testEmailSql("u.email");
-    const parentFilterSql = excludeTest
-      ? `u.role = 'parent' AND NOT ${testU}`
-      : `u.role = 'parent'`;
-    const usersParentSql = excludeTest
-      ? `role = 'parent' AND NOT ${testEmailSql("email")}`
-      : `role = 'parent'`;
+    const parentClauses = [`u.role = 'parent'`];
+    if (excludeTest) parentClauses.push(`NOT ${testU}`);
+    if (excludeInternal) parentClauses.push(`u.is_internal IS NOT TRUE`);
+    const parentFilterSql = parentClauses.join(" AND ");
+
+    const usersClauses = [`role = 'parent'`];
+    if (excludeTest) usersClauses.push(`NOT ${testEmailSql("email")}`);
+    if (excludeInternal) usersClauses.push(`is_internal IS NOT TRUE`);
+    const usersParentSql = usersClauses.join(" AND ");
 
     const client = await pool.connect();
     try {
@@ -723,7 +813,8 @@ export function createInternalRoutes() {
               FROM circle_members cm
               JOIN users u ON u.id = cm.user_id
              WHERE ${parentFilterSql}) AS memberships,
-           (SELECT COUNT(*)::int FROM users u WHERE u.role = 'parent' AND ${testU}) AS test_parents`
+           (SELECT COUNT(*)::int FROM users u WHERE u.role = 'parent' AND ${testU}) AS test_parents,
+           (SELECT COUNT(*)::int FROM users u WHERE u.role = 'parent' AND u.is_internal IS TRUE) AS internal_parents`
       );
 
       const { rows: byType } = await client.query(
@@ -810,6 +901,7 @@ export function createInternalRoutes() {
           q: q || null,
           minMembers,
           excludeTest,
+          excludeInternal,
         },
         summary: summaryRows[0] ?? null,
         byType,
@@ -822,6 +914,7 @@ export function createInternalRoutes() {
   });
 
   app.get("/admin/circles/:id/members", async (c) => {
+    if (!(await requireAdminAuth(c))) return c.json({ error: "Unauthorized" }, 401);
     const id = (c.req.param("id") ?? "").trim();
     if (!/^[0-9a-f-]{36}$/i.test(id)) {
       return c.json({ error: "Invalid circle id" }, 400);
@@ -830,11 +923,16 @@ export function createInternalRoutes() {
       ["1", "true", "yes"].includes(
         (c.req.query("excludeTest") ?? "").trim().toLowerCase()
       );
+    const excludeInternal =
+      ["1", "true", "yes"].includes(
+        (c.req.query("excludeInternal") ?? "").trim().toLowerCase()
+      );
     const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 300), 1), 500);
     const testU = testEmailSql("u.email");
-    const memberFilterSql = excludeTest
-      ? `cm.circle_id = $1 AND NOT ${testU}`
-      : `cm.circle_id = $1`;
+    const memberClauses = [`cm.circle_id = $1`];
+    if (excludeTest) memberClauses.push(`NOT ${testU}`);
+    if (excludeInternal) memberClauses.push(`u.is_internal IS NOT TRUE`);
+    const memberFilterSql = memberClauses.join(" AND ");
 
     const client = await pool.connect();
     try {
@@ -867,6 +965,9 @@ export function createInternalRoutes() {
            u.display_name,
            u.role,
            u.onboarding_complete,
+           u.is_internal,
+           u.internal_kind,
+           u.internal_status,
            (${testU}) AS is_test,
            to_char(cm.joined_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD HH24:MI') AS joined_ist,
            to_char(u.created_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD HH24:MI') AS created_ist,
@@ -907,8 +1008,171 @@ export function createInternalRoutes() {
         ok: true,
         circle,
         members,
-        filters: { excludeTest },
+        filters: { excludeTest, excludeInternal },
       });
+    } finally {
+      client.release();
+    }
+  });
+
+  // ---- Internal seed parents (secret-gated) ----
+
+  app.get("/admin/seed", async (c) => {
+    if (!(await requireAdminAuth(c))) return c.json({ error: "Unauthorized" }, 401);
+    const schoolId = (c.req.query("schoolId") ?? "").trim() || null;
+    const status = (c.req.query("status") ?? "").trim() || null;
+    const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 200), 1), 500);
+    const client = await pool.connect();
+    try {
+      const seeds = await listInternalSeeds(client, { schoolId, status, limit });
+      return c.json({ ok: true, seeds });
+    } finally {
+      client.release();
+    }
+  });
+
+  app.get("/admin/seed/gaps", async (c) => {
+    if (!(await requireAdminAuth(c))) return c.json({ error: "Unauthorized" }, 401);
+    const minRealParents = Math.max(Number(c.req.query("minReal") ?? 1), 1);
+    const client = await pool.connect();
+    try {
+      const report = await findSeedGaps(client, { minRealParents });
+      return c.json({ ok: true, ...report });
+    } finally {
+      client.release();
+    }
+  });
+
+  app.post("/admin/seed/spawn", async (c) => {
+    if (!(await requireAdminAuth(c))) return c.json({ error: "Unauthorized" }, 401);
+    let body: {
+      target?: SeedTarget;
+      schoolId?: string;
+      curriculumId?: string;
+      gradeId?: string;
+      pinCode?: string;
+      actor?: string;
+    };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await spawnInternalPair(client, {
+        target: body.target ?? "school",
+        schoolId: body.schoolId,
+        curriculumId: body.curriculumId,
+        gradeId: body.gradeId,
+        pinCode: body.pinCode,
+        actor: body.actor ?? "admin",
+      });
+      if (!result.ok) {
+        await client.query("ROLLBACK");
+        return c.json({ error: result.error }, result.status as 400 | 404);
+      }
+      await client.query("COMMIT");
+      return c.json(result, 201);
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  });
+
+  app.post("/admin/seed/:userId/status", async (c) => {
+    if (!(await requireAdminAuth(c))) return c.json({ error: "Unauthorized" }, 401);
+    const userId = (c.req.param("userId") ?? "").trim();
+    if (!/^[0-9a-f-]{36}$/i.test(userId)) {
+      return c.json({ error: "Invalid user id" }, 400);
+    }
+    let body: { status?: "active" | "inactive"; actor?: string };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    if (body.status !== "active" && body.status !== "inactive") {
+      return c.json({ error: "status must be active or inactive" }, 400);
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await setInternalStatus(
+        client,
+        userId,
+        body.status,
+        body.actor ?? "admin"
+      );
+      if (!result.ok) {
+        await client.query("ROLLBACK");
+        return c.json({ error: result.error }, result.status as 400 | 404);
+      }
+      await client.query("COMMIT");
+      return c.json(result);
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  });
+
+  app.post("/admin/seed/:userId/post", async (c) => {
+    if (!(await requireAdminAuth(c))) return c.json({ error: "Unauthorized" }, 401);
+    const userId = (c.req.param("userId") ?? "").trim();
+    if (!/^[0-9a-f-]{36}$/i.test(userId)) {
+      return c.json({ error: "Invalid user id" }, 400);
+    }
+    let body: {
+      circleId?: string;
+      title?: string;
+      body?: string;
+      kind?: string;
+      threadId?: string;
+      replyToMessageId?: string;
+      actor?: string;
+    };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    if (!body.circleId || !body.body?.trim()) {
+      return c.json({ error: "circleId and body are required" }, 400);
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await postAsInternal(client, {
+        userId,
+        circleId: body.circleId,
+        body: body.body,
+        title: body.title,
+        kind: body.kind,
+        threadId: body.threadId,
+        replyToMessageId: body.replyToMessageId,
+        actor: body.actor ?? "admin",
+      });
+      if (!result.ok) {
+        await client.query("ROLLBACK");
+        return c.json({ error: result.error }, result.status as 400 | 403 | 404 | 429);
+      }
+      await client.query("COMMIT");
+      await publishChatNudge(result.nudge);
+      return c.json(
+        { ok: true, mode: result.mode, result: result.result },
+        201
+      );
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
     } finally {
       client.release();
     }

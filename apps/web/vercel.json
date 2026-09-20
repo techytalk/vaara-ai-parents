@@ -9,7 +9,9 @@
     { "source": "/admin/compare.html", "destination": "/internal/admin/compare.html", "permanent": false },
     { "source": "/admin/directory.html", "destination": "/internal/admin/directory.html", "permanent": false },
     { "source": "/admin/circles.html", "destination": "/internal/admin/circles.html", "permanent": false },
-    { "source": "/admin/qr.html", "destination": "/internal/admin/qr.html", "permanent": false }
+    { "source": "/admin/qr.html", "destination": "/internal/admin/qr.html", "permanent": false },
+    { "source": "/admin/login.html", "destination": "/internal/admin/login.html", "permanent": false },
+    { "source": "/admin/login", "destination": "/internal/admin/login.html", "permanent": false }
   ],
   "rewrites": [
     {

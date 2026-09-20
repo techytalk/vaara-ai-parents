@@ -54,27 +54,21 @@
     </style>
   </head>
   <body>
+    <div class="nav" id="adminNav">
+      <strong>Admin</strong> · School tools ·
+      <a href="/internal/admin/">Parent signups</a> ·
+      <a href="/internal/admin/circles.html">Circles</a> ·
+      <a href="/internal/admin/directory.html">School directory</a> ·
+      <a href="/internal/admin/compare.html">School compare</a> ·
+      <a href="/internal/admin/qr.html">QR codes</a>
+    </div>
     <h1>School admin</h1>
     <p class="muted">
-      Secret-gated tools for duplicate review, dry-run, and queueing merges.
+      Duplicate review, dry-run, and queueing merges (login required).
       Production execution requires SCHOOL_MERGES_ENABLED and the school-merges cron.
-      Parents never see this page.
-      · <a href="/internal/admin/">Parent signups</a>
-      · <a href="/internal/admin/circles.html">Circles</a>
-      · <a href="/internal/admin/directory.html">School directory</a>
-      · <a href="/internal/admin/compare.html">School compare</a>
-      · <a href="/internal/admin/qr.html">QR codes</a>
     </p>
 
     <div class="toolbar">
-      <div>
-        <label>API base</label>
-        <input id="apiBase" size="40" value="https://api.vaara.ai" />
-      </div>
-      <div>
-        <label>X-Admin-Secret</label>
-        <input id="secret" type="password" size="32" autocomplete="off" />
-      </div>
       <button id="loadDupes" type="button">Load duplicates</button>
       <button id="loadUnverified" class="secondary" type="button">Load unverified</button>
     </div>
@@ -104,17 +98,15 @@
     <button id="queueMerge" class="danger" type="button">Queue merge</button>
     <pre id="out">Ready.</pre>
 
+    <script src="/internal/admin/admin-auth.js"></script>
     <script>
       const out = document.getElementById("out");
 
       function apiBase() {
-        return document.getElementById("apiBase").value.replace(/\/$/, "");
+        return VaaraAdmin.API_BASE;
       }
       function headers() {
-        return {
-          "Content-Type": "application/json",
-          "X-Admin-Secret": document.getElementById("secret").value,
-        };
+        return VaaraAdmin.headers(true);
       }
       function text(value) {
         return document.createTextNode(value == null ? "" : String(value));
@@ -265,6 +257,12 @@
           setOut(String(e.message || e));
         }
       };
+
+      (async () => {
+        const ok = await VaaraAdmin.requireAuth();
+        if (!ok) return;
+        VaaraAdmin.mountBar(document.getElementById("adminNav"));
+      })();
     </script>
   </body>
 </html>

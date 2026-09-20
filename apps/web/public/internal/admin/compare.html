@@ -238,7 +238,7 @@
     </style>
   </head>
   <body>
-    <div class="nav">
+    <div class="nav" id="adminNav">
       <strong>Admin</strong> · School compare ·
       <a href="/internal/admin/">Parent signups</a> ·
       <a href="/internal/admin/circles.html">Circles</a> ·
@@ -272,10 +272,6 @@
         <div>
           <label>Limit catalog to region (optional)</label>
           <input id="region" type="text" size="24" placeholder="e.g. west-hyderabad" />
-        </div>
-        <div>
-          <label>API base</label>
-          <input id="apiBase" size="32" value="https://api.vaara.ai" />
         </div>
         <button id="run" type="button">Compare</button>
         <button id="clear" class="secondary" type="button">Clear</button>
@@ -314,8 +310,8 @@
       </div>
     </div>
 
+    <script src="/internal/admin/admin-auth.js"></script>
     <script>
-      const API_DEFAULT = "https://api.vaara.ai";
       const STORE_KEY = "vaara.schoolCompare.sessions.v1";
 
       const ACTIONS = [
@@ -453,7 +449,6 @@
           savedAt: new Date().toISOString(),
           area: $("area").value.trim() || "",
           region: $("region").value.trim() || "",
-          apiBase: $("apiBase").value.trim() || API_DEFAULT,
           text: $("text").value,
           payload: lastPayload,
           notes: notesByKey,
@@ -517,7 +512,6 @@
 
         $("area").value = s.area || "";
         $("region").value = s.region || "";
-        $("apiBase").value = s.apiBase || API_DEFAULT;
         $("text").value = s.text || "";
         lastPayload = s.payload;
         notesByKey = s.notes || {};
@@ -843,10 +837,9 @@
         const btn = $("run");
         btn.disabled = true;
         try {
-          const apiBase = ($("apiBase").value || API_DEFAULT).replace(/\/$/, "");
-          const res = await fetch(`${apiBase}/internal/admin/schools/compare`, {
+          const res = await fetch(`${VaaraAdmin.API_BASE}/internal/admin/schools/compare`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: VaaraAdmin.headers(true),
             body: JSON.stringify({
               text,
               area: $("area").value.trim() || null,
@@ -911,12 +904,17 @@
         toast("Notes cleared");
       });
 
-      // Restore last session on load
-      renderSavedList();
-      const store = readStore();
-      if (store.currentId && store.sessions[store.currentId]) {
-        loadComparison(store.currentId);
-      }
+      // Restore last session on load (after auth)
+      (async () => {
+        const ok = await VaaraAdmin.requireAuth();
+        if (!ok) return;
+        VaaraAdmin.mountBar($("adminNav"));
+        renderSavedList();
+        const store = readStore();
+        if (store.currentId && store.sessions[store.currentId]) {
+          loadComparison(store.currentId);
+        }
+      })();
 
       // Warn before leaving with unsaved work
       window.addEventListener("beforeunload", (e) => {

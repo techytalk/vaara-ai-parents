@@ -156,7 +156,7 @@
     </style>
   </head>
   <body>
-    <div class="nav">
+    <div class="nav" id="adminNav">
       <strong>Admin</strong> · School directory ·
       <a href="/internal/admin/">Parent signups</a> ·
       <a href="/internal/admin/circles.html">Circles</a> ·
@@ -200,8 +200,9 @@
       <div class="panel" id="listPanel"><p class="empty">Loading…</p></div>
     </div>
 
+    <script src="/internal/admin/admin-auth.js"></script>
     <script>
-      const API_BASE = "https://api.vaara.ai";
+      const API_BASE = VaaraAdmin.API_BASE;
       let cache = { regions: [], tree: [], schools: [] };
       let selectedRegion = "";
       let selectedLocality = "";
@@ -351,7 +352,9 @@
           const q = $("q").value.trim();
           if (q) params.set("q", q);
 
-          const res = await fetch(`${API_BASE}/internal/admin/schools/directory?${params}`);
+          const res = await fetch(`${API_BASE}/internal/admin/schools/directory?${params}`, {
+            headers: VaaraAdmin.headers(false),
+          });
           const data = await res.json().catch(() => ({}));
           if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
 
@@ -392,7 +395,12 @@
         qTimer = setTimeout(loadDirectory, 300);
       });
 
-      loadDirectory();
+      (async () => {
+        const ok = await VaaraAdmin.requireAuth();
+        if (!ok) return;
+        VaaraAdmin.mountBar($("adminNav"));
+        loadDirectory();
+      })();
     </script>
   </body>
 </html>

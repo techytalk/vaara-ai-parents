@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow" />
+    <title>Vaara — Admin login</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+        --teal: #0e9a8a;
+        --teal-dark: #08786d;
+        --bg: #fffcf7;
+        --card: #fff;
+        --text: #0d1b2a;
+        --muted: #5e6974;
+        --border: #e8e3db;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background:
+          radial-gradient(ellipse 80% 50% at 20% 0%, #d8f3ef 0%, transparent 55%),
+          radial-gradient(ellipse 60% 40% at 100% 100%, #f5e6d3 0%, transparent 50%),
+          var(--bg);
+        color: var(--text);
+        padding: 24px;
+      }
+      .card {
+        width: min(100%, 380px);
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 28px 26px;
+        box-shadow: 0 12px 40px rgba(13, 27, 42, 0.06);
+      }
+      h1 {
+        font-size: 1.35rem;
+        margin: 0 0 6px;
+      }
+      .muted {
+        color: var(--muted);
+        font-size: 0.9rem;
+        margin: 0 0 20px;
+      }
+      label {
+        display: block;
+        font-size: 0.85rem;
+        margin: 0 0 4px;
+        color: var(--muted);
+      }
+      input {
+        font: inherit;
+        width: 100%;
+        box-sizing: border-box;
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        margin-bottom: 14px;
+      }
+      button {
+        font: inherit;
+        width: 100%;
+        padding: 11px 12px;
+        border-radius: 10px;
+        border: none;
+        background: var(--teal);
+        color: #fff;
+        cursor: pointer;
+        font-weight: 600;
+      }
+      button:disabled {
+        opacity: 0.55;
+        cursor: wait;
+      }
+      .err {
+        color: #b91c1c;
+        background: #feecec;
+        border-radius: 10px;
+        padding: 10px 12px;
+        margin-bottom: 14px;
+        display: none;
+        font-size: 0.9rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Vaara Admin</h1>
+      <p class="muted">Sign in to open Circles, seed tools, and school ops.</p>
+      <div id="err" class="err"></div>
+      <form id="form">
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="username" required />
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="current-password" required />
+        <button id="submit" type="submit">Sign in</button>
+      </form>
+    </div>
+    <script src="/internal/admin/admin-auth.js"></script>
+    <script>
+      const params = new URLSearchParams(location.search);
+      const next = params.get("next") || "/internal/admin/";
+
+      if (VaaraAdmin.getToken()) {
+        fetch(VaaraAdmin.API_BASE + "/internal/admin/me", {
+          headers: VaaraAdmin.headers(false),
+        })
+          .then((r) => {
+            if (r.ok) location.replace(next);
+          })
+          .catch(() => {});
+      }
+
+      const err = document.getElementById("err");
+      document.getElementById("form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        err.style.display = "none";
+        const btn = document.getElementById("submit");
+        btn.disabled = true;
+        try {
+          const res = await fetch(VaaraAdmin.API_BASE + "/internal/admin/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              email: document.getElementById("email").value.trim(),
+              password: document.getElementById("password").value,
+            }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || "Login failed");
+          VaaraAdmin.setSession(data.token, data.email);
+          location.replace(next);
+        } catch (ex) {
+          err.textContent = ex.message || String(ex);
+          err.style.display = "block";
+          btn.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>
