@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow" />
+    <title>Vaara — Circles</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+        --teal: #0e9a8a;
+        --teal-dark: #08786d;
+        --bg: #fffcf7;
+        --card: #fff;
+        --text: #0d1b2a;
+        --muted: #5e6974;
+        --border: #e8e3db;
+        --ok: #078675;
+        --warn: #b96d00;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: var(--bg);
+        color: var(--text);
+      }
+      h1 { font-size: 1.45rem; margin: 0 0 6px; }
+      h2 { font-size: 1.05rem; margin: 0 0 10px; }
+      .muted { color: var(--muted); font-size: 0.9rem; margin: 0 0 18px; }
+      a { color: var(--teal-dark); }
+      label { display: block; font-size: 0.85rem; margin: 0 0 4px; color: var(--muted); }
+      input, select, button {
+        font: inherit;
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+      }
+      button {
+        background: var(--teal);
+        color: #fff;
+        border: none;
+        cursor: pointer;
+        margin-right: 8px;
+      }
+      button.secondary { background: #44403c; }
+      button:disabled { opacity: 0.55; cursor: wait; }
+      .toolbar {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        align-items: end;
+        margin-bottom: 16px;
+      }
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 10px;
+        margin-bottom: 16px;
+      }
+      .stat {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 12px 14px;
+      }
+      .stat .n { font-size: 1.5rem; font-weight: 700; }
+      .stat .l { font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(200px, 260px) 1fr;
+        gap: 16px;
+        align-items: start;
+      }
+      .layout.with-detail {
+        grid-template-columns: minmax(180px, 220px) minmax(0, 1fr) minmax(280px, 360px);
+      }
+      .panel {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 12px;
+        max-height: 75vh;
+        overflow: auto;
+      }
+      .type-btn {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        width: 100%;
+        text-align: left;
+        background: transparent;
+        color: var(--text);
+        border: 1px solid transparent;
+        border-radius: 8px;
+        padding: 8px 10px;
+        margin: 0 0 4px;
+        cursor: pointer;
+      }
+      .type-btn:hover { background: #f7f4ee; }
+      .type-btn.active {
+        background: #eaf8f6;
+        border-color: var(--teal);
+        color: var(--teal-dark);
+        font-weight: 600;
+      }
+      .count { font-variant-numeric: tabular-nums; color: var(--muted); font-weight: 500; }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.9rem;
+      }
+      th, td {
+        text-align: left;
+        padding: 9px 10px;
+        border-bottom: 1px solid var(--border);
+        vertical-align: top;
+      }
+      th {
+        background: #f7f4ee;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        color: var(--muted);
+        position: sticky;
+        top: 0;
+      }
+      tr.circle-row { cursor: pointer; }
+      tr.circle-row:hover { background: #f7f4ee; }
+      tr.circle-row.active { background: #eaf8f6; }
+      .badge {
+        display: inline-block;
+        border-radius: 999px;
+        padding: 2px 8px;
+        font-size: 0.75rem;
+        font-weight: 700;
+      }
+      .badge.ok { background: #e7f7f4; color: var(--ok); }
+      .badge.warn { background: #fff2d9; color: var(--warn); }
+      .badge.soft { background: #f1eee8; color: var(--muted); }
+      .err {
+        color: #b91c1c;
+        background: #feecec;
+        border-radius: 10px;
+        padding: 10px 12px;
+        margin-bottom: 12px;
+        display: none;
+      }
+      .nav { margin-bottom: 14px; font-size: 0.9rem; }
+      .empty { color: var(--muted); padding: 18px 0; }
+      .meta { font-size: 0.82rem; color: var(--muted); }
+      .detail-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        align-items: start;
+        margin-bottom: 10px;
+      }
+      .detail-head button { margin: 0; }
+      .member {
+        border-bottom: 1px solid var(--border);
+        padding: 10px 0;
+      }
+      .member:last-child { border-bottom: none; }
+      .member .name { font-weight: 600; }
+      .member .line { font-size: 0.85rem; color: var(--muted); margin-top: 2px; }
+      #detailPanel { display: none; }
+      #detailPanel.open { display: block; }
+      @media (max-width: 980px) {
+        .layout, .layout.with-detail { grid-template-columns: 1fr; }
+        .panel { max-height: none; }
+        body { padding: 14px; }
+        table { display: block; overflow-x: auto; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="nav">
+      <strong>Admin</strong> · Circles ·
+      <a href="/internal/admin/">Parent signups</a> ·
+      <a href="/internal/admin/directory.html">School directory</a> ·
+      <a href="/internal/admin/compare.html">School compare</a> ·
+      <a href="/internal/admin/schools.html">School tools</a> ·
+      <a href="/internal/admin/qr.html">QR codes</a>
+    </div>
+    <h1>Circles</h1>
+    <p class="muted">
+      Parent membership by PIN, school, class, and curriculum. Click a circle to see who joined.
+    </p>
+
+    <div class="toolbar">
+      <div>
+        <label>Search</label>
+        <input id="q" type="search" size="28" placeholder="Name, PIN, key…" />
+      </div>
+      <div>
+        <label>Min parents</label>
+        <select id="minMembers">
+          <option value="1" selected>1+</option>
+          <option value="2">2+</option>
+          <option value="3">3+</option>
+          <option value="5">5+</option>
+          <option value="0">Include empty</option>
+        </select>
+      </div>
+      <button id="refresh" type="button">Refresh</button>
+      <button id="clear" class="secondary" type="button">Clear</button>
+    </div>
+
+    <div id="err" class="err"></div>
+
+    <div class="stats">
+      <div class="stat"><div class="n" id="nParents">—</div><div class="l">Parents total</div></div>
+      <div class="stat"><div class="n" id="nComplete">—</div><div class="l">Onboarding complete</div></div>
+      <div class="stat"><div class="n" id="nInCircles">—</div><div class="l">Parents in a circle</div></div>
+      <div class="stat"><div class="n" id="nCircles">—</div><div class="l">Circles with members</div></div>
+      <div class="stat"><div class="n" id="nShowing">—</div><div class="l">Showing now</div></div>
+    </div>
+
+    <div class="layout" id="layout">
+      <div class="panel" id="typePanel"><p class="empty">Loading…</p></div>
+      <div class="panel" id="listPanel"><p class="empty">Loading…</p></div>
+      <div class="panel" id="detailPanel"></div>
+    </div>
+
+    <script>
+      const API_BASE = "https://api.vaara.ai";
+      const TYPE_LABELS = {
+        locality: "PIN / locality",
+        school: "School",
+        class: "Class (board + grade)",
+        curriculum: "Curriculum / board",
+        school_class: "School + class",
+        school_age: "School + age",
+        age_locality: "PIN + age",
+        community: "Community",
+      };
+
+      let cache = { byType: [], circles: [], summary: null };
+      let selectedType = "all";
+      let selectedCircleId = "";
+
+      function $(id) { return document.getElementById(id); }
+
+      function showError(msg) {
+        const box = $("err");
+        if (!msg) {
+          box.style.display = "none";
+          box.textContent = "";
+          return;
+        }
+        box.style.display = "block";
+        box.textContent = msg;
+      }
+
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function typeLabel(type) {
+        return TYPE_LABELS[type] || type;
+      }
+
+      function parentsForType(type) {
+        if (type === "all") {
+          return cache.summary?.parents_in_circles ?? 0;
+        }
+        return cache.byType.find((row) => row.circle_type === type)?.parents ?? 0;
+      }
+
+      function renderTypes() {
+        const panel = $("typePanel");
+        panel.replaceChildren();
+
+        const allBtn = document.createElement("button");
+        allBtn.type = "button";
+        allBtn.className = "type-btn" + (selectedType === "all" ? " active" : "");
+        allBtn.innerHTML = `<span>All types</span><span class="count">${parentsForType("all")}</span>`;
+        allBtn.addEventListener("click", () => {
+          selectedType = "all";
+          selectedCircleId = "";
+          closeDetail();
+          loadCircles();
+        });
+        panel.appendChild(allBtn);
+
+        const preferred = [
+          "locality",
+          "school",
+          "class",
+          "curriculum",
+          "school_class",
+          "school_age",
+          "age_locality",
+          "community",
+        ];
+        const seen = new Set();
+        const ordered = [
+          ...preferred
+            .map((t) => cache.byType.find((row) => row.circle_type === t))
+            .filter(Boolean),
+          ...cache.byType.filter((row) => !preferred.includes(row.circle_type)),
+        ];
+
+        for (const row of ordered) {
+          if (seen.has(row.circle_type)) continue;
+          seen.add(row.circle_type);
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "type-btn" + (selectedType === row.circle_type ? " active" : "");
+          btn.innerHTML = `<span>${escapeHtml(typeLabel(row.circle_type))}</span><span class="count">${row.parents ?? 0}</span>`;
+          btn.addEventListener("click", () => {
+            selectedType = row.circle_type;
+            selectedCircleId = "";
+            closeDetail();
+            loadCircles();
+          });
+          panel.appendChild(btn);
+        }
+      }
+
+      function metaBits(circle) {
+        const meta = circle.metadata || {};
+        const bits = [];
+        if (meta.pin_code) bits.push("PIN " + meta.pin_code);
+        if (meta.code) bits.push(meta.code);
+        if (meta.grade_code) bits.push(meta.grade_code);
+        return bits.join(" · ");
+      }
+
+      function renderList() {
+        const panel = $("listPanel");
+        $("nShowing").textContent = String(cache.circles.length);
+
+        if (!cache.circles.length) {
+          panel.innerHTML = `<p class="empty">No circles match these filters.</p>`;
+          return;
+        }
+
+        const rows = cache.circles
+          .map((c) => {
+            const active = c.id === selectedCircleId ? " active" : "";
+            const bits = metaBits(c);
+            return `<tr class="circle-row${active}" data-id="${escapeHtml(c.id)}">
+              <td>
+                <div>${escapeHtml(c.display_name)}</div>
+                <div class="meta">${escapeHtml(bits || c.key)}</div>
+              </td>
+              <td><span class="badge soft">${escapeHtml(typeLabel(c.circle_type))}</span></td>
+              <td class="count">${c.parent_count}</td>
+            </tr>`;
+          })
+          .join("");
+
+        panel.innerHTML = `
+          <table>
+            <thead>
+              <tr>
+                <th>Circle</th>
+                <th>Type</th>
+                <th>Parents</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>`;
+
+        panel.querySelectorAll("tr.circle-row").forEach((row) => {
+          row.addEventListener("click", () => {
+            openCircle(row.getAttribute("data-id"));
+          });
+        });
+      }
+
+      function closeDetail() {
+        selectedCircleId = "";
+        const panel = $("detailPanel");
+        panel.classList.remove("open");
+        panel.replaceChildren();
+        $("layout").classList.remove("with-detail");
+        renderList();
+      }
+
+      async function openCircle(id) {
+        selectedCircleId = id;
+        renderList();
+        const panel = $("detailPanel");
+        panel.classList.add("open");
+        $("layout").classList.add("with-detail");
+        panel.innerHTML = `<p class="empty">Loading members…</p>`;
+
+        try {
+          const res = await fetch(
+            `${API_BASE}/internal/admin/circles/${encodeURIComponent(id)}/members`
+          );
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+          const circle = data.circle;
+          const members = data.members || [];
+          const list = members.length
+            ? members
+                .map((m) => {
+                  const status = m.onboarding_complete
+                    ? `<span class="badge ok">complete</span>`
+                    : `<span class="badge warn">incomplete</span>`;
+                  const place = [m.pin_code, m.locality || m.city].filter(Boolean).join(" · ");
+                  return `<div class="member">
+                    <div class="name">${escapeHtml(m.display_name || m.email || "—")} ${status}</div>
+                    <div class="line">${escapeHtml(m.email || "")}</div>
+                    <div class="line">${escapeHtml(place || "No location")}${m.first_school ? " · " + escapeHtml(m.first_school) : ""}</div>
+                    <div class="line">Joined ${escapeHtml(m.joined_ist || "—")} · ${m.child_count || 0} child(ren)</div>
+                  </div>`;
+                })
+                .join("")
+            : `<p class="empty">No members yet.</p>`;
+
+          panel.innerHTML = `
+            <div class="detail-head">
+              <div>
+                <h2>${escapeHtml(circle.display_name)}</h2>
+                <div class="meta">${escapeHtml(typeLabel(circle.circle_type))} · ${circle.member_count} member(s)</div>
+              </div>
+              <button type="button" class="secondary" id="closeDetail">Close</button>
+            </div>
+            ${list}`;
+
+          $("closeDetail").addEventListener("click", closeDetail);
+          if (window.matchMedia("(max-width: 980px)").matches) {
+            panel.scrollIntoView({ behavior: "smooth", block: "start" });
+          }
+        } catch (err) {
+          panel.innerHTML = `<p class="empty">${escapeHtml(err.message || String(err))}</p>
+            <button type="button" class="secondary" id="closeDetail">Close</button>`;
+          $("closeDetail")?.addEventListener("click", closeDetail);
+        }
+      }
+
+      function renderSummary() {
+        const s = cache.summary || {};
+        $("nParents").textContent = s.parents_total ?? "—";
+        $("nComplete").textContent = s.parents_complete ?? "—";
+        $("nInCircles").textContent = s.parents_in_circles ?? "—";
+        $("nCircles").textContent = s.circles_with_members ?? "—";
+      }
+
+      async function loadCircles() {
+        showError("");
+        $("refresh").disabled = true;
+        const q = $("q").value.trim();
+        const minMembers = $("minMembers").value;
+        const params = new URLSearchParams({
+          type: selectedType,
+          minMembers,
+        });
+        if (q) params.set("q", q);
+
+        try {
+          const res = await fetch(`${API_BASE}/internal/admin/circles?${params}`);
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+          cache = {
+            byType: data.byType || [],
+            circles: data.circles || [],
+            summary: data.summary || null,
+          };
+          renderSummary();
+          renderTypes();
+          renderList();
+        } catch (err) {
+          showError(err.message || String(err));
+        } finally {
+          $("refresh").disabled = false;
+        }
+      }
+
+      $("refresh").addEventListener("click", loadCircles);
+      $("clear").addEventListener("click", () => {
+        $("q").value = "";
+        $("minMembers").value = "1";
+        selectedType = "all";
+        selectedCircleId = "";
+        closeDetail();
+        loadCircles();
+      });
+      $("q").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") loadCircles();
+      });
+      $("minMembers").addEventListener("change", loadCircles);
+
+      loadCircles();
+    </script>
+  </body>
+</html>

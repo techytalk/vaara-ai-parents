@@ -646,5 +646,212 @@ export function createInternalRoutes() {
     }
   });
 
+  // ---- Admin circle membership overview (open for now; re-gate later) ----
+
+  const CIRCLE_TYPES = new Set([
+    "locality",
+    "school",
+    "class",
+    "curriculum",
+    "school_class",
+    "school_age",
+    "age_locality",
+    "community",
+  ]);
+
+  app.get("/admin/circles", async (c) => {
+    const typeParam = (c.req.query("type") ?? "all").trim().toLowerCase();
+    const q = (c.req.query("q") ?? "").trim();
+    const minMembers = Math.max(Number(c.req.query("minMembers") ?? 1), 0);
+    const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 500), 1), 2000);
+
+    if (typeParam !== "all" && !CIRCLE_TYPES.has(typeParam)) {
+      return c.json({ error: "Invalid type" }, 400);
+    }
+
+    const client = await pool.connect();
+    try {
+      const { rows: summaryRows } = await client.query(
+        `SELECT
+           (SELECT COUNT(*)::int FROM users WHERE role = 'parent') AS parents_total,
+           (SELECT COUNT(*)::int FROM users WHERE role = 'parent' AND onboarding_complete IS TRUE) AS parents_complete,
+           (SELECT COUNT(DISTINCT cm.user_id)::int
+              FROM circle_members cm
+              JOIN users u ON u.id = cm.user_id
+             WHERE u.role = 'parent') AS parents_in_circles,
+           (SELECT COUNT(*)::int FROM circles) AS circles_total,
+           (SELECT COUNT(*)::int
+              FROM circles c
+              WHERE EXISTS (SELECT 1 FROM circle_members cm WHERE cm.circle_id = c.id)
+           ) AS circles_with_members,
+           (SELECT COUNT(*)::int FROM circle_members) AS memberships`
+      );
+
+      const { rows: byType } = await client.query(
+        `SELECT
+           c.circle_type::text AS circle_type,
+           COUNT(*)::int AS circles,
+           COUNT(*) FILTER (
+             WHERE EXISTS (SELECT 1 FROM circle_members cm WHERE cm.circle_id = c.id)
+           )::int AS circles_with_members,
+           COALESCE(SUM(m.member_count), 0)::int AS memberships,
+           COALESCE(SUM(m.parent_count), 0)::int AS parents
+         FROM circles c
+         LEFT JOIN LATERAL (
+           SELECT
+             COUNT(*)::int AS member_count,
+             COUNT(*) FILTER (WHERE u.role = 'parent')::int AS parent_count
+           FROM circle_members cm
+           JOIN users u ON u.id = cm.user_id
+           WHERE cm.circle_id = c.id
+         ) m ON true
+         GROUP BY c.circle_type
+         ORDER BY parents DESC, circles DESC`
+      );
+
+      const params: unknown[] = [];
+      let sql = `
+        SELECT
+          c.id,
+          c.circle_type::text AS circle_type,
+          c.key,
+          c.display_name,
+          c.metadata,
+          COALESCE(m.member_count, 0)::int AS member_count,
+          COALESCE(m.parent_count, 0)::int AS parent_count,
+          to_char(c.created_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD HH24:MI') AS created_ist
+        FROM circles c
+        LEFT JOIN LATERAL (
+          SELECT
+            COUNT(*)::int AS member_count,
+            COUNT(*) FILTER (WHERE u.role = 'parent')::int AS parent_count
+          FROM circle_members cm
+          JOIN users u ON u.id = cm.user_id
+          WHERE cm.circle_id = c.id
+        ) m ON true
+        WHERE TRUE
+      `;
+
+      if (typeParam !== "all") {
+        params.push(typeParam);
+        sql += ` AND c.circle_type::text = $${params.length}`;
+      }
+
+      if (minMembers > 0) {
+        params.push(minMembers);
+        sql += ` AND COALESCE(m.parent_count, 0) >= $${params.length}`;
+      }
+
+      if (q) {
+        params.push(q);
+        sql += ` AND (
+          c.display_name ILIKE '%' || $${params.length} || '%'
+          OR c.key ILIKE '%' || $${params.length} || '%'
+          OR coalesce(c.metadata->>'pin_code', '') ILIKE '%' || $${params.length} || '%'
+          OR coalesce(c.metadata->>'code', '') ILIKE '%' || $${params.length} || '%'
+        )`;
+      }
+
+      params.push(limit);
+      sql += `
+        ORDER BY COALESCE(m.parent_count, 0) DESC, c.display_name
+        LIMIT $${params.length}`;
+
+      const { rows: circles } = await client.query(sql, params);
+
+      return c.json({
+        ok: true,
+        filters: {
+          type: typeParam,
+          q: q || null,
+          minMembers,
+        },
+        summary: summaryRows[0] ?? null,
+        byType,
+        circles,
+      });
+    } finally {
+      client.release();
+    }
+  });
+
+  app.get("/admin/circles/:id/members", async (c) => {
+    const id = (c.req.param("id") ?? "").trim();
+    if (!/^[0-9a-f-]{36}$/i.test(id)) {
+      return c.json({ error: "Invalid circle id" }, 400);
+    }
+    const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 300), 1), 500);
+
+    const client = await pool.connect();
+    try {
+      const { rows: circleRows } = await client.query(
+        `SELECT
+           c.id,
+           c.circle_type::text AS circle_type,
+           c.key,
+           c.display_name,
+           c.metadata,
+           (SELECT COUNT(*)::int FROM circle_members cm WHERE cm.circle_id = c.id) AS member_count
+         FROM circles c
+         WHERE c.id = $1`,
+        [id]
+      );
+      const circle = circleRows[0];
+      if (!circle) {
+        return c.json({ error: "Circle not found" }, 404);
+      }
+
+      const { rows: members } = await client.query(
+        `SELECT
+           u.id,
+           u.email,
+           u.display_name,
+           u.role,
+           u.onboarding_complete,
+           to_char(cm.joined_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD HH24:MI') AS joined_ist,
+           to_char(u.created_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD HH24:MI') AS created_ist,
+           loc.pin_code,
+           loc.locality,
+           loc.city,
+           loc.state,
+           COALESCE(ch.child_count, 0)::int AS child_count,
+           ch.first_school
+         FROM circle_members cm
+         JOIN users u ON u.id = cm.user_id
+         LEFT JOIN user_locations loc ON loc.user_id = u.id
+         LEFT JOIN LATERAL (
+           SELECT
+             COUNT(*)::int AS child_count,
+             MIN(
+               NULLIF(
+                 concat_ws(
+                   ' · ',
+                   NULLIF(trim(s.name), ''),
+                   NULLIF(trim(s.branch), ''),
+                   NULLIF(trim(s.city), '')
+                 ),
+                 ''
+               )
+             ) AS first_school
+           FROM children c
+           LEFT JOIN schools s ON s.id = c.school_id
+           WHERE c.user_id = u.id
+         ) ch ON true
+         WHERE cm.circle_id = $1
+         ORDER BY cm.joined_at DESC
+         LIMIT $2`,
+        [id, limit]
+      );
+
+      return c.json({
+        ok: true,
+        circle,
+        members,
+      });
+    } finally {
+      client.release();
+    }
+  });
+
   return app;
 }
