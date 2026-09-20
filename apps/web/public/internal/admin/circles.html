@@ -164,6 +164,40 @@
       .member:last-child { border-bottom: none; }
       .member .name { font-weight: 600; }
       .member .line { font-size: 0.85rem; color: var(--muted); margin-top: 2px; }
+      .check { min-width: 160px; }
+      .check-label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0 0 4px;
+        color: var(--text);
+        font-size: 0.9rem;
+        cursor: pointer;
+      }
+      .check-label input { width: 16px; height: 16px; }
+      .test-list {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 10px 14px;
+        margin-bottom: 16px;
+      }
+      .test-list summary {
+        cursor: pointer;
+        font-size: 0.9rem;
+        color: var(--muted);
+      }
+      .test-emails {
+        margin-top: 10px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.78rem;
+        color: var(--muted);
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+        gap: 4px 12px;
+        max-height: 180px;
+        overflow: auto;
+      }
       #detailPanel { display: none; }
       #detailPanel.open { display: block; }
       @media (max-width: 980px) {
@@ -203,9 +237,21 @@
           <option value="0">Include empty</option>
         </select>
       </div>
+      <div class="check">
+        <label class="check-label">
+          <input id="excludeTest" type="checkbox" checked />
+          Hide test emails
+        </label>
+        <div class="meta" id="testHint">—</div>
+      </div>
       <button id="refresh" type="button">Refresh</button>
       <button id="clear" class="secondary" type="button">Clear</button>
     </div>
+
+    <details class="test-list" id="testListWrap">
+      <summary id="testListSummary">Test emails in DB</summary>
+      <div class="test-emails" id="testList"></div>
+    </details>
 
     <div id="err" class="err"></div>
 
@@ -236,11 +282,15 @@
         community: "Community",
       };
 
-      let cache = { byType: [], circles: [], summary: null };
+      let cache = { byType: [], circles: [], summary: null, testEmails: [] };
       let selectedType = "all";
       let selectedCircleId = "";
 
       function $(id) { return document.getElementById(id); }
+
+      function excludeTestEnabled() {
+        return $("excludeTest").checked;
+      }
 
       function showError(msg) {
         const box = $("err");
@@ -393,8 +443,9 @@
         panel.innerHTML = `<p class="empty">Loading members…</p>`;
 
         try {
+          const exclude = excludeTestEnabled() ? "1" : "0";
           const res = await fetch(
-            `${API_BASE}/internal/admin/circles/${encodeURIComponent(id)}/members`
+            `${API_BASE}/internal/admin/circles/${encodeURIComponent(id)}/members?excludeTest=${exclude}`
           );
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
@@ -407,9 +458,12 @@
                   const status = m.onboarding_complete
                     ? `<span class="badge ok">complete</span>`
                     : `<span class="badge warn">incomplete</span>`;
+                  const testBadge = m.is_test
+                    ? ` <span class="badge warn">test</span>`
+                    : "";
                   const place = [m.pin_code, m.locality || m.city].filter(Boolean).join(" · ");
                   return `<div class="member">
-                    <div class="name">${escapeHtml(m.display_name || m.email || "—")} ${status}</div>
+                    <div class="name">${escapeHtml(m.display_name || m.email || "—")} ${status}${testBadge}</div>
                     <div class="line">${escapeHtml(m.email || "")}</div>
                     <div class="line">${escapeHtml(place || "No location")}${m.first_school ? " · " + escapeHtml(m.first_school) : ""}</div>
                     <div class="line">Joined ${escapeHtml(m.joined_ist || "—")} · ${m.child_count || 0} child(ren)</div>
@@ -445,6 +499,14 @@
         $("nComplete").textContent = s.parents_complete ?? "—";
         $("nInCircles").textContent = s.parents_in_circles ?? "—";
         $("nCircles").textContent = s.circles_with_members ?? "—";
+        const testCount = s.test_parents ?? cache.testEmails.length ?? 0;
+        $("testHint").textContent = excludeTestEnabled()
+          ? `${testCount} test account(s) hidden`
+          : `${testCount} test account(s) included`;
+        $("testListSummary").textContent = `Test emails in DB (${testCount})`;
+        $("testList").innerHTML = (cache.testEmails || [])
+          .map((email) => `<div>${escapeHtml(email)}</div>`)
+          .join("") || `<div>None matched.</div>`;
       }
 
       async function loadCircles() {
@@ -455,6 +517,7 @@
         const params = new URLSearchParams({
           type: selectedType,
           minMembers,
+          excludeTest: excludeTestEnabled() ? "1" : "0",
         });
         if (q) params.set("q", q);
 
@@ -466,10 +529,12 @@
             byType: data.byType || [],
             circles: data.circles || [],
             summary: data.summary || null,
+            testEmails: data.testEmails || [],
           };
           renderSummary();
           renderTypes();
           renderList();
+          if (selectedCircleId) openCircle(selectedCircleId);
         } catch (err) {
           showError(err.message || String(err));
         } finally {
@@ -481,6 +546,7 @@
       $("clear").addEventListener("click", () => {
         $("q").value = "";
         $("minMembers").value = "1";
+        $("excludeTest").checked = true;
         selectedType = "all";
         selectedCircleId = "";
         closeDetail();
@@ -490,6 +556,7 @@
         if (e.key === "Enter") loadCircles();
       });
       $("minMembers").addEventListener("change", loadCircles);
+      $("excludeTest").addEventListener("change", loadCircles);
 
       loadCircles();
     </script>

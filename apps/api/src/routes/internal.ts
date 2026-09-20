@@ -659,32 +659,71 @@ export function createInternalRoutes() {
     "community",
   ]);
 
+  /** Automated / seed accounts created by speed tests, e2e, and fixtures. */
+  function testEmailSql(emailCol = "u.email") {
+    return `(
+      ${emailCol} ILIKE '%@vaara.test'
+      OR ${emailCol} ILIKE '%@example.com'
+      OR ${emailCol} ILIKE '%@test.com'
+      OR ${emailCol} ILIKE '%cloudtestlabaccounts.com'
+      OR ${emailCol} ILIKE 'speedtest.%'
+    )`;
+  }
+
   app.get("/admin/circles", async (c) => {
     const typeParam = (c.req.query("type") ?? "all").trim().toLowerCase();
     const q = (c.req.query("q") ?? "").trim();
     const minMembers = Math.max(Number(c.req.query("minMembers") ?? 1), 0);
+    const excludeTest =
+      ["1", "true", "yes"].includes(
+        (c.req.query("excludeTest") ?? "").trim().toLowerCase()
+      );
     const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 500), 1), 2000);
 
     if (typeParam !== "all" && !CIRCLE_TYPES.has(typeParam)) {
       return c.json({ error: "Invalid type" }, 400);
     }
 
+    const testU = testEmailSql("u.email");
+    const parentFilterSql = excludeTest
+      ? `u.role = 'parent' AND NOT ${testU}`
+      : `u.role = 'parent'`;
+    const usersParentSql = excludeTest
+      ? `role = 'parent' AND NOT ${testEmailSql("email")}`
+      : `role = 'parent'`;
+
     const client = await pool.connect();
     try {
+      const { rows: testEmailRows } = await client.query(
+        `SELECT email
+         FROM users u
+         WHERE u.role = 'parent' AND ${testU}
+         ORDER BY email`
+      );
+
       const { rows: summaryRows } = await client.query(
         `SELECT
-           (SELECT COUNT(*)::int FROM users WHERE role = 'parent') AS parents_total,
-           (SELECT COUNT(*)::int FROM users WHERE role = 'parent' AND onboarding_complete IS TRUE) AS parents_complete,
+           (SELECT COUNT(*)::int FROM users WHERE ${usersParentSql}) AS parents_total,
+           (SELECT COUNT(*)::int FROM users WHERE ${usersParentSql} AND onboarding_complete IS TRUE) AS parents_complete,
            (SELECT COUNT(DISTINCT cm.user_id)::int
               FROM circle_members cm
               JOIN users u ON u.id = cm.user_id
-             WHERE u.role = 'parent') AS parents_in_circles,
+             WHERE ${parentFilterSql}) AS parents_in_circles,
            (SELECT COUNT(*)::int FROM circles) AS circles_total,
            (SELECT COUNT(*)::int
               FROM circles c
-              WHERE EXISTS (SELECT 1 FROM circle_members cm WHERE cm.circle_id = c.id)
+              WHERE EXISTS (
+                SELECT 1
+                FROM circle_members cm
+                JOIN users u ON u.id = cm.user_id
+                WHERE cm.circle_id = c.id AND ${parentFilterSql}
+              )
            ) AS circles_with_members,
-           (SELECT COUNT(*)::int FROM circle_members) AS memberships`
+           (SELECT COUNT(*)::int
+              FROM circle_members cm
+              JOIN users u ON u.id = cm.user_id
+             WHERE ${parentFilterSql}) AS memberships,
+           (SELECT COUNT(*)::int FROM users u WHERE u.role = 'parent' AND ${testU}) AS test_parents`
       );
 
       const { rows: byType } = await client.query(
@@ -692,7 +731,12 @@ export function createInternalRoutes() {
            c.circle_type::text AS circle_type,
            COUNT(*)::int AS circles,
            COUNT(*) FILTER (
-             WHERE EXISTS (SELECT 1 FROM circle_members cm WHERE cm.circle_id = c.id)
+             WHERE EXISTS (
+               SELECT 1
+               FROM circle_members cm
+               JOIN users u ON u.id = cm.user_id
+               WHERE cm.circle_id = c.id AND ${parentFilterSql}
+             )
            )::int AS circles_with_members,
            COALESCE(SUM(m.member_count), 0)::int AS memberships,
            COALESCE(SUM(m.parent_count), 0)::int AS parents
@@ -700,7 +744,7 @@ export function createInternalRoutes() {
          LEFT JOIN LATERAL (
            SELECT
              COUNT(*)::int AS member_count,
-             COUNT(*) FILTER (WHERE u.role = 'parent')::int AS parent_count
+             COUNT(*) FILTER (WHERE ${parentFilterSql})::int AS parent_count
            FROM circle_members cm
            JOIN users u ON u.id = cm.user_id
            WHERE cm.circle_id = c.id
@@ -724,7 +768,7 @@ export function createInternalRoutes() {
         LEFT JOIN LATERAL (
           SELECT
             COUNT(*)::int AS member_count,
-            COUNT(*) FILTER (WHERE u.role = 'parent')::int AS parent_count
+            COUNT(*) FILTER (WHERE ${parentFilterSql})::int AS parent_count
           FROM circle_members cm
           JOIN users u ON u.id = cm.user_id
           WHERE cm.circle_id = c.id
@@ -765,10 +809,12 @@ export function createInternalRoutes() {
           type: typeParam,
           q: q || null,
           minMembers,
+          excludeTest,
         },
         summary: summaryRows[0] ?? null,
         byType,
         circles,
+        testEmails: testEmailRows.map((r) => r.email as string),
       });
     } finally {
       client.release();
@@ -780,7 +826,15 @@ export function createInternalRoutes() {
     if (!/^[0-9a-f-]{36}$/i.test(id)) {
       return c.json({ error: "Invalid circle id" }, 400);
     }
+    const excludeTest =
+      ["1", "true", "yes"].includes(
+        (c.req.query("excludeTest") ?? "").trim().toLowerCase()
+      );
     const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 300), 1), 500);
+    const testU = testEmailSql("u.email");
+    const memberFilterSql = excludeTest
+      ? `cm.circle_id = $1 AND NOT ${testU}`
+      : `cm.circle_id = $1`;
 
     const client = await pool.connect();
     try {
@@ -791,7 +845,12 @@ export function createInternalRoutes() {
            c.key,
            c.display_name,
            c.metadata,
-           (SELECT COUNT(*)::int FROM circle_members cm WHERE cm.circle_id = c.id) AS member_count
+           (
+             SELECT COUNT(*)::int
+             FROM circle_members cm
+             JOIN users u ON u.id = cm.user_id
+             WHERE ${memberFilterSql}
+           ) AS member_count
          FROM circles c
          WHERE c.id = $1`,
         [id]
@@ -808,6 +867,7 @@ export function createInternalRoutes() {
            u.display_name,
            u.role,
            u.onboarding_complete,
+           (${testU}) AS is_test,
            to_char(cm.joined_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD HH24:MI') AS joined_ist,
            to_char(u.created_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD HH24:MI') AS created_ist,
            loc.pin_code,
@@ -837,7 +897,7 @@ export function createInternalRoutes() {
            LEFT JOIN schools s ON s.id = c.school_id
            WHERE c.user_id = u.id
          ) ch ON true
-         WHERE cm.circle_id = $1
+         WHERE ${memberFilterSql}
          ORDER BY cm.joined_at DESC
          LIMIT $2`,
         [id, limit]
@@ -847,6 +907,7 @@ export function createInternalRoutes() {
         ok: true,
         circle,
         members,
+        filters: { excludeTest },
       });
     } finally {
       client.release();
