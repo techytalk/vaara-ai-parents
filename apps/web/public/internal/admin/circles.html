@@ -228,6 +228,7 @@
   <body>
     <div class="nav" id="adminNav">
       <strong>Admin</strong> · Circles ·
+      <a href="/internal/admin/seeds.html">Seed parents</a> ·
       <a href="/internal/admin/">Parent signups</a> ·
       <a href="/internal/admin/directory.html">School directory</a> ·
       <a href="/internal/admin/compare.html">School compare</a> ·
@@ -236,7 +237,8 @@
     </div>
     <h1>Circles</h1>
     <p class="muted">
-      Parent membership by PIN, school, class, and curriculum. Spawn internal asker/responder pairs, post as them, and activate/deactivate.
+      Parent membership by PIN, school, class, and curriculum.
+      Spawn and post tools live under <a href="/internal/admin/seeds.html">Seed parents</a>.
     </p>
 
     <div class="toolbar">
@@ -270,27 +272,12 @@
       </div>
       <button id="refresh" type="button">Refresh</button>
       <button id="clear" class="secondary" type="button">Clear</button>
-      <button id="runGaps" class="secondary" type="button">Check gaps</button>
     </div>
 
     <details class="test-list" id="testListWrap">
       <summary id="testListSummary">Test emails in DB</summary>
       <div class="test-emails" id="testList"></div>
     </details>
-
-    <div class="seed-box" id="gapsPanel" style="display:none; margin-bottom:16px;">
-      <div class="detail-head">
-        <div>
-          <h3 style="margin:0;">Circle coverage gaps</h3>
-          <div class="meta" id="gapsMeta">Run to compare real parents vs active internal seeds.</div>
-        </div>
-        <button type="button" class="secondary" id="hideGaps">Hide</button>
-      </div>
-      <div id="gapsSummary" class="stats" style="margin-top:10px;"></div>
-      <div id="gapsSuggestions"></div>
-      <h3 style="font-size:0.95rem;margin:14px 0 6px;">Gap circles</h3>
-      <div id="gapsTable"></div>
-    </div>
 
     <div id="err" class="err"></div>
 
@@ -465,167 +452,6 @@
         renderList();
       }
 
-      function renderSeedBox(circle, seeds) {
-        const schoolId = schoolIdFromCircle(circle);
-        if (circle.circle_type !== "school" || !schoolId) {
-          return `<div class="seed-box"><div class="meta">Spawn is available on school circles.</div></div>`;
-        }
-
-        const seedRows = (seeds || [])
-          .map((s) => {
-            const statusBadge =
-              s.internalStatus === "active"
-                ? `<span class="badge ok">active</span>`
-                : `<span class="badge warn">inactive</span>`;
-            const next = s.internalStatus === "active" ? "inactive" : "active";
-            return `<div class="member">
-              <div class="name">${escapeHtml(s.displayName || s.anonymousHandle)}
-                <span class="badge internal">${escapeHtml(s.internalKind || "internal")}</span>
-                ${statusBadge}
-              </div>
-              <div class="line">${escapeHtml(s.email)}</div>
-              <div class="seed-actions">
-                <button type="button" class="secondary seed-status" data-id="${escapeHtml(s.id)}" data-status="${next}">
-                  ${next === "inactive" ? "Deactivate" : "Activate"}
-                </button>
-                <button type="button" class="seed-pick" data-id="${escapeHtml(s.id)}">Use for post</button>
-              </div>
-            </div>`;
-          })
-          .join("") || `<p class="empty">No internal pair yet.</p>`;
-
-        return `<div class="seed-box" id="seedBox">
-          <h3>Internal seed pair</h3>
-          <div class="seed-actions" style="margin-top:0;margin-bottom:8px;">
-            <button type="button" id="spawnPair">Spawn asker + responder</button>
-          </div>
-          <div id="seedList">${seedRows}</div>
-          <div class="field">
-            <label>Post as</label>
-            <select id="postAsUser">
-              <option value="">Select internal account…</option>
-              ${(seeds || [])
-                .filter((s) => s.internalStatus === "active")
-                .map(
-                  (s) =>
-                    `<option value="${escapeHtml(s.id)}">${escapeHtml(
-                      (s.internalKind || "") + " · " + (s.displayName || s.email)
-                    )}</option>`
-                )
-                .join("")}
-            </select>
-          </div>
-          <div class="field">
-            <label>Title (thread)</label>
-            <input id="postTitle" placeholder="Optional short title" />
-          </div>
-          <div class="field">
-            <label>Message</label>
-            <textarea id="postBody" placeholder="Question or reply body…"></textarea>
-          </div>
-          <div class="field">
-            <label>Thread id (optional — set to reply instead of new thread)</label>
-            <input id="postThreadId" placeholder="Leave empty to create a new thread" />
-          </div>
-          <button type="button" id="postAsBtn">Post as selected</button>
-          <div class="meta" id="seedMsg" style="margin-top:8px;"></div>
-        </div>`;
-      }
-
-      function wireSeedActions(circle) {
-        const schoolId = schoolIdFromCircle(circle);
-        const seedMsg = $("seedMsg");
-
-        $("spawnPair")?.addEventListener("click", async () => {
-          seedMsg.textContent = "Spawning…";
-          try {
-            const res = await fetch(`${API_BASE}/internal/admin/seed/spawn`, {
-              method: "POST",
-              headers: adminHeaders(true),
-              body: JSON.stringify({ target: "school", schoolId, actor: "circles-admin" }),
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-            seedMsg.textContent = `Ready · asker ${data.created?.asker ? "created" : "exists"}, responder ${data.created?.responder ? "created" : "exists"}`;
-            openCircle(circle.id);
-            loadCircles();
-          } catch (err) {
-            seedMsg.textContent = "";
-            showError(err.message || String(err));
-          }
-        });
-
-        document.querySelectorAll(".seed-status").forEach((btn) => {
-          btn.addEventListener("click", async () => {
-            const userId = btn.getAttribute("data-id");
-            const status = btn.getAttribute("data-status");
-            try {
-              const res = await fetch(
-                `${API_BASE}/internal/admin/seed/${encodeURIComponent(userId)}/status`,
-                {
-                  method: "POST",
-                  headers: adminHeaders(true),
-                  body: JSON.stringify({ status, actor: "circles-admin" }),
-                }
-              );
-              const data = await res.json();
-              if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-              openCircle(circle.id);
-              loadCircles();
-            } catch (err) {
-              showError(err.message || String(err));
-            }
-          });
-        });
-
-        document.querySelectorAll(".seed-pick").forEach((btn) => {
-          btn.addEventListener("click", () => {
-            $("postAsUser").value = btn.getAttribute("data-id");
-          });
-        });
-
-        $("postAsBtn")?.addEventListener("click", async () => {
-          const userId = $("postAsUser").value;
-          const body = $("postBody").value.trim();
-          const title = $("postTitle").value.trim();
-          const threadId = $("postThreadId").value.trim();
-          if (!userId || !body) {
-            showError("Select an internal account and enter a message.");
-            return;
-          }
-          seedMsg.textContent = "Posting…";
-          try {
-            const payload = {
-              circleId: circle.id,
-              body,
-              title: title || undefined,
-              kind: "question",
-              threadId: threadId || undefined,
-              actor: "circles-admin",
-            };
-            const res = await fetch(
-              `${API_BASE}/internal/admin/seed/${encodeURIComponent(userId)}/post`,
-              {
-                method: "POST",
-                headers: adminHeaders(true),
-                body: JSON.stringify(payload),
-              }
-            );
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-            seedMsg.textContent =
-              data.mode === "reply"
-                ? `Reply posted · message ${data.result?.id || ""}`
-                : `Thread created · ${data.result?.id || ""}`;
-            $("postBody").value = "";
-            $("postTitle").value = "";
-          } catch (err) {
-            seedMsg.textContent = "";
-            showError(err.message || String(err));
-          }
-        });
-      }
-
       async function openCircle(id) {
         selectedCircleId = id;
         renderList();
@@ -649,21 +475,6 @@
           const circle = data.circle;
           selectedCircle = circle;
           const members = data.members || [];
-          const schoolId = schoolIdFromCircle(circle);
-
-          let seeds = [];
-          if (schoolId) {
-            try {
-              const seedRes = await fetch(
-                `${API_BASE}/internal/admin/seed?schoolId=${encodeURIComponent(schoolId)}`,
-                { headers: adminHeaders(false) }
-              );
-              const seedData = await seedRes.json();
-              if (seedRes.ok) seeds = seedData.seeds || [];
-            } catch {
-              /* ignore seed load failures */
-            }
-          }
 
           const list = members.length
             ? members
@@ -691,6 +502,11 @@
                 .join("")
             : `<p class="empty">No members yet.</p>`;
 
+          const seedLink =
+            circle.circle_type === "school"
+              ? `<div class="meta" style="margin:10px 0;"><a href="/internal/admin/seeds.html">Seed parents →</a> spawn / post for this school</div>`
+              : `<div class="meta" style="margin:10px 0;">Circle id: <code>${escapeHtml(circle.id)}</code> · use in <a href="/internal/admin/seeds.html">Seed parents</a> to post</div>`;
+
           panel.innerHTML = `
             <div class="detail-head">
               <div>
@@ -699,12 +515,11 @@
               </div>
               <button type="button" class="secondary" id="closeDetail">Close</button>
             </div>
-            ${renderSeedBox(circle, seeds)}
+            ${seedLink}
             <h3 style="font-size:0.95rem;margin:14px 0 6px;">Members</h3>
             ${list}`;
 
           $("closeDetail").addEventListener("click", closeDetail);
-          wireSeedActions(circle);
           if (window.matchMedia("(max-width: 980px)").matches) {
             panel.scrollIntoView({ behavior: "smooth", block: "start" });
           }
@@ -787,128 +602,6 @@
       $("minMembers").addEventListener("change", loadCircles);
       $("excludeTest").addEventListener("change", loadCircles);
       $("excludeInternal").addEventListener("change", loadCircles);
-
-      async function runGapCheck() {
-        showError("");
-        $("runGaps").disabled = true;
-        $("gapsPanel").style.display = "block";
-        $("gapsMeta").textContent = "Scanning…";
-        $("gapsSuggestions").innerHTML = "";
-        $("gapsTable").innerHTML = "";
-        try {
-          const res = await fetch(
-            `${API_BASE}/internal/admin/seed/gaps?minReal=1`,
-            { headers: adminHeaders(false) }
-          );
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-
-          const s = data.summary || {};
-          $("gapsMeta").textContent = `Generated ${escapeHtml(
-            (data.generatedAt || "").replace("T", " ").slice(0, 19)
-          )} UTC · re-run anytime to compare`;
-          $("gapsSummary").innerHTML = `
-            <div class="stat"><div class="n">${s.gapCircles ?? 0}</div><div class="l">Gap circles</div></div>
-            <div class="stat"><div class="n">${s.suggestions ?? 0}</div><div class="l">Spawn suggestions</div></div>
-            <div class="stat"><div class="n">${s.realParentsInGaps ?? 0}</div><div class="l">Real parents in gaps</div></div>`;
-
-          const suggestions = (data.suggestions || []).filter((x) => !x.alreadyCovered);
-          if (!suggestions.length) {
-            $("gapsSuggestions").innerHTML =
-              `<p class="empty">No new spawn suggestions — existing internal coverage looks good for current gaps.</p>`;
-          } else {
-            $("gapsSuggestions").innerHTML =
-              `<h3 style="font-size:0.95rem;margin:8px 0;">Suggested spawns (max overlap)</h3>` +
-              suggestions
-                .map((sug, idx) => {
-                  const covers = (sug.coversGaps || [])
-                    .map(
-                      (g) =>
-                        `<span class="badge soft">${escapeHtml(g.circleType)} · ${escapeHtml(
-                          g.displayName
-                        )}</span>`
-                    )
-                    .join(" ");
-                  return `<div class="member">
-                    <div class="name">#${idx + 1} ${escapeHtml(sug.spawn.schoolName)} · ${escapeHtml(
-                      sug.spawn.curriculumCode
-                    )} · ${escapeHtml(sug.spawn.gradeLabel)} · PIN ${escapeHtml(
-                      sug.spawn.pinCode
-                    )}</div>
-                    <div class="line">${escapeHtml(sug.reason)}</div>
-                    <div class="line">Covers ${sug.coversGapCount} gap(s): ${covers}</div>
-                    <div class="seed-actions">
-                      <button type="button" class="gap-spawn"
-                        data-school="${escapeHtml(sug.spawn.schoolId)}"
-                        data-curr="${escapeHtml(sug.spawn.curriculumId)}"
-                        data-grade="${escapeHtml(sug.spawn.gradeId)}"
-                        data-pin="${escapeHtml(sug.spawn.pinCode)}">
-                        Spawn asker + responder
-                      </button>
-                    </div>
-                  </div>`;
-                })
-                .join("");
-          }
-
-          const gaps = data.gaps || [];
-          $("gapsTable").innerHTML = gaps.length
-            ? `<table>
-                <thead><tr><th>Circle</th><th>Type</th><th>Real</th><th>Internal</th><th>Threads 7d</th></tr></thead>
-                <tbody>
-                  ${gaps
-                    .map(
-                      (g) => `<tr>
-                        <td>${escapeHtml(g.displayName)}</td>
-                        <td><span class="badge soft">${escapeHtml(g.circleType)}</span></td>
-                        <td class="count">${g.realParents}</td>
-                        <td class="count">${g.activeInternal}</td>
-                        <td class="count">${g.recentThreads7d}</td>
-                      </tr>`
-                    )
-                    .join("")}
-                </tbody>
-              </table>`
-            : `<p class="empty">No gap circles at this threshold.</p>`;
-
-          document.querySelectorAll(".gap-spawn").forEach((btn) => {
-            btn.addEventListener("click", async () => {
-              btn.disabled = true;
-              try {
-                const res2 = await fetch(`${API_BASE}/internal/admin/seed/spawn`, {
-                  method: "POST",
-                  headers: adminHeaders(true),
-                  body: JSON.stringify({
-                    target: "school",
-                    schoolId: btn.getAttribute("data-school"),
-                    curriculumId: btn.getAttribute("data-curr"),
-                    gradeId: btn.getAttribute("data-grade"),
-                    pinCode: btn.getAttribute("data-pin"),
-                    actor: "gaps-admin",
-                  }),
-                });
-                const out = await res2.json();
-                if (!res2.ok) throw new Error(out.error || `HTTP ${res2.status}`);
-                await runGapCheck();
-                loadCircles();
-              } catch (err) {
-                showError(err.message || String(err));
-                btn.disabled = false;
-              }
-            });
-          });
-        } catch (err) {
-          showError(err.message || String(err));
-          $("gapsMeta").textContent = "Failed.";
-        } finally {
-          $("runGaps").disabled = false;
-        }
-      }
-
-      $("runGaps").addEventListener("click", runGapCheck);
-      $("hideGaps").addEventListener("click", () => {
-        $("gapsPanel").style.display = "none";
-      });
 
       (async () => {
         const ok = await VaaraAdmin.requireAuth();

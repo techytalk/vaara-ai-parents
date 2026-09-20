@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow" />
+    <title>Vaara — Seed parents</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+        --teal: #0e9a8a;
+        --teal-dark: #08786d;
+        --bg: #fffcf7;
+        --card: #fff;
+        --text: #0d1b2a;
+        --muted: #5e6974;
+        --border: #e8e3db;
+        --ok: #078675;
+        --warn: #b96d00;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: var(--bg);
+        color: var(--text);
+      }
+      h1 { font-size: 1.45rem; margin: 0 0 6px; }
+      h2 { font-size: 1.05rem; margin: 0 0 10px; }
+      h3 { font-size: 0.95rem; margin: 14px 0 6px; }
+      .muted { color: var(--muted); font-size: 0.9rem; margin: 0 0 18px; }
+      a { color: var(--teal-dark); }
+      label { display: block; font-size: 0.85rem; margin: 0 0 4px; color: var(--muted); }
+      input, select, button, textarea {
+        font: inherit;
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+      }
+      textarea { width: 100%; min-height: 80px; resize: vertical; box-sizing: border-box; }
+      button {
+        background: var(--teal);
+        color: #fff;
+        border: none;
+        cursor: pointer;
+        margin-right: 8px;
+      }
+      button.secondary { background: #44403c; }
+      button.danger { background: #b91c1c; }
+      button:disabled { opacity: 0.55; cursor: wait; }
+      .toolbar {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        align-items: end;
+        margin-bottom: 16px;
+      }
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 10px;
+        margin-bottom: 16px;
+      }
+      .stat {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 12px 14px;
+      }
+      .stat .n { font-size: 1.5rem; font-weight: 700; }
+      .stat .l { font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
+      .panel {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 14px;
+        margin-bottom: 16px;
+      }
+      .detail-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        align-items: start;
+        margin-bottom: 10px;
+      }
+      .badge {
+        display: inline-block;
+        border-radius: 999px;
+        padding: 2px 8px;
+        font-size: 0.75rem;
+        font-weight: 700;
+      }
+      .badge.ok { background: #e7f7f4; color: var(--ok); }
+      .badge.warn { background: #fff2d9; color: var(--warn); }
+      .badge.soft { background: #f1eee8; color: var(--muted); }
+      .badge.internal { background: #e8eefc; color: #274690; }
+      .err {
+        color: #b91c1c;
+        background: #feecec;
+        border-radius: 10px;
+        padding: 10px 12px;
+        margin-bottom: 12px;
+        display: none;
+      }
+      .nav { margin-bottom: 14px; font-size: 0.9rem; }
+      .empty { color: var(--muted); padding: 12px 0; }
+      .meta { font-size: 0.82rem; color: var(--muted); }
+      .member {
+        border-bottom: 1px solid var(--border);
+        padding: 10px 0;
+      }
+      .member:last-child { border-bottom: none; }
+      .member .name { font-weight: 600; }
+      .member .line { font-size: 0.85rem; color: var(--muted); margin-top: 2px; }
+      .seed-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+      .seed-actions button { margin: 0; }
+      .field { margin: 8px 0; }
+      .layout {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        align-items: start;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.9rem;
+      }
+      th, td {
+        text-align: left;
+        padding: 9px 10px;
+        border-bottom: 1px solid var(--border);
+        vertical-align: top;
+      }
+      th {
+        background: #f7f4ee;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        color: var(--muted);
+      }
+      .count { font-variant-numeric: tabular-nums; }
+      @media (max-width: 900px) {
+        .layout { grid-template-columns: 1fr; }
+        body { padding: 14px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="nav" id="adminNav">
+      <strong>Admin</strong> · Seed parents ·
+      <a href="/internal/admin/">Parent signups</a> ·
+      <a href="/internal/admin/circles.html">Circles</a> ·
+      <a href="/internal/admin/directory.html">School directory</a> ·
+      <a href="/internal/admin/compare.html">School compare</a> ·
+      <a href="/internal/admin/schools.html">School tools</a> ·
+      <a href="/internal/admin/qr.html">QR codes</a>
+    </div>
+
+    <h1>Seed parents</h1>
+    <p class="muted">
+      Find circle coverage gaps, spawn asker/responder pairs, activate/deactivate, and post as them.
+      Use <a href="/internal/admin/circles.html">Circles</a> to browse memberships.
+    </p>
+
+    <div id="err" class="err"></div>
+
+    <div class="panel">
+      <div class="detail-head">
+        <div>
+          <h2 style="margin:0;">Coverage gaps</h2>
+          <div class="meta" id="gapsMeta">Compare real parents vs active internal seeds.</div>
+        </div>
+        <button type="button" id="runGaps">Check gaps</button>
+      </div>
+      <div id="gapsSummary" class="stats" style="display:none;"></div>
+      <div id="gapsSuggestions"></div>
+      <div id="gapsTable"></div>
+    </div>
+
+    <div class="layout">
+      <div class="panel">
+        <div class="detail-head">
+          <div>
+            <h2 style="margin:0;">Internal accounts</h2>
+            <div class="meta" id="seedsMeta">Load to list asker/responder/review accounts.</div>
+          </div>
+          <button type="button" class="secondary" id="loadSeeds">Refresh list</button>
+        </div>
+        <div id="seedsList"><p class="empty">Not loaded yet.</p></div>
+      </div>
+
+      <div class="panel">
+        <h2>Post as seed</h2>
+        <p class="meta">Uses the same chat pipeline as a real parent (thread or reply).</p>
+        <div class="field">
+          <label>Internal account</label>
+          <select id="postAsUser">
+            <option value="">Select…</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Circle id</label>
+          <input id="postCircleId" placeholder="UUID from Circles detail / URL" size="40" />
+        </div>
+        <div class="field">
+          <label>Title (new thread)</label>
+          <input id="postTitle" placeholder="Optional short title" />
+        </div>
+        <div class="field">
+          <label>Message</label>
+          <textarea id="postBody" placeholder="Question or reply body…"></textarea>
+        </div>
+        <div class="field">
+          <label>Thread id (optional — set to reply instead of new thread)</label>
+          <input id="postThreadId" placeholder="Leave empty to create a new thread" />
+        </div>
+        <button type="button" id="postAsBtn">Post as selected</button>
+        <div class="meta" id="postMsg" style="margin-top:8px;"></div>
+      </div>
+    </div>
+
+    <script src="/internal/admin/admin-auth.js"></script>
+    <script>
+      const API_BASE = VaaraAdmin.API_BASE;
+      let seedsCache = [];
+
+      function $(id) { return document.getElementById(id); }
+      function headers(json) { return VaaraAdmin.headers(json); }
+
+      function showError(msg) {
+        const box = $("err");
+        if (!msg) {
+          box.style.display = "none";
+          box.textContent = "";
+          return;
+        }
+        box.style.display = "block";
+        box.textContent = msg;
+      }
+
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function fillPostSelect() {
+        const sel = $("postAsUser");
+        const active = seedsCache.filter((s) => s.internalStatus === "active");
+        sel.innerHTML =
+          `<option value="">Select…</option>` +
+          active
+            .map(
+              (s) =>
+                `<option value="${escapeHtml(s.id)}">${escapeHtml(
+                  (s.internalKind || "") + " · " + (s.displayName || s.email)
+                )}</option>`
+            )
+            .join("");
+      }
+
+      function renderSeeds() {
+        $("seedsMeta").textContent = `${seedsCache.length} account(s)`;
+        if (!seedsCache.length) {
+          $("seedsList").innerHTML = `<p class="empty">No internal accounts yet. Run Check gaps and spawn.</p>`;
+          fillPostSelect();
+          return;
+        }
+        $("seedsList").innerHTML = seedsCache
+          .map((s) => {
+            const statusBadge =
+              s.internalStatus === "active"
+                ? `<span class="badge ok">active</span>`
+                : `<span class="badge warn">inactive</span>`;
+            const next = s.internalStatus === "active" ? "inactive" : "active";
+            return `<div class="member">
+              <div class="name">${escapeHtml(s.displayName || s.anonymousHandle || "—")}
+                <span class="badge internal">${escapeHtml(s.internalKind || "internal")}</span>
+                ${statusBadge}
+              </div>
+              <div class="line">${escapeHtml(s.email)}</div>
+              <div class="line meta">${escapeHtml(s.internalSpawnKey || "")}</div>
+              <div class="seed-actions">
+                <button type="button" class="secondary seed-status" data-id="${escapeHtml(s.id)}" data-status="${next}">
+                  ${next === "inactive" ? "Deactivate" : "Activate"}
+                </button>
+                <button type="button" class="seed-pick" data-id="${escapeHtml(s.id)}">Use for post</button>
+              </div>
+            </div>`;
+          })
+          .join("");
+
+        document.querySelectorAll(".seed-status").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            const userId = btn.getAttribute("data-id");
+            const status = btn.getAttribute("data-status");
+            try {
+              const res = await fetch(
+                `${API_BASE}/internal/admin/seed/${encodeURIComponent(userId)}/status`,
+                {
+                  method: "POST",
+                  headers: headers(true),
+                  body: JSON.stringify({ status, actor: "seeds-admin" }),
+                }
+              );
+              const data = await res.json();
+              if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+              await loadSeeds();
+            } catch (err) {
+              showError(err.message || String(err));
+            }
+          });
+        });
+        document.querySelectorAll(".seed-pick").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            $("postAsUser").value = btn.getAttribute("data-id");
+          });
+        });
+        fillPostSelect();
+      }
+
+      async function loadSeeds() {
+        showError("");
+        $("loadSeeds").disabled = true;
+        try {
+          const res = await fetch(`${API_BASE}/internal/admin/seed?limit=500`, {
+            headers: headers(false),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+          seedsCache = data.seeds || [];
+          renderSeeds();
+        } catch (err) {
+          showError(err.message || String(err));
+        } finally {
+          $("loadSeeds").disabled = false;
+        }
+      }
+
+      async function runGapCheck() {
+        showError("");
+        $("runGaps").disabled = true;
+        $("gapsMeta").textContent = "Scanning…";
+        $("gapsSuggestions").innerHTML = "";
+        $("gapsTable").innerHTML = "";
+        $("gapsSummary").style.display = "none";
+        try {
+          const res = await fetch(`${API_BASE}/internal/admin/seed/gaps?minReal=1`, {
+            headers: headers(false),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+          const s = data.summary || {};
+          $("gapsMeta").textContent = `Generated ${escapeHtml(
+            (data.generatedAt || "").replace("T", " ").slice(0, 19)
+          )} UTC · re-run anytime to compare`;
+          $("gapsSummary").style.display = "grid";
+          $("gapsSummary").innerHTML = `
+            <div class="stat"><div class="n">${s.gapCircles ?? 0}</div><div class="l">Gap circles</div></div>
+            <div class="stat"><div class="n">${s.suggestions ?? 0}</div><div class="l">Spawn suggestions</div></div>
+            <div class="stat"><div class="n">${s.realParentsInGaps ?? 0}</div><div class="l">Real parents in gaps</div></div>`;
+
+          const suggestions = (data.suggestions || []).filter((x) => !x.alreadyCovered);
+          if (!suggestions.length) {
+            $("gapsSuggestions").innerHTML =
+              `<p class="empty">No new spawn suggestions — coverage looks good for current gaps.</p>`;
+          } else {
+            $("gapsSuggestions").innerHTML =
+              `<h3>Suggested spawns (max overlap)</h3>` +
+              suggestions
+                .map((sug, idx) => {
+                  const covers = (sug.coversGaps || [])
+                    .map(
+                      (g) =>
+                        `<span class="badge soft">${escapeHtml(g.circleType)} · ${escapeHtml(
+                          g.displayName
+                        )}</span>`
+                    )
+                    .join(" ");
+                  return `<div class="member">
+                    <div class="name">#${idx + 1} ${escapeHtml(sug.spawn.schoolName)} · ${escapeHtml(
+                      sug.spawn.curriculumCode
+                    )} · ${escapeHtml(sug.spawn.gradeLabel)} · PIN ${escapeHtml(
+                      sug.spawn.pinCode
+                    )}</div>
+                    <div class="line">${escapeHtml(sug.reason)}</div>
+                    <div class="line">Covers ${sug.coversGapCount} gap(s): ${covers}</div>
+                    <div class="seed-actions">
+                      <button type="button" class="gap-spawn"
+                        data-school="${escapeHtml(sug.spawn.schoolId)}"
+                        data-curr="${escapeHtml(sug.spawn.curriculumId)}"
+                        data-grade="${escapeHtml(sug.spawn.gradeId)}"
+                        data-pin="${escapeHtml(sug.spawn.pinCode)}">
+                        Spawn asker + responder
+                      </button>
+                    </div>
+                  </div>`;
+                })
+                .join("");
+          }
+
+          const gaps = data.gaps || [];
+          $("gapsTable").innerHTML = gaps.length
+            ? `<h3>Gap circles</h3>
+              <table>
+                <thead><tr><th>Circle</th><th>Type</th><th>Real</th><th>Internal</th><th>Threads 7d</th></tr></thead>
+                <tbody>
+                  ${gaps
+                    .map(
+                      (g) => `<tr>
+                        <td>${escapeHtml(g.displayName)}</td>
+                        <td><span class="badge soft">${escapeHtml(g.circleType)}</span></td>
+                        <td class="count">${g.realParents}</td>
+                        <td class="count">${g.activeInternal}</td>
+                        <td class="count">${g.recentThreads7d}</td>
+                      </tr>`
+                    )
+                    .join("")}
+                </tbody>
+              </table>`
+            : `<p class="empty">No gap circles at this threshold.</p>`;
+
+          document.querySelectorAll(".gap-spawn").forEach((btn) => {
+            btn.addEventListener("click", async () => {
+              btn.disabled = true;
+              try {
+                const res2 = await fetch(`${API_BASE}/internal/admin/seed/spawn`, {
+                  method: "POST",
+                  headers: headers(true),
+                  body: JSON.stringify({
+                    target: "school",
+                    schoolId: btn.getAttribute("data-school"),
+                    curriculumId: btn.getAttribute("data-curr"),
+                    gradeId: btn.getAttribute("data-grade"),
+                    pinCode: btn.getAttribute("data-pin"),
+                    actor: "seeds-admin",
+                  }),
+                });
+                const out = await res2.json();
+                if (!res2.ok) throw new Error(out.error || `HTTP ${res2.status}`);
+                await runGapCheck();
+                await loadSeeds();
+              } catch (err) {
+                showError(err.message || String(err));
+                btn.disabled = false;
+              }
+            });
+          });
+        } catch (err) {
+          showError(err.message || String(err));
+          $("gapsMeta").textContent = "Failed.";
+        } finally {
+          $("runGaps").disabled = false;
+        }
+      }
+
+      $("runGaps").addEventListener("click", runGapCheck);
+      $("loadSeeds").addEventListener("click", loadSeeds);
+
+      $("postAsBtn").addEventListener("click", async () => {
+        showError("");
+        const userId = $("postAsUser").value;
+        const circleId = $("postCircleId").value.trim();
+        const body = $("postBody").value.trim();
+        const title = $("postTitle").value.trim();
+        const threadId = $("postThreadId").value.trim();
+        if (!userId || !circleId || !body) {
+          showError("Select an account, enter circle id, and a message.");
+          return;
+        }
+        $("postMsg").textContent = "Posting…";
+        try {
+          const res = await fetch(
+            `${API_BASE}/internal/admin/seed/${encodeURIComponent(userId)}/post`,
+            {
+              method: "POST",
+              headers: headers(true),
+              body: JSON.stringify({
+                circleId,
+                body,
+                title: title || undefined,
+                kind: "question",
+                threadId: threadId || undefined,
+                actor: "seeds-admin",
+              }),
+            }
+          );
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+          $("postMsg").textContent =
+            data.mode === "reply"
+              ? `Reply posted · message ${data.result?.id || ""}`
+              : `Thread created · ${data.result?.id || ""}`;
+          $("postBody").value = "";
+          $("postTitle").value = "";
+        } catch (err) {
+          $("postMsg").textContent = "";
+          showError(err.message || String(err));
+        }
+      });
+
+      (async () => {
+        const ok = await VaaraAdmin.requireAuth();
+        if (!ok) return;
+        VaaraAdmin.mountBar($("adminNav"));
+        await loadSeeds();
+      })();
+    </script>
+  </body>
+</html>

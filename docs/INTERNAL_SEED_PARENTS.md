@@ -250,7 +250,9 @@ must not affect what normal parents see in the app.
 
 ### Gap check (ops)
 
-On Circles admin → **Check gaps** (after login):
+### Gap check (ops)
+
+On Admin → **Seed parents** → **Check gaps**:
 
 1. Lists circles with real parents but &lt; 2 active internal asker/responder members
 2. Suggests spawn recipes that cover the most gaps in one go (school + board/grade + PIN)
