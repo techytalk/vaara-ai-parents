@@ -1019,6 +1019,43 @@ export function createInternalRoutes() {
     }
   });
 
+  app.get("/admin/circles/:id/threads", async (c) => {
+    if (!(await requireAdminAuth(c))) return c.json({ error: "Unauthorized" }, 401);
+    const id = (c.req.param("id") ?? "").trim();
+    if (!/^[0-9a-f-]{36}$/i.test(id)) {
+      return c.json({ error: "Invalid circle id" }, 400);
+    }
+    const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 40), 1), 100);
+    const client = await pool.connect();
+    try {
+      const { rows } = await client.query(
+        `SELECT
+           t.id,
+           t.title,
+           t.status,
+           t.author_id,
+           u.display_name AS author_name,
+           u.email AS author_email,
+           u.is_internal AS author_is_internal,
+           to_char(t.created_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD HH24:MI') AS created_ist,
+           to_char(COALESCE(t.last_message_at, t.created_at) AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD HH24:MI') AS last_activity_ist,
+           (
+             SELECT COUNT(*)::int FROM circle_messages m
+             WHERE m.thread_id = t.id AND m.status = 'visible'
+           ) AS message_count
+         FROM circle_threads t
+         LEFT JOIN users u ON u.id = t.author_id
+         WHERE t.circle_id = $1
+         ORDER BY COALESCE(t.last_message_at, t.created_at) DESC
+         LIMIT $2`,
+        [id, limit]
+      );
+      return c.json({ ok: true, threads: rows });
+    } finally {
+      client.release();
+    }
+  });
+
   // ---- Internal seed parents (secret-gated) ----
 
   app.get("/admin/seed", async (c) => {
@@ -1084,6 +1121,42 @@ export function createInternalRoutes() {
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;
+    } finally {
+      client.release();
+    }
+  });
+
+  app.get("/admin/seed/:userId/circles", async (c) => {
+    if (!(await requireAdminAuth(c))) return c.json({ error: "Unauthorized" }, 401);
+    const userId = (c.req.param("userId") ?? "").trim();
+    if (!/^[0-9a-f-]{36}$/i.test(userId)) {
+      return c.json({ error: "Invalid user id" }, 400);
+    }
+    const client = await pool.connect();
+    try {
+      const { rows } = await client.query(
+        `SELECT
+           c.id,
+           c.display_name,
+           c.circle_type::text AS circle_type,
+           c.key,
+           to_char(cm.joined_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD HH24:MI') AS joined_ist
+         FROM circle_members cm
+         JOIN circles c ON c.id = cm.circle_id
+         WHERE cm.user_id = $1
+         ORDER BY
+           CASE c.circle_type::text
+             WHEN 'school' THEN 1
+             WHEN 'school_class' THEN 2
+             WHEN 'class' THEN 3
+             WHEN 'curriculum' THEN 4
+             WHEN 'locality' THEN 5
+             ELSE 9
+           END,
+           c.display_name`,
+        [userId]
+      );
+      return c.json({ ok: true, circles: rows });
     } finally {
       client.release();
     }

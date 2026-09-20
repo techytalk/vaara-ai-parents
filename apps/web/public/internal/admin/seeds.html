@@ -192,7 +192,7 @@
 
       <div class="panel">
         <h2>Post as seed</h2>
-        <p class="meta">Uses the same chat pipeline as a real parent (thread or reply).</p>
+        <p class="meta">Same chat pipeline as a real parent. Pick account → circle → new thread or reply.</p>
         <div class="field">
           <label>Internal account</label>
           <select id="postAsUser">
@@ -200,20 +200,33 @@
           </select>
         </div>
         <div class="field">
-          <label>Circle id</label>
-          <input id="postCircleId" placeholder="UUID from Circles detail / URL" size="40" />
+          <label>Circle (this seed’s memberships)</label>
+          <select id="postCircle">
+            <option value="">Select account first…</option>
+          </select>
+          <div class="meta" id="circleHint" style="margin-top:4px;"></div>
         </div>
         <div class="field">
+          <label>Action</label>
+          <select id="postMode">
+            <option value="thread">New thread / question</option>
+            <option value="reply">Reply to an existing thread</option>
+          </select>
+        </div>
+        <div class="field" id="titleField">
           <label>Title (new thread)</label>
           <input id="postTitle" placeholder="Optional short title" />
+        </div>
+        <div class="field" id="threadField" style="display:none;">
+          <label>Thread to reply to</label>
+          <select id="postThread">
+            <option value="">Select circle first…</option>
+          </select>
+          <button type="button" class="secondary" id="refreshThreads" style="margin-top:6px;">Refresh threads</button>
         </div>
         <div class="field">
           <label>Message</label>
           <textarea id="postBody" placeholder="Question or reply body…"></textarea>
-        </div>
-        <div class="field">
-          <label>Thread id (optional — set to reply instead of new thread)</label>
-          <input id="postThreadId" placeholder="Leave empty to create a new thread" />
         </div>
         <button type="button" id="postAsBtn">Post as selected</button>
         <div class="meta" id="postMsg" style="margin-top:8px;"></div>
@@ -317,9 +330,92 @@
         document.querySelectorAll(".seed-pick").forEach((btn) => {
           btn.addEventListener("click", () => {
             $("postAsUser").value = btn.getAttribute("data-id");
+            $("postAsUser").dispatchEvent(new Event("change"));
           });
         });
         fillPostSelect();
+      }
+
+      function syncPostModeUi() {
+        const reply = $("postMode").value === "reply";
+        $("titleField").style.display = reply ? "none" : "block";
+        $("threadField").style.display = reply ? "block" : "none";
+      }
+
+      async function loadSeedCircles(userId) {
+        const sel = $("postCircle");
+        const hint = $("circleHint");
+        sel.innerHTML = `<option value="">Loading…</option>`;
+        hint.textContent = "";
+        $("postThread").innerHTML = `<option value="">Select circle first…</option>`;
+        if (!userId) {
+          sel.innerHTML = `<option value="">Select account first…</option>`;
+          return;
+        }
+        try {
+          const res = await fetch(
+            `${API_BASE}/internal/admin/seed/${encodeURIComponent(userId)}/circles`,
+            { headers: headers(false) }
+          );
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+          const circles = data.circles || [];
+          if (!circles.length) {
+            sel.innerHTML = `<option value="">No circle memberships</option>`;
+            hint.textContent = "Spawn this seed first so they join school/PIN/class circles.";
+            return;
+          }
+          sel.innerHTML =
+            `<option value="">Select circle…</option>` +
+            circles
+              .map(
+                (c) =>
+                  `<option value="${escapeHtml(c.id)}">${escapeHtml(
+                    c.display_name
+                  )} · ${escapeHtml(c.circle_type)}</option>`
+              )
+              .join("");
+          hint.textContent = `${circles.length} circle(s) this account belongs to`;
+        } catch (err) {
+          sel.innerHTML = `<option value="">Failed to load</option>`;
+          showError(err.message || String(err));
+        }
+      }
+
+      async function loadCircleThreads(circleId, preferThreadId) {
+        const sel = $("postThread");
+        if (!circleId) {
+          sel.innerHTML = `<option value="">Select circle first…</option>`;
+          return;
+        }
+        sel.innerHTML = `<option value="">Loading threads…</option>`;
+        try {
+          const res = await fetch(
+            `${API_BASE}/internal/admin/circles/${encodeURIComponent(circleId)}/threads?limit=40`,
+            { headers: headers(false) }
+          );
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+          const threads = data.threads || [];
+          if (!threads.length) {
+            sel.innerHTML = `<option value="">No threads in this circle yet</option>`;
+            return;
+          }
+          sel.innerHTML =
+            `<option value="">Select thread…</option>` +
+            threads
+              .map((t) => {
+                const title = (t.title || "Untitled").slice(0, 60);
+                const who = t.author_name || t.author_email || "unknown";
+                const label = `${title} · ${who} · ${t.message_count || 0} msg · ${t.last_activity_ist || ""}`;
+                return `<option value="${escapeHtml(t.id)}">${escapeHtml(label)}</option>`;
+              })
+              .join("");
+          if (preferThreadId) sel.value = preferThreadId;
+        } catch (err) {
+          sel.innerHTML = `<option value="">Failed to load threads</option>`;
+          showError(err.message || String(err));
+        }
       }
 
       async function loadSeeds() {
@@ -461,15 +557,39 @@
       $("runGaps").addEventListener("click", runGapCheck);
       $("loadSeeds").addEventListener("click", loadSeeds);
 
+      $("postAsUser").addEventListener("change", () => {
+        loadSeedCircles($("postAsUser").value);
+      });
+      $("postCircle").addEventListener("change", () => {
+        if ($("postMode").value === "reply") {
+          loadCircleThreads($("postCircle").value);
+        }
+      });
+      $("postMode").addEventListener("change", () => {
+        syncPostModeUi();
+        if ($("postMode").value === "reply" && $("postCircle").value) {
+          loadCircleThreads($("postCircle").value);
+        }
+      });
+      $("refreshThreads").addEventListener("click", () => {
+        loadCircleThreads($("postCircle").value);
+      });
+      syncPostModeUi();
+
       $("postAsBtn").addEventListener("click", async () => {
         showError("");
         const userId = $("postAsUser").value;
-        const circleId = $("postCircleId").value.trim();
+        const circleId = $("postCircle").value;
         const body = $("postBody").value.trim();
         const title = $("postTitle").value.trim();
-        const threadId = $("postThreadId").value.trim();
+        const mode = $("postMode").value;
+        const threadId = mode === "reply" ? $("postThread").value : "";
         if (!userId || !circleId || !body) {
-          showError("Select an account, enter circle id, and a message.");
+          showError("Select an account, a circle, and enter a message.");
+          return;
+        }
+        if (mode === "reply" && !threadId) {
+          showError("Pick a thread to reply to, or switch to New thread.");
           return;
         }
         $("postMsg").textContent = "Posting…";
@@ -482,7 +602,7 @@
               body: JSON.stringify({
                 circleId,
                 body,
-                title: title || undefined,
+                title: mode === "thread" ? title || undefined : undefined,
                 kind: "question",
                 threadId: threadId || undefined,
                 actor: "seeds-admin",
@@ -491,12 +611,25 @@
           );
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-          $("postMsg").textContent =
-            data.mode === "reply"
-              ? `Reply posted · message ${data.result?.id || ""}`
-              : `Thread created · ${data.result?.id || ""}`;
           $("postBody").value = "";
           $("postTitle").value = "";
+          if (data.mode === "reply") {
+            $("postMsg").textContent = `Reply posted · message ${data.result?.id || ""}`;
+            await loadCircleThreads(circleId, threadId);
+          } else {
+            const newThreadId = data.result?.id || data.nudge?.threadId || "";
+            $("postMsg").innerHTML = newThreadId
+              ? `Thread created. <button type="button" class="secondary" id="replyCreated">Reply to this thread</button>`
+              : `Thread created.`;
+            if (newThreadId) {
+              $("replyCreated")?.addEventListener("click", async () => {
+                $("postMode").value = "reply";
+                syncPostModeUi();
+                await loadCircleThreads(circleId, newThreadId);
+                $("postMsg").textContent = "Reply mode — write the reply and post.";
+              });
+            }
+          }
         } catch (err) {
           $("postMsg").textContent = "";
           showError(err.message || String(err));
