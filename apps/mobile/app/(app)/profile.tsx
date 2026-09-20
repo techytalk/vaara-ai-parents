@@ -12,27 +12,40 @@ import { SignOutButton } from "@/components/SignOutButton";
 import { Avatar, ScreenLoader } from "@/components/ui";
 import { FEATURE_FLAGS } from "@/constants/features";
 import { colors, radii, spacing, typography } from "@/constants/theme";
-import { api, type AuthUser, type Child, type MeStats } from "@/lib/api";
+import {
+  api,
+  type AuthUser,
+  type Child,
+  type Location,
+  type MeStats,
+} from "@/lib/api";
 import { trackEvent } from "@/lib/analytics";
 import { getToken } from "@/lib/session";
+import {
+  boardFamilyFromCurriculum,
+  stateCodeFromLabel,
+  stateLabelFromCode,
+} from "@vaara/shared/pathways";
 
 type MenuIcon = keyof typeof Ionicons.glyphMap;
 
 function MenuRow({
   icon,
   label,
+  subtitle,
   onPress,
   color = colors.primary,
 }: {
   icon: MenuIcon;
   label: string;
+  subtitle?: string;
   onPress: () => void;
   color?: string;
 }) {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel={subtitle ? `${label}. ${subtitle}` : label}
       onPress={onPress}
       style={({ pressed }) => [
         styles.menuRow,
@@ -42,7 +55,10 @@ function MenuRow({
       <View style={[styles.menuIcon, { backgroundColor: `${color}18` }]}>
         <Ionicons name={icon} size={20} color={color} />
       </View>
-      <Text style={styles.menuLabel}>{label}</Text>
+      <View style={styles.menuText}>
+        <Text style={styles.menuLabel}>{label}</Text>
+        {subtitle ? <Text style={styles.menuSubtitle}>{subtitle}</Text> : null}
+      </View>
       <Ionicons name="chevron-forward" size={18} color={colors.textSubtle} />
     </Pressable>
   );
@@ -57,10 +73,45 @@ function StatItem({ value, label }: { value: string | number; label: string }) {
   );
 }
 
+function childsPathSubtitle(
+  children: Child[],
+  location: Location | null
+): string | null {
+  const schoolChild = children.find(
+    (child) =>
+      child.track === "school" &&
+      child.curriculum?.code &&
+      boardFamilyFromCurriculum(child.curriculum.code)
+  );
+  if (!schoolChild?.curriculum) return null;
+
+  const family = boardFamilyFromCurriculum(schoolChild.curriculum.code);
+  const boardLabel =
+    family === "CAMBRIDGE"
+      ? "Cambridge"
+      : family === "STATE"
+        ? schoolChild.curriculum.code === "SSC"
+          ? "SSC"
+          : "State"
+        : family === "IB"
+          ? schoolChild.curriculum.code.replace("_", " ")
+          : family ?? schoolChild.curriculum.code;
+
+  const grade =
+    schoolChild.grade?.label ?? schoolChild.grade?.code ?? "Grade";
+  const stateCode =
+    stateCodeFromLabel(location?.state) ??
+    stateCodeFromLabel(schoolChild.school.state);
+  const state = stateLabelFromCode(stateCode) ?? "India";
+
+  return `${boardLabel} · ${grade} · ${state}`;
+}
+
 export default function ProfileScreen() {
   const router = useRouter();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [children, setChildren] = useState<Child[]>([]);
+  const [location, setLocation] = useState<Location | null>(null);
   const [stats, setStats] = useState<MeStats | null>(null);
   const [statsFailed, setStatsFailed] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -72,13 +123,15 @@ export default function ProfileScreen() {
         return;
       }
       try {
-        const [me, kids, meStats] = await Promise.all([
+        const [me, kids, meStats, loc] = await Promise.all([
           api.me(token),
           api.getChildren(token).catch(() => []),
           api.getMeStats(token).catch(() => null),
+          api.getLocation(token).catch(() => null),
         ]);
         setUser(me);
         setChildren(kids);
+        setLocation(loc);
         if (meStats) {
           setStats(meStats);
           setStatsFailed(false);
@@ -103,6 +156,10 @@ export default function ProfileScreen() {
           ? `${children[0].curriculum.code} · ${children[0].grade.label}`
           : children[0].school.displayLabel
       : "Complete your profile";
+
+  const pathSubtitle = FEATURE_FLAGS.showChildsPath
+    ? childsPathSubtitle(children, location)
+    : null;
 
   const circleValue = statsFailed ? "—" : (stats?.circleCount ?? 0);
   const savedValue = statsFailed ? "—" : (stats?.savedPostCount ?? 0);
@@ -151,6 +208,14 @@ export default function ProfileScreen() {
           label="My Children"
           onPress={() => openMore("/onboarding/children", "children")}
         />
+        {FEATURE_FLAGS.showChildsPath && pathSubtitle ? (
+          <MenuRow
+            icon="map-outline"
+            label="Child's Path"
+            subtitle={pathSubtitle}
+            onPress={() => openMore("/(app)/pathways", "childs_path")}
+          />
+        ) : null}
         <MenuRow
           icon="chatbubbles-outline"
           label="My groups"
@@ -186,7 +251,10 @@ export default function ProfileScreen() {
           icon="options-outline"
           label="Notification Preferences"
           onPress={() =>
-            openMore("/(app)/settings/notifications", "notification_preferences")
+            openMore(
+              "/(app)/settings/notifications",
+              "notification_preferences"
+            )
           }
         />
         <MenuRow
@@ -309,6 +377,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.sm,
     paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
@@ -320,10 +389,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  menuText: { flex: 1, gap: 1 },
   menuLabel: {
     ...typography.body,
     color: colors.text,
     fontFamily: typography.semibold,
-    flex: 1,
+  },
+  menuSubtitle: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontFamily: typography.medium,
   },
 });

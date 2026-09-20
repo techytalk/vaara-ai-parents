@@ -18,6 +18,11 @@
       "react-native": "./auth-input.ts",
       "types": "./dist/auth-input.d.ts",
       "default": "./dist/auth-input.js"
+    },
+    "./pathways": {
+      "react-native": "./pathways.ts",
+      "types": "./dist/pathways.d.ts",
+      "default": "./dist/pathways.js"
     }
   },
   "scripts": {

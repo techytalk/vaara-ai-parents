@@ -33,6 +33,7 @@ Implementation for everything here lives in [Feature Implementation Plan](./FEAT
 |-------|----------|
 | Pregnancy as a family type on add-child | School traction first. Expecting parents need hospitals and guidance, not only a new circle. See [Future: Pregnancy onboarding](./FUTURE_PREGNANCY_ONBOARDING.md). |
 | Post access + sharing | End-to-end specification complete. Covers prospective-parent threads, permission states, text/media sharing, short links, install/login routing, and non-member previews. See [Post access and sharing implementation](./POST_ACCESS_AND_SHARING_IMPLEMENTATION.md). |
+| Child's Path (What next + Opportunities) | Parent-facing name **Child's Path** on More. Board- and **state**-aware map of streams, pathways, and exams (CBSE, Cambridge, ICSE, SSC/state boards, IB; TG EAPCET through TNEA, KCET, MHT-CET, etc.). Specified first; designed in admin; mobile only after the card flow is signed off. See [What next and Opportunities](./WHAT_NEXT_AND_OPPORTUNITIES.md). |
 
 Growth mechanics are intentionally out of scope for this document and will be handled separately.
 
@@ -55,6 +56,11 @@ MARKETPLACE       what you need        open browse, pin-code targeted
                                        named and verified, not anonymous
                                        e.g. maths tutors, swimming coaching
 ```
+
+A later **orientation** layer (**Child's Path**: What next + Opportunities)
+is specified in
+[What next and Opportunities](./WHAT_NEXT_AND_OPPORTUNITIES.md). It is
+editorial, not a circle and not a topic. It is out of current mobile scope.
 
 **The rule that prevents fragmentation:** a parent may never hand-create a group whose membership the system can already compute. If the app knows the school, curriculum, and grade from the child's profile, the app creates that circle. Parents only create and follow **interests**.
 

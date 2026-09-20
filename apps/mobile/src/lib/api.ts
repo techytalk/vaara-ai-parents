@@ -712,6 +712,79 @@ export type MeStats = {
   helpfulReceivedCount: number;
 };
 
+export type PathwayDetailRow = {
+  label: string;
+  value: string;
+};
+
+export type PathwayCard = {
+  slug: string;
+  kind: "pathway" | "exam" | "olympiad" | "admission_route";
+  pillar: "what_next" | "opportunities";
+  title: string;
+  summary: string;
+  lead: string;
+  detailRows: PathwayDetailRow[];
+  officialUrl: string | null;
+  visibility: "live" | "dimmed" | "contrast" | "inactive";
+  whenLabel: string | null;
+  contentDepth: "full" | "compact" | "thin";
+  status: "draft" | "published" | "inactive";
+};
+
+export type PathwayHubChild = {
+  id: string;
+  nickname: string | null;
+  curriculumCode: string | null;
+  gradeLabel: string | null;
+};
+
+export type PathwayHubResponse = {
+  context: {
+    family: string;
+    stateCode: string | null;
+    stateLabel: string | null;
+    primaryStage: string;
+    qualificationId: string;
+    includeAfter10Fork: boolean;
+    stream: string;
+    childId: string | null;
+    childLabel: string;
+    boardLabel: string;
+    gradeLabel: string;
+    stripLabels: string[];
+    stripIndex: number;
+    stageLead: string;
+    showStreamChips: boolean;
+    streamChipLabels: Array<{ id: string; label: string }>;
+  };
+  groups: Array<{
+    id: string;
+    title: string;
+    cards: PathwayCard[];
+  }>;
+  children: PathwayHubChild[];
+};
+
+export type PathwayItemDetail = {
+  item: PathwayCard & {
+    boardFamilies: string[];
+    stateCodes: string[];
+    stageIds: string[];
+    streamIds: string[];
+    sourceUrls: string[];
+    lastReviewedOn: string;
+    admissionPattern: string;
+  };
+  related: Array<{
+    rel: string;
+    slug: string;
+    title: string;
+    summary: string;
+    kind: string;
+  }>;
+};
+
 export type NotificationPrefs = {
   circle_posts?: boolean;
   circle_replies?: boolean;
@@ -2027,6 +2100,25 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ fireAt }),
     }, token),
+
+  getPathwaysHub: (
+    token: string,
+    params?: { childId?: string; stream?: string; state?: string }
+  ) => {
+    const qs = new URLSearchParams();
+    if (params?.childId) qs.set("childId", params.childId);
+    if (params?.stream) qs.set("stream", params.stream);
+    if (params?.state) qs.set("state", params.state);
+    const q = qs.toString();
+    return request<PathwayHubResponse>(
+      `/v1/pathways/hub${q ? `?${q}` : ""}`,
+      {},
+      token
+    );
+  },
+
+  getPathwayItem: (token: string, slug: string) =>
+    request<PathwayItemDetail>(`/v1/pathways/items/${slug}`, {}, token),
 
   discoverPractitioners: (
     token: string,

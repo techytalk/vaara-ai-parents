@@ -4,5 +4,14 @@
     "outDir": "dist",
     "rootDir": "."
   },
-  "include": ["types.ts", "report-reasons.ts", "auth-input.ts"]
+  "include": [
+    "types.ts",
+    "report-reasons.ts",
+    "auth-input.ts",
+    "pathways.ts",
+    "pathways-types.ts",
+    "pathways-catalogue.ts",
+    "pathways-context.ts",
+    "pathways-query.ts"
+  ]
 }
