@@ -1071,8 +1071,9 @@ export function createInternalRoutes() {
         actor: body.actor ?? "admin",
       });
       if (!result.ok) {
+        const { error, status } = result;
         await client.query("ROLLBACK");
-        return c.json({ error: result.error }, result.status as 400 | 404);
+        return c.json({ error }, status as 400 | 404);
       }
       await client.query("COMMIT");
       return c.json(result, 201);
@@ -1110,8 +1111,9 @@ export function createInternalRoutes() {
         body.actor ?? "admin"
       );
       if (!result.ok) {
+        const { error, status } = result;
         await client.query("ROLLBACK");
-        return c.json({ error: result.error }, result.status as 400 | 404);
+        return c.json({ error }, status as 400 | 404);
       }
       await client.query("COMMIT");
       return c.json(result);
@@ -1161,8 +1163,9 @@ export function createInternalRoutes() {
         actor: body.actor ?? "admin",
       });
       if (!result.ok) {
+        const { error, status } = result;
         await client.query("ROLLBACK");
-        return c.json({ error: result.error }, result.status as 400 | 403 | 404 | 429);
+        return c.json({ error }, status as 400 | 403 | 404 | 429);
       }
       await client.query("COMMIT");
       await publishChatNudge(result.nudge);
