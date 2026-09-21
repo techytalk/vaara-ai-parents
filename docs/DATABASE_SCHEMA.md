@@ -186,6 +186,13 @@ CREATE INDEX idx_user_locations_pin ON user_locations(pin_code);
 CREATE INDEX idx_user_locations_community ON user_locations(community_key) WHERE community_key IS NOT NULL;
 ```
 
+### `onboarding_geo_signals`
+
+Analysis-only. Typed PIN/city vs Vercel IP city vs school city. No raw IP.
+Does not replace `user_locations`. See
+`docs/ONBOARDING_LOCATION_GEO_OBSERVATION.md`. Query `onboarding_geo_case`
+for `case_hint`.
+
 **Normalization function** (app or DB):
 
 ```sql

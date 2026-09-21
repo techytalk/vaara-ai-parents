@@ -54,6 +54,49 @@ Paste these when they exist (never invent `G-` / `AW-` values):
 
 App conversions do not need Ads IDs in the APK; they flow Firebase → GA4 → Google Ads after the link above.
 
+GA4’s automatic event **City** is IP-based (same class of signal as Vercel
+`x-vercel-ip-city`). It is not the PIN the parent typed.
+
+### What GA4 already has (no extra events)
+
+These attach to **every** Firebase event. They are not GPS.
+
+| Dimension | Source | Use for this question |
+| --- | --- | --- |
+| Country / Region / City | Device **IP** | Same as Vercel IP city. Compare to our `entered_city` param. |
+| First user source / medium / campaign | Play referrer, Ads, UTM | Case 3: which campaign sent people whose IP city is not Hyderabad. |
+| Session campaign | Same, for that session | Ads vs organic on this open. |
+| Platform, app version, device model | SDK | Filter Android vs iOS. |
+| Language | Device | Weak signal only. |
+| Google Ads (if linked) | Ads ↔ GA4 | Campaign / ad group next to geo. |
+| Google Signals (if enabled) | Google logged-in cohort | Age/gender interest brackets — **not** home vs hometown. |
+
+GA4 does **not** give neighbourhood, GPS, or the typed PIN unless we send
+params. Approximate location is not collected unless the app has a location
+permission (we do not).
+
+### Custom event `onboarding_geo` (OTA)
+
+Fired after location save (`phase=location`) and after school pick
+(`phase=school`). Params are city/state/PIN **prefix** only (no full PIN).
+
+| Param | Meaning |
+| --- | --- |
+| `phase` | `location` or `school` |
+| `entered_city` / `entered_state` | From PIN lookup |
+| `pin_prefix` | First 3 digits of an Indian PIN (e.g. `500` vs `506`) |
+| `launch_metro` | Typed home is Hyderabad / Secunderabad / `500xxx` |
+| `school_city` / `school_state` | School phase only |
+| `school_launch_metro` | School is in launch metro |
+
+In GA4 Explore, put **City** (automatic IP) next to `entered_city`. Register
+`entered_city`, `school_city`, `phase`, `pin_prefix`, `launch_metro` as custom
+dimensions (event scope) or they stay in DebugView / BigQuery only.
+
+Prefer Ads location type **Presence** (people in or regularly in Hyderabad),
+not Presence or interest. DB table `onboarding_geo_signals` remains the join
+for SQL. This event is for campaign slices.
+
 ## Preschool onboarding events (GA4 / Firebase)
 
 Fired on the preschool path in addition to the shared funnel. Non-PII only.

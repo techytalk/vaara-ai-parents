@@ -18,7 +18,7 @@ import { useHeaderHeight } from "@react-navigation/elements";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, type PostalCountry } from "@/lib/api";
-import { trackEvent, trackOnboardingBegin } from "@/lib/analytics";
+import { onboardingGeoParams, trackEvent, trackOnboardingBegin } from "@/lib/analytics";
 import { invalidateFamilyMeta } from "@/lib/authenticated-state";
 import {
   useAndroidImeDockOffset,
@@ -512,6 +512,16 @@ export default function LocationScreen() {
         trackEvent("location_updated", {
           country: countryCode,
         });
+        trackEvent(
+          "onboarding_geo",
+          onboardingGeoParams({
+            phase: "location",
+            countryCode,
+            enteredCity: city,
+            enteredState: state,
+            pinCode: postal,
+          })
+        );
         if (router.canGoBack()) {
           router.back();
         } else {
@@ -523,6 +533,16 @@ export default function LocationScreen() {
       trackEvent("onboarding_location_complete", {
         country: countryCode,
       });
+      trackEvent(
+        "onboarding_geo",
+        onboardingGeoParams({
+          phase: "location",
+          countryCode,
+          enteredCity: city,
+          enteredState: state,
+          pinCode: postal,
+        })
+      );
       void prefetchSchoolsForLocation({
         country: countryCode,
         pin: postal,

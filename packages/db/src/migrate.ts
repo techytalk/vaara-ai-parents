@@ -106,6 +106,10 @@ const MIGRATIONS = [
     version: "055_internal_seed_parents",
     file: "055_internal_seed_parents.sql",
   },
+  {
+    version: "056_onboarding_geo_signals",
+    file: "056_onboarding_geo_signals.sql",
+  },
 ];
 
 async function isMigrationApplied(

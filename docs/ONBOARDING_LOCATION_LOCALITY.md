@@ -13,9 +13,11 @@ Decision doc for Step 1 (`/onboarding/location`). Supplements
 3. **Continue** docked above the keypad (Post / Save pattern)
 4. **PIN field stays above the keyboard** while typing
 
-**Out of scope:** city/state field changes, API / backend changes, community
-field, ranking of postal names, 2G / Redis / on-device packs, school step,
-child identity, or any other onboarding screen.
+**Out of scope:** city/state field changes, community field, ranking of postal
+names, 2G / Redis / on-device packs, school step, child identity, or any other
+onboarding screen. Hometown PIN vs ads geo is observed in the API/DB without
+changing this UI — see
+[ONBOARDING_LOCATION_GEO_OBSERVATION.md](./ONBOARDING_LOCATION_GEO_OBSERVATION.md).
 
 ---
 

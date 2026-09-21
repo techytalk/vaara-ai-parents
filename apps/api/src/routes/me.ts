@@ -31,6 +31,10 @@ import {
 } from "../lib/idempotency.js";
 import { listUserRoles } from "../lib/user-roles.js";
 import { lookupPostalCode } from "../lib/postal-code/index.js";
+import {
+  recordOnboardingGeoLocation,
+  recordOnboardingGeoSchool,
+} from "../lib/onboarding-geo.js";
 
 const CHILD_SELECT = `
   ch.id, ch.nickname, ch.gender, ch.date_of_birth, ch.curriculum_id, ch.grade_id, ch.school_id,
@@ -378,7 +382,8 @@ export function createMeRoutes() {
       }
 
       const schoolCheck = await client.query(
-        `SELECT id FROM schools
+        `SELECT id, city, state, pin_code
+         FROM schools
          WHERE id = $1 AND normalized_key <> 'school_not_specified||unknown'
            AND redirect_to_school_id IS NULL`,
         [body.schoolId]
@@ -435,6 +440,24 @@ export function createMeRoutes() {
       const user = await fetchAuthUserById(client, userId);
       const circles = await fetchUserCircles(client, userId);
       const payload = { child, user, circles };
+
+      const schoolRow = schoolCheck.rows[0] as {
+        id: string;
+        city: string | null;
+        state: string | null;
+        pin_code: string | null;
+      };
+      await recordOnboardingGeoSchool(
+        client,
+        userId,
+        {
+          id: schoolRow.id,
+          city: schoolRow.city,
+          state: schoolRow.state,
+          pinCode: schoolRow.pin_code,
+        },
+        c.req
+      );
 
       if (effectiveKey) {
         await storeIdempotentResponse(
@@ -493,9 +516,17 @@ export function createMeRoutes() {
         school_id: string;
       };
 
+      let patchedSchool: {
+        id: string;
+        city: string | null;
+        state: string | null;
+        pin_code: string | null;
+      } | null = null;
+
       if (body.schoolId) {
         const schoolCheck = await client.query(
-          `SELECT id FROM schools
+          `SELECT id, city, state, pin_code
+           FROM schools
            WHERE id = $1
              AND normalized_key <> 'school_not_specified||unknown'
              AND redirect_to_school_id IS NULL`,
@@ -505,6 +536,12 @@ export function createMeRoutes() {
           await client.query("ROLLBACK");
           return c.json({ error: "School not found" }, 404);
         }
+        patchedSchool = schoolCheck.rows[0] as {
+          id: string;
+          city: string | null;
+          state: string | null;
+          pin_code: string | null;
+        };
       }
 
       const nextTrack =
@@ -645,6 +682,20 @@ export function createMeRoutes() {
         "UPDATE users SET onboarding_complete = $2, updated_at = now() WHERE id = $1",
         [userId, complete]
       );
+
+      if (patchedSchool) {
+        await recordOnboardingGeoSchool(
+          client,
+          userId,
+          {
+            id: patchedSchool.id,
+            city: patchedSchool.city,
+            state: patchedSchool.state,
+            pinCode: patchedSchool.pin_code,
+          },
+          c.req
+        );
+      }
 
       await client.query("COMMIT");
 
@@ -794,6 +845,13 @@ export function createMeRoutes() {
           communityName,
           communityKey,
         ]
+      );
+
+      await recordOnboardingGeoLocation(
+        client,
+        userId,
+        { countryCode, pinCode, locality, city, state },
+        c.req
       );
 
       await syncCircleMembership(client, userId);

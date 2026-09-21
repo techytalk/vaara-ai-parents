@@ -64,9 +64,84 @@ export type AnalyticsEvent =
   | "completion_prompt_tapped"
   | "completion_prompt_dismissed"
   | "school_suggestion_tapped"
-  | "share";
+  | "share"
+  | "onboarding_geo";
 
 type AnalyticsProperties = Record<string, string | number | boolean>;
+
+const LAUNCH_CITIES = new Set(["hyderabad", "secunderabad"]);
+const GA4_PARAM_MAX = 100;
+
+function clipParam(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.length <= GA4_PARAM_MAX) return trimmed;
+  return trimmed.slice(0, GA4_PARAM_MAX);
+}
+
+function pinPrefix(pin: string | undefined, countryCode: string): string {
+  const digits = (pin ?? "").replace(/\D/g, "");
+  if (countryCode.toUpperCase() === "IN" && digits.length >= 3) {
+    return digits.slice(0, 3);
+  }
+  return "";
+}
+
+function isLaunchMetro(opts: {
+  city?: string | null;
+  pin?: string | null;
+  countryCode?: string | null;
+}): boolean {
+  const city = opts.city?.trim().toLowerCase() ?? "";
+  if (LAUNCH_CITIES.has(city)) return true;
+  const country = (opts.countryCode ?? "IN").trim().toUpperCase();
+  const pin = (opts.pin ?? "").replace(/\D/g, "");
+  return country === "IN" && pin.startsWith("500");
+}
+
+/** Non-PII geo params for GA4 (no full PIN, street, or coordinates). */
+export function onboardingGeoParams(input: {
+  phase: "location" | "school";
+  countryCode?: string | null;
+  enteredCity?: string | null;
+  enteredState?: string | null;
+  pinCode?: string | null;
+  schoolCity?: string | null;
+  schoolState?: string | null;
+  schoolPin?: string | null;
+}): AnalyticsProperties {
+  const country = (input.countryCode ?? "IN").toUpperCase();
+  const prefix = pinPrefix(input.pinCode ?? undefined, country);
+  const params: AnalyticsProperties = {
+    phase: input.phase,
+    country,
+    launch_metro: isLaunchMetro({
+      city: input.enteredCity,
+      pin: input.pinCode,
+      countryCode: country,
+    }),
+  };
+  if (input.enteredCity?.trim()) {
+    params.entered_city = clipParam(input.enteredCity);
+  }
+  if (input.enteredState?.trim()) {
+    params.entered_state = clipParam(input.enteredState);
+  }
+  if (prefix) params.pin_prefix = prefix;
+  if (input.schoolCity?.trim()) {
+    params.school_city = clipParam(input.schoolCity);
+  }
+  if (input.schoolState?.trim()) {
+    params.school_state = clipParam(input.schoolState);
+  }
+  if (input.schoolCity != null && String(input.schoolCity).trim()) {
+    params.school_launch_metro = isLaunchMetro({
+      city: input.schoolCity,
+      pin: input.schoolPin,
+      countryCode: country,
+    });
+  }
+  return params;
+}
 
 /** Events intended as Google Ads / GA4 key conversions. */
 const CONVERSION_EVENTS = new Set<AnalyticsEvent>([

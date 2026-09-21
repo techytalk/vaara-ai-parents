@@ -9,7 +9,7 @@ import {
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, type School } from "@/lib/api";
-import { trackEvent } from "@/lib/analytics";
+import { onboardingGeoParams, trackEvent } from "@/lib/analytics";
 import { getToken } from "@/lib/session";
 import {
   getOnboardingLocation,
@@ -174,12 +174,26 @@ export default function OnboardingSchoolScreen() {
     setOnboardingTrack(track);
     await setOnboardingSchoolAsync(selectedSchool);
     const schoolKind = selectedSchool.kind ?? "school";
+    const draftedLoc = getOnboardingLocation().location;
     trackEvent("onboarding_school_complete", {
       track,
       school_verified: selectedSchool.verified,
       school_kind: schoolKind,
       offers_preschool: Boolean(selectedSchool.offersPreschool),
     });
+    trackEvent(
+      "onboarding_geo",
+      onboardingGeoParams({
+        phase: "school",
+        countryCode: draftedLoc?.countryCode ?? defaultCountry,
+        enteredCity: draftedLoc?.city ?? defaultCity,
+        enteredState: draftedLoc?.state ?? defaultState,
+        pinCode: draftedLoc?.pinCode ?? defaultPin,
+        schoolCity: selectedSchool.city,
+        schoolState: selectedSchool.state,
+        schoolPin: selectedSchool.pinCode,
+      })
+    );
     if (track === "preschool") {
       trackEvent("preschool_selected", { school_kind: schoolKind });
       router.push("/onboarding/age" as never);
