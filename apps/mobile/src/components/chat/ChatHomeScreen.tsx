@@ -145,6 +145,18 @@ export function ChatHomeScreen() {
               });
               return;
             }
+            if (item.circleId) {
+              router.push({
+                pathname: "/(app)/messages/groups/[circleId]",
+                params: {
+                  circleId: item.circleId,
+                  ...(item.circleName
+                    ? { circleName: item.circleName }
+                    : {}),
+                },
+              });
+              return;
+            }
             router.push({
               pathname: "/(app)/messages/threads/[threadId]",
               params: { threadId: item.id },

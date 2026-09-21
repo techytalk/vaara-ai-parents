@@ -1174,21 +1174,26 @@ export async function listInbox(client: PoolClient, userId: string) {
      ) channel_unread ON true
      LEFT JOIN LATERAL (
        SELECT COUNT(*)::int AS unread_count
-       FROM circle_threads t
+       FROM circle_messages m
+       JOIN circle_threads t
+         ON t.id = m.thread_id AND t.circle_id = c.id AND t.status = 'open'
        LEFT JOIN circle_thread_reads tr
          ON tr.thread_id = t.id AND tr.user_id = $1
-       WHERE t.circle_id = c.id
-         AND t.status = 'open'
+       WHERE m.circle_id = c.id
+         AND m.thread_id IS NOT NULL
+         AND m.status = 'visible'
+         AND m.author_id <> $1
+         AND (tr.last_read_seq IS NULL OR m.seq > tr.last_read_seq)
          AND (
-           t.author_id = $1
-           OR tr.following = true
+           m.created_at >= COALESCE((
+             SELECT MAX(joined_at) FROM circle_membership_periods
+             WHERE circle_id = c.id AND user_id = $1 AND left_at IS NULL
+           ), m.created_at)
          )
-         AND t.reply_count > 0
-         AND t.last_activity_seq > COALESCE(tr.last_read_seq, 0)
          AND NOT EXISTS (
            SELECT 1 FROM user_blocks ub
-           WHERE (ub.blocker_id = $1 AND ub.blocked_id = t.author_id)
-              OR (ub.blocker_id = t.author_id AND ub.blocked_id = $1)
+           WHERE (ub.blocker_id = $1 AND ub.blocked_id = m.author_id)
+              OR (ub.blocker_id = m.author_id AND ub.blocked_id = $1)
          )
      ) thread_unread ON true
      WHERE cm.user_id = $1

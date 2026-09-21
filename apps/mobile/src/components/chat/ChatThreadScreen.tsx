@@ -18,6 +18,7 @@ import { useHeaderHeight } from "@react-navigation/elements";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigation, useRouter } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import * as ImagePicker from "expo-image-picker";
 import { Avatar, EmptyState, ScreenLoader } from "@/components/ui";
 import {
@@ -115,51 +116,27 @@ export function ChatThreadScreen({
   const [pendingDocs, setPendingDocs] = useState<PendingDocument[]>([]);
   const lastSeqRef = useRef(0);
 
-  useLayoutEffect(() => {
-    let current = navigation;
-    let tabs = navigation.getParent();
-    while (tabs) {
-      if (tabs.getState()?.type === "tab") break;
-      current = tabs;
-      tabs = current.getParent();
-    }
-    tabs?.setOptions({ tabBarStyle: { display: "none" } });
-    return () => {
-      tabs?.setOptions({ tabBarStyle: tabBarStyleForInsets(bottomChrome) });
-    };
-  }, [bottomChrome, navigation]);
-
-  useLayoutEffect(() => {
-    if (title?.trim()) {
-      navigation.setOptions({
-        title: title.trim(),
-        headerTitleStyle: {
-          fontSize: 16,
-          fontFamily: typography.semibold,
-        },
-      });
-      return;
-    }
-    if (mode !== "group" || !circleId) return;
-    let cancelled = false;
-    void authed((token) => api.getCircles(token))
-      .then((circles) => {
-        if (cancelled) return;
-        const match = circles.find((circle) => circle.id === circleId);
-        if (!match?.displayName) return;
-        navigation.setOptions({
-          title: match.displayName,
-          headerTitleStyle: {
-            fontSize: 16,
-            fontFamily: typography.semibold,
-          },
-        });
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [circleId, mode, navigation, title]);
+  useFocusEffect(
+    useCallback(() => {
+      const restorers: Array<() => void> = [];
+      let nav: ReturnType<typeof useNavigation> | undefined = navigation;
+      while (nav) {
+        if (nav.getState()?.type === "tab") {
+          const tabNav = nav;
+          tabNav.setOptions({ tabBarStyle: { display: "none" } });
+          restorers.push(() => {
+            tabNav.setOptions({
+              tabBarStyle: tabBarStyleForInsets(bottomChrome),
+            });
+          });
+        }
+        nav = nav.getParent() as typeof nav | undefined;
+      }
+      return () => {
+        restorers.forEach((restore) => restore());
+      };
+    }, [bottomChrome, navigation])
+  );
 
   const meQuery = useQuery({
     queryKey: ["sessionUser"],
@@ -182,6 +159,43 @@ export function ChatThreadScreen({
     },
     enabled: mode === "thread" ? Boolean(threadId) : Boolean(circleId),
   });
+
+  useLayoutEffect(() => {
+    const headerTitleStyle = {
+      fontSize: 16,
+      fontFamily: typography.semibold,
+    };
+    if (title?.trim()) {
+      navigation.setOptions({
+        title: title.trim(),
+        headerTitleStyle,
+      });
+      return;
+    }
+    if (mode === "thread" && threadQuery.data?.circleName) {
+      navigation.setOptions({
+        title: threadQuery.data.circleName,
+        headerTitleStyle,
+      });
+      return;
+    }
+    if (mode !== "group" || !circleId) return;
+    let cancelled = false;
+    void authed((token) => api.getCircles(token))
+      .then((circles) => {
+        if (cancelled) return;
+        const match = circles.find((circle) => circle.id === circleId);
+        if (!match?.displayName) return;
+        navigation.setOptions({
+          title: match.displayName,
+          headerTitleStyle,
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [circleId, mode, navigation, threadQuery.data?.circleName, title]);
 
   const messages = listQuery.data?.messages ?? [];
   const maxSeq = messages.reduce((max, item) => Math.max(max, item.seq), 0);
@@ -689,7 +703,9 @@ export function ChatThreadScreen({
   }
 
   const dockStyle =
-    androidDockOffset > 0 ? { marginBottom: androidDockOffset } : null;
+    androidDockOffset > 0
+      ? { marginBottom: androidDockOffset }
+      : { paddingBottom: spacing.sm + bottomChrome };
   const canSend =
     !sending &&
     canReply &&
@@ -800,7 +816,9 @@ export function ChatThreadScreen({
             <View style={styles.editBanner}>
               <View style={styles.editAccent} />
               <View style={styles.editCopy}>
-                <Text style={styles.editTitle}>Reply in channel</Text>
+                <Text style={styles.editTitle}>
+                  {mode === "thread" ? "Reply" : "Reply in channel"}
+                </Text>
                 <Text style={styles.editPreview} numberOfLines={1}>
                   {attachmentQuoteLabel(
                     quoteTarget.attachments,
