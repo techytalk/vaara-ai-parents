@@ -4,6 +4,10 @@ export type {
   ContentDepth,
   DetailRow,
   HubStream,
+  PathBranch,
+  PathBranchMap,
+  PathBranchRelation,
+  PathTopicId,
   PathwayCard,
   PathwayCatalogue,
   PathwayContext,
@@ -41,3 +45,15 @@ export {
   getPathwayItemBySlug,
   getPathwayLinksForSlug,
 } from "./pathways-query.js";
+
+export {
+  OTHER_ROUTES_PATH_ID,
+  PATH_TOPIC_IDS,
+  buildPathBranchMap,
+  isClass10Fork,
+  parsePathDiscussionTag,
+} from "./pathways-branches.js";
+export type {
+  PathDiscussionOrigin,
+  PathDiscussionTag,
+} from "./pathways-branches.js";

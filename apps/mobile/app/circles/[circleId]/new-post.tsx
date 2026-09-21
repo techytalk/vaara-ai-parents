@@ -122,13 +122,15 @@ const PLACEHOLDERS: Record<PostTagValue, string> = {
 };
 
 export default function NewPostScreen() {
-  const { circleId, title, compose, tag: tagParam, postId } = useLocalSearchParams<{
-    circleId: string;
-    title?: string;
-    compose?: string;
-    tag?: string;
-    postId?: string;
-  }>();
+  const { circleId, title, compose, tag: tagParam, postId, body: bodyParam } =
+    useLocalSearchParams<{
+      circleId: string;
+      title?: string;
+      compose?: string;
+      tag?: string;
+      postId?: string;
+      body?: string;
+    }>();
   const isEditing = Boolean(postId);
   const router = useRouter();
   const navigation = useNavigation();
@@ -145,7 +147,11 @@ export default function NewPostScreen() {
       : undefined
   );
   const seededEditor = seededPost ? editorStateFromPost(seededPost) : null;
-  const [body, setBody] = useState(() => seededEditor?.body ?? "");
+  const [body, setBody] = useState(() => {
+    if (seededEditor?.body) return seededEditor.body;
+    if (typeof bodyParam === "string" && bodyParam.trim()) return bodyParam;
+    return "";
+  });
   const [tag, setTag] = useState<PostTagValue>(() => {
     if (seededEditor) return seededEditor.tag;
     if (tagParam === "recommendation" || tagParam === "question" || tagParam === "heads_up" || tagParam === "general") {

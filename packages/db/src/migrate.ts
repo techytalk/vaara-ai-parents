@@ -110,6 +110,10 @@ const MIGRATIONS = [
     version: "056_onboarding_geo_signals",
     file: "056_onboarding_geo_signals.sql",
   },
+  {
+    version: "057_path_discussion_tags",
+    file: "057_path_discussion_tags.sql",
+  },
 ];
 
 async function isMigrationApplied(

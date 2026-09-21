@@ -739,6 +739,39 @@ export type PathwayHubChild = {
   gradeLabel: string | null;
 };
 
+export type PathTopicId =
+  | "subjects"
+  | "workload"
+  | "college_plans"
+  | "learning"
+  | "next_grade";
+
+export type PathBranch = {
+  id: string;
+  kicker: string;
+  title: string;
+  relation: "continue" | "switch" | "other";
+  breadcrumb: string;
+  exploreTitle: string;
+  itemSlug: string | null;
+  showStreamIntents: boolean;
+  prompts: Partial<Record<PathTopicId, string>>;
+};
+
+export type PathBranchMap = {
+  forkCaption: string;
+  locationKicker: string;
+  locationTitle: string;
+  locationMeta: string;
+  headline: string;
+  deck: string;
+  lockLine: string;
+  defaultBranchId: string;
+  topics: Array<{ id: PathTopicId; label: string }>;
+  primary: PathBranch[];
+  overflow: PathBranch[];
+};
+
 export type PathwayHubResponse = {
   context: {
     family: string;
@@ -763,6 +796,7 @@ export type PathwayHubResponse = {
     title: string;
     cards: PathwayCard[];
   }>;
+  branchMap: PathBranchMap;
   children: PathwayHubChild[];
 };
 

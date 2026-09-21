@@ -6,11 +6,23 @@ flow and card layout feel right.
 **Audience:** editorial orientation for parents, keyed to the child's board
 and stage. Not counselling, not coaching ads, not a new circle.
 
-This is the product specification and first content catalogue. It is the
-source of truth until the admin prototype exists. CBSE mobile presentation
-is proposed in §14 and should be the admin phone-preview layout. Other
-boards reuse that shell after CBSE reads clearly. Do not ship app screens
-until that preview is signed off.
+This is the product specification and first content catalogue. Board
+families, stages, streams, and card copy live here.
+
+**Official check (21 Sep 2026):** exam names, Class 12-equivalent gates
+(JEE/NEET/CUET vs IGCSE/MYP), AIU IB/A Level wording, TG EAPCET ≠ medicine,
+POLYCET after 10, NTSE paused — see
+[`CHILDS_PATH_OFFICIAL_REVIEW.md`](CHILDS_PATH_OFFICIAL_REVIEW.md).
+Orientation copy is not a counselling certificate.
+
+**Phone layout at the Class 10 fork** is
+[`CHILDS_PATH_BRANCH_UI.md`](CHILDS_PATH_BRANCH_UI.md) (location node,
+stay/switch branches, explore panel, Path theme). **Production behaviour**
+(identity, posting audience, eligibility, errors, QA) is
+[`CHILDS_PATH_FUNCTIONAL.md`](CHILDS_PATH_FUNCTIONAL.md). §14 remains the
+light card-list density for admin preview. Do not mix chromes on one
+screen. Do not replace the signed tree with Astra’s radial map, question-led
+hub, or a five-stop strip on the same view.
 
 **Parent-facing name:** **Child's Path** (More row and hub title).
 
@@ -1300,10 +1312,15 @@ HTML templates.
 
 ## 14. Mobile presentation — CBSE first
 
-Do not implement app screens yet. This is the **proposed CBSE hub**. Admin
-phone preview must match it. Cambridge, IB, and state boards reuse the
-same chrome after this reads clearly. Screens stay **scannable** (§14.9):
-not articles.
+**Fork chrome (adopted):** the Class 10 → 11–12 parent screen is the
+branch explorer in [`CHILDS_PATH_BRANCH_UI.md`](CHILDS_PATH_BRANCH_UI.md)
+— tree of stay/switch cards, then one explore panel. IB MYP Grade 10 is
+the signed visual fixture.
+
+The rest of this section is the **light card-list** density and CBSE
+worked examples (admin table preview, early/middle list behaviour).
+Screens stay **scannable** (§14.9): not articles. Do not put the five-stop
+strip on the same view as the branch tree.
 
 Worked example throughout: **Aarav, CBSE, Telangana**, at three grades.
 

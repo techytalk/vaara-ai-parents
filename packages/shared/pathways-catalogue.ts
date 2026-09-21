@@ -205,9 +205,12 @@ export const PATHWAYS_CATALOGUE: PathwayCatalogue = {
       admissionPattern: "own_cet",
       contentDepth: "full",
       status: "published",
-      officialUrl: "https://polycet.nic.in/",
-      sourceUrls: ["https://polycet.nic.in/"],
-      lastReviewedOn: "2026-03-01",
+      officialUrl: "https://polycet.sbtet.telangana.gov.in/",
+      sourceUrls: [
+        "https://polycet.sbtet.telangana.gov.in/",
+        "https://tgpolycet.nic.in/",
+      ],
+      lastReviewedOn: "2026-09-21",
       sortOrder: 60,
     }),
     item({
@@ -298,9 +301,12 @@ export const PATHWAYS_CATALOGUE: PathwayCatalogue = {
       admissionPattern: "national",
       contentDepth: "full",
       status: "published",
-      officialUrl: "https://www.mtai.org.in/",
-      sourceUrls: ["https://www.mtai.org.in/"],
-      lastReviewedOn: "2026-03-01",
+      officialUrl: "https://ioqm.mtai.org.in/",
+      sourceUrls: [
+        "https://ioqm.mtai.org.in/",
+        "https://olympiads.hbcse.tifr.res.in/mathematical-olympiad-2026-2027/",
+      ],
+      lastReviewedOn: "2026-09-21",
       sortOrder: 90,
     }),
     item({
@@ -375,7 +381,7 @@ export const PATHWAYS_CATALOGUE: PathwayCatalogue = {
       status: "published",
       officialUrl: "https://jeemain.nta.nic.in/",
       sourceUrls: ["https://jeemain.nta.nic.in/"],
-      lastReviewedOn: "2026-03-01",
+      lastReviewedOn: "2026-09-21",
       sortOrder: 110,
     }),
     item({
@@ -419,7 +425,7 @@ export const PATHWAYS_CATALOGUE: PathwayCatalogue = {
       status: "published",
       officialUrl: "https://jeeadv.ac.in/",
       sourceUrls: ["https://jeeadv.ac.in/"],
-      lastReviewedOn: "2026-03-01",
+      lastReviewedOn: "2026-09-21",
       sortOrder: 120,
     }),
     item({
@@ -463,7 +469,7 @@ export const PATHWAYS_CATALOGUE: PathwayCatalogue = {
       status: "published",
       officialUrl: "https://neet.nta.nic.in/",
       sourceUrls: ["https://neet.nta.nic.in/"],
-      lastReviewedOn: "2026-03-01",
+      lastReviewedOn: "2026-09-21",
       sortOrder: 130,
     }),
     item({
@@ -507,9 +513,12 @@ export const PATHWAYS_CATALOGUE: PathwayCatalogue = {
       admissionPattern: "own_cet",
       contentDepth: "full",
       status: "published",
-      officialUrl: "https://tgeapcet.nic.in/",
-      sourceUrls: ["https://tgeapcet.nic.in/"],
-      lastReviewedOn: "2026-03-01",
+      officialUrl: "https://eapcet.tgche.ac.in/",
+      sourceUrls: [
+        "https://eapcet.tgche.ac.in/",
+        "https://tgeapcet.nic.in/",
+      ],
+      lastReviewedOn: "2026-09-21",
       sortOrder: 140,
     }),
     item({
@@ -546,7 +555,7 @@ export const PATHWAYS_CATALOGUE: PathwayCatalogue = {
       status: "published",
       officialUrl: "https://cuet.nta.nic.in/",
       sourceUrls: ["https://cuet.nta.nic.in/"],
-      lastReviewedOn: "2026-03-01",
+      lastReviewedOn: "2026-09-21",
       sortOrder: 150,
     }),
     item({
@@ -582,8 +591,8 @@ export const PATHWAYS_CATALOGUE: PathwayCatalogue = {
       contentDepth: "full",
       status: "published",
       officialUrl: "https://consortiumofnlus.ac.in/",
-      sourceUrls: ["https://consortiumofnlus.ac.in/"],
-      lastReviewedOn: "2026-03-01",
+      sourceUrls: ["https://consortiumofnlus.ac.in/clat-2026/"],
+      lastReviewedOn: "2026-09-21",
       sortOrder: 160,
     }),
     item({
@@ -619,8 +628,11 @@ export const PATHWAYS_CATALOGUE: PathwayCatalogue = {
       contentDepth: "full",
       status: "published",
       officialUrl: "https://www.icai.org/",
-      sourceUrls: ["https://www.icai.org/"],
-      lastReviewedOn: "2026-03-01",
+      sourceUrls: [
+        "https://www.icai.org/",
+        "https://www.icai.org/post/faqs-provisional-admission-to-foundation-course",
+      ],
+      lastReviewedOn: "2026-09-21",
       sortOrder: 170,
     }),
     item({
@@ -649,9 +661,9 @@ export const PATHWAYS_CATALOGUE: PathwayCatalogue = {
       admissionPattern: "national",
       contentDepth: "full",
       status: "inactive",
-      officialUrl: null,
-      sourceUrls: ["https://www.education.gov.in/"],
-      lastReviewedOn: "2026-03-01",
+      officialUrl: "https://ncert.nic.in/national-talent-examination.php",
+      sourceUrls: ["https://ncert.nic.in/national-talent-examination.php"],
+      lastReviewedOn: "2026-09-21",
       sortOrder: 900,
     }),
     item({
@@ -666,8 +678,8 @@ export const PATHWAYS_CATALOGUE: PathwayCatalogue = {
       contrastForStreamIds: [],
       eligibleQualificationIds: [],
       title: "Diploma Programme",
-      summary: "Stay in IB. 3 HL + 3 SL. Unlocks Indian UG.",
-      lead: "Two-year senior IB programme. AIU treats DP as Class 12. MYP alone cannot apply to Indian UG.",
+      summary: "Stay in IB. 3 HL + 3 SL. AIU treats DP as Class 12-equivalent.",
+      lead: "Two-year senior IB programme. AIU equates IB Diploma (and IB Course/Certificate at ≥24 points with 3 HL + 3 SL) with Indian +2. MYP is not a Class 12 equivalent. Colleges may still ask for an AIU certificate.",
       detailRows: [
         { label: "Also known as", value: "IBDP" },
         { label: "When", value: "After MYP · Grade 11–12" },
@@ -691,8 +703,12 @@ export const PATHWAYS_CATALOGUE: PathwayCatalogue = {
       contentDepth: "full",
       status: "published",
       officialUrl: "https://www.ibo.org/programmes/diploma-programme/",
-      sourceUrls: ["https://www.ibo.org/programmes/diploma-programme/"],
-      lastReviewedOn: "2026-03-01",
+      sourceUrls: [
+        "https://www.ibo.org/programmes/diploma-programme/",
+        "https://evaluation.aiu.ac.in/Documents/PDF/Ammendments%20in%20Equivalence%20in%20Informatin%20Brochure.pdf",
+        "https://www.ibo.org/programmes/diploma-programme/assessment-and-exams/getting-results/assessment-faq/",
+      ],
+      lastReviewedOn: "2026-09-21",
       sortOrder: 40,
     }),
     item({
@@ -783,9 +799,11 @@ export const PATHWAYS_CATALOGUE: PathwayCatalogue = {
       admissionPattern: "not_applicable",
       contentDepth: "full",
       status: "published",
-      officialUrl: "https://www.ibo.org/programmes/diploma-programme/",
-      sourceUrls: ["https://www.ibo.org/programmes/diploma-programme/"],
-      lastReviewedOn: "2026-03-01",
+      officialUrl: "https://www.ibo.org/programmes/diploma-programme/assessment-and-exams/getting-results/assessment-faq/",
+      sourceUrls: [
+        "https://www.ibo.org/programmes/diploma-programme/assessment-and-exams/getting-results/assessment-faq/",
+      ],
+      lastReviewedOn: "2026-09-21",
       sortOrder: 35,
     }),
     item({
@@ -816,7 +834,7 @@ export const PATHWAYS_CATALOGUE: PathwayCatalogue = {
       status: "published",
       officialUrl: "https://www.ucas.com/",
       sourceUrls: ["https://www.ucas.com/"],
-      lastReviewedOn: "2026-03-01",
+      lastReviewedOn: "2026-09-21",
       sortOrder: 36,
     }),
     item({
@@ -855,8 +873,11 @@ export const PATHWAYS_CATALOGUE: PathwayCatalogue = {
       contentDepth: "full",
       status: "published",
       officialUrl: "https://www.cambridgeinternational.org/",
-      sourceUrls: ["https://www.cambridgeinternational.org/"],
-      lastReviewedOn: "2026-03-01",
+      sourceUrls: [
+        "https://www.cambridgeinternational.org/",
+        "https://jeemain.nta.nic.in/",
+      ],
+      lastReviewedOn: "2026-09-21",
       sortOrder: 40,
     }),
     item({

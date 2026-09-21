@@ -124,7 +124,44 @@ export type PathwayContext = {
   streamChipLabels: Array<{ id: HubStream; label: string }>;
 };
 
+export type PathTopicId =
+  | "subjects"
+  | "workload"
+  | "college_plans"
+  | "learning"
+  | "next_grade";
+
+export type PathBranchRelation = "continue" | "switch" | "other";
+
+export type PathBranch = {
+  id: string;
+  kicker: string;
+  title: string;
+  relation: PathBranchRelation;
+  breadcrumb: string;
+  exploreTitle: string;
+  itemSlug: string | null;
+  showStreamIntents: boolean;
+  prompts: Partial<Record<PathTopicId, string>>;
+};
+
+export type PathBranchMap = {
+  forkCaption: string;
+  locationKicker: string;
+  locationTitle: string;
+  locationMeta: string;
+  headline: string;
+  deck: string;
+  lockLine: string;
+  defaultBranchId: string;
+  topics: Array<{ id: PathTopicId; label: string }>;
+  primary: PathBranch[];
+  overflow: PathBranch[];
+  otherRoutesPrompt: string;
+};
+
 export type PathwayHubPayload = {
   context: PathwayContext;
   groups: PathwayHubGroup[];
+  branchMap: PathBranchMap;
 };

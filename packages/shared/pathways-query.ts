@@ -11,6 +11,7 @@ import type {
   StageId,
   StreamId,
 } from "./pathways-types.js";
+import { buildPathBranchMap } from "./pathways-branches.js";
 
 const STAGE_LABEL: Record<StageId, string> = {
   foundation: "Early years",
@@ -317,7 +318,7 @@ export function buildPathwayHub(ctx: PathwayContext): PathwayHubPayload {
     }
   }
 
-  return { context: ctx, groups };
+  return { context: ctx, groups, branchMap: buildPathBranchMap(ctx) };
 }
 
 export function getPathwayItemBySlug(slug: string): PathwayItem | null {

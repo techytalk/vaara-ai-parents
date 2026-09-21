@@ -11,6 +11,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter, Stack } from "expo-router";
 import { EmptyState, ScreenLoader } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
+import { pathTheme } from "@/constants/path-theme";
 import { api, type PathwayItemDetail } from "@/lib/api";
 import { getToken } from "@/lib/session";
 
@@ -135,7 +136,7 @@ export default function PathwayDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg },
+  container: { flex: 1, backgroundColor: pathTheme.bg },
   content: {
     padding: spacing.lg,
     paddingBottom: spacing.xxxl,
@@ -143,12 +144,12 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.sectionTitle,
-    color: colors.text,
+    color: pathTheme.title,
     fontFamily: typography.bold,
   },
   lead: {
     ...typography.body,
-    color: colors.textMuted,
+    color: pathTheme.deck,
     fontFamily: typography.medium,
   },
   rows: {

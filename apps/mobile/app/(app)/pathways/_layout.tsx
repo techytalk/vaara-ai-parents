@@ -1,17 +1,22 @@
 import { Stack } from "expo-router";
-import { colors, typography } from "@/constants/theme";
+import { pathTheme } from "@/constants/path-theme";
+import { typography } from "@/constants/theme";
 
 export default function PathwaysLayout() {
   return (
     <Stack
       screenOptions={{
-        headerTintColor: colors.text,
-        headerStyle: { backgroundColor: colors.card },
-        headerTitleStyle: { fontFamily: typography.bold, color: colors.text },
+        headerTintColor: pathTheme.navTitle,
+        headerStyle: { backgroundColor: pathTheme.bg },
+        headerTitleStyle: {
+          fontFamily: typography.bold,
+          color: pathTheme.navTitle,
+        },
         headerShadowVisible: false,
+        contentStyle: { backgroundColor: pathTheme.bg },
       }}
     >
-      <Stack.Screen name="index" options={{ title: "Child's Path" }} />
+      <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="[slug]" options={{ title: "Details" }} />
     </Stack>
   );

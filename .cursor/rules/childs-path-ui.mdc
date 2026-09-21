@@ -1,0 +1,28 @@
+---
+description: Child's Path — signed branch UI plus functional identity/posting rules
+globs: apps/mobile/app/(app)/pathways/**/*.tsx,packages/shared/pathways*.ts,docs/CHILDS_PATH_BRANCH_UI.md,docs/CHILDS_PATH_FUNCTIONAL.md,docs/WHAT_NEXT_AND_OPPORTUNITIES.md
+alwaysApply: false
+---
+
+# Child's Path
+
+When changing Child's Path:
+
+- **Layout + theme:** `docs/CHILDS_PATH_BRANCH_UI.md` (wins on chrome)
+- **Behaviour:** `docs/CHILDS_PATH_FUNCTIONAL.md` (identity, circles, eligibility, errors)
+- **Catalogue:** `docs/WHAT_NEXT_AND_OPPORTUNITIES.md`
+
+Do not implement Astra’s radial map, question-led hub, five-stop strip on the tree screen, or collapse-on-second-tap.
+
+## Must follow
+
+- After-10 fork is a **tree**: location node → 2–3 branch cards (stay first, status Exploring) → one explore panel.
+- Branch tap is **peek only**. Never write `curriculum_id` / `grade_id`. Lock line required.
+- Topic chips: **Subjects / Workload / College plans** (younger stages may substitute Learning / Next grade).
+- Max three top-row branches; overflow under **Other routes / not sure yet?**
+- Dark forest `pathTheme` on Path screens only.
+- IGCSE and MYP must not show JEE / NEET / EAPCET as live.
+- Ask anonymously uses existing circles. Show **Where will this be posted?** Tags never widen audience. Exploring DP ≠ DP membership.
+- Browse, interest, or grade alone never produce Eligible.
+- No new bottom tab. More → Child's Path.
+- Hub copy stays short. Detail is S06 (lead + rows).

@@ -12,6 +12,7 @@
     "pathways-types.ts",
     "pathways-catalogue.ts",
     "pathways-context.ts",
-    "pathways-query.ts"
+    "pathways-query.ts",
+    "pathways-branches.ts"
   ]
 }
