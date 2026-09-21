@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { stageForStripIndex } from "@vaara/shared/pathways";
 import { Chip, EmptyState, ScreenLoader } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import {
@@ -71,6 +72,7 @@ export default function PathwaysHubScreen() {
   const [hub, setHub] = useState<PathwayHubResponse | null>(null);
   const [childId, setChildId] = useState<string | undefined>();
   const [stream, setStream] = useState("undecided");
+  const [stage, setStage] = useState<string | undefined>();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -82,6 +84,7 @@ export default function PathwaysHubScreen() {
       const data = await api.getPathwaysHub(token, {
         childId,
         stream,
+        stage,
       });
       setHub(data);
       setError(null);
@@ -91,12 +94,10 @@ export default function PathwaysHubScreen() {
     } catch (e) {
       setHub(null);
       setError(
-        e instanceof Error
-          ? e.message
-          : "Could not load Child's Path."
+        e instanceof Error ? e.message : "Could not load Child's Path."
       );
     }
-  }, [childId, stream]);
+  }, [childId, stream, stage]);
 
   useEffect(() => {
     setLoading(true);
@@ -115,10 +116,21 @@ export default function PathwaysHubScreen() {
     setStream((prev) => (prev === id ? "undecided" : id));
   }
 
+  function onStripPress(index: number) {
+    const next = stageForStripIndex(index);
+    if (!next) return;
+    setStage(next);
+    // Reset stream when leaving stages that use chips
+    if (next !== "board_10" && next !== "senior" && next !== "after_10") {
+      setStream("undecided");
+    }
+  }
+
   function onChildPress(child: PathwayHubChild) {
     if (child.id === childId) return;
     setChildId(child.id);
     setStream("undecided");
+    setStage(undefined);
   }
 
   if (loading) {
@@ -188,9 +200,17 @@ export default function PathwaysHubScreen() {
         {context.stripLabels.map((label, index) => {
           const active = index === context.stripIndex;
           return (
-            <View
+            <Pressable
               key={`${label}-${index}`}
-              style={[styles.stripStop, active && styles.stripStopActive]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={`${label} stage`}
+              onPress={() => onStripPress(index)}
+              style={({ pressed }) => [
+                styles.stripStop,
+                active && styles.stripStopActive,
+                pressed && styles.stripStopPressed,
+              ]}
             >
               <Text
                 style={[
@@ -200,7 +220,13 @@ export default function PathwaysHubScreen() {
               >
                 {label}
               </Text>
-            </View>
+              <View
+                style={[
+                  styles.stripUnderline,
+                  active && styles.stripUnderlineActive,
+                ]}
+              />
+            </Pressable>
           );
         })}
       </View>
@@ -258,27 +284,38 @@ const styles = StyleSheet.create({
   },
   strip: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.xs,
+    alignItems: "stretch",
+    gap: 2,
   },
   stripStop: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: radii.md,
-    backgroundColor: colors.surfaceMuted,
-    minHeight: 36,
+    flex: 1,
+    minHeight: 44,
+    alignItems: "center",
     justifyContent: "center",
+    paddingTop: spacing.xs,
+    paddingBottom: 2,
   },
-  stripStopActive: {
-    backgroundColor: colors.primary,
-  },
+  stripStopActive: {},
+  stripStopPressed: { opacity: 0.7 },
   stripLabel: {
     ...typography.caption,
     color: colors.textMuted,
     fontFamily: typography.semibold,
+    textAlign: "center",
   },
   stripLabelActive: {
-    color: colors.textInverse,
+    color: colors.primary,
+  },
+  stripUnderline: {
+    marginTop: 6,
+    height: 3,
+    alignSelf: "stretch",
+    borderRadius: 2,
+    backgroundColor: colors.border,
+  },
+  stripUnderlineActive: {
+    backgroundColor: colors.primary,
+    height: 4,
   },
   stageLead: {
     ...typography.supporting,

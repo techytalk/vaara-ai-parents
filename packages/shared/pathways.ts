@@ -28,6 +28,8 @@ export {
   derivePrimaryStage,
   deriveQualificationId,
   isFinalClass10Equivalent,
+  parseStageId,
+  stageForStripIndex,
   stateCodeFromLabel,
   stateLabelFromCode,
   streamChipsForFamily,

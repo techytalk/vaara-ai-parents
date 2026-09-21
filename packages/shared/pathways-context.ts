@@ -202,7 +202,15 @@ export function streamChipsForFamily(family: BoardFamily): Array<{
 export function stripForFamily(family: BoardFamily): {
   labels: string[];
   indexForStage: Record<StageId, number>;
+  stageForIndex: StageId[];
 } {
+  const stageForIndex: StageId[] = [
+    "foundation",
+    "middle",
+    "board_10",
+    "senior",
+    "after_12",
+  ];
   if (family === "IB") {
     return {
       labels: ["PYP", "MYP", "10", "DP", "After"],
@@ -214,6 +222,7 @@ export function stripForFamily(family: BoardFamily): {
         senior: 3,
         after_12: 4,
       },
+      stageForIndex,
     };
   }
   if (family === "CAMBRIDGE") {
@@ -227,6 +236,7 @@ export function stripForFamily(family: BoardFamily): {
         senior: 3,
         after_12: 4,
       },
+      stageForIndex,
     };
   }
   if (family === "STATE") {
@@ -240,6 +250,7 @@ export function stripForFamily(family: BoardFamily): {
         senior: 3,
         after_12: 4,
       },
+      stageForIndex,
     };
   }
   return {
@@ -252,7 +263,32 @@ export function stripForFamily(family: BoardFamily): {
       senior: 3,
       after_12: 4,
     },
+    stageForIndex,
   };
+}
+
+export function stageForStripIndex(index: number): StageId | null {
+  const stages: StageId[] = [
+    "foundation",
+    "middle",
+    "board_10",
+    "senior",
+    "after_12",
+  ];
+  return stages[index] ?? null;
+}
+
+export function parseStageId(raw: string | null | undefined): StageId | null {
+  if (!raw) return null;
+  const allowed: StageId[] = [
+    "foundation",
+    "middle",
+    "board_10",
+    "after_10",
+    "senior",
+    "after_12",
+  ];
+  return allowed.includes(raw as StageId) ? (raw as StageId) : null;
 }
 
 function stageLead(params: {
@@ -301,22 +337,29 @@ export function buildPathwayContext(input: {
   locationState?: string | null;
   schoolState?: string | null;
   stream?: HubStream;
+  /** Peek another strip stop without changing the child's profile. */
+  stageOverride?: StageId | null;
 }): PathwayContext | null {
   if (input.track === "preschool") return null;
   const family = boardFamilyFromCurriculum(input.curriculumCode);
   if (!family || !input.curriculumCode) return null;
 
-  const primaryStage = derivePrimaryStage({
+  const derivedStage = derivePrimaryStage({
     family,
     curriculumCode: input.curriculumCode,
     gradeCode: input.gradeCode,
   });
-  const includeAfter10Fork = isFinalClass10Equivalent({
+  const primaryStage = input.stageOverride ?? derivedStage;
+  const derivedFinalYear = isFinalClass10Equivalent({
     family,
     curriculumCode: input.curriculumCode,
     gradeCode: input.gradeCode,
-    primaryStage,
+    primaryStage: derivedStage,
   });
+  // When browsing the Class 10 stop, always show the after-10 fork cards.
+  const includeAfter10Fork =
+    primaryStage === "board_10" &&
+    (input.stageOverride != null || derivedFinalYear);
   const qualificationId = deriveQualificationId({
     family,
     curriculumCode: input.curriculumCode,

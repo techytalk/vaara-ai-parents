@@ -2103,12 +2103,18 @@ export const api = {
 
   getPathwaysHub: (
     token: string,
-    params?: { childId?: string; stream?: string; state?: string }
+    params?: {
+      childId?: string;
+      stream?: string;
+      state?: string;
+      stage?: string;
+    }
   ) => {
     const qs = new URLSearchParams();
     if (params?.childId) qs.set("childId", params.childId);
     if (params?.stream) qs.set("stream", params.stream);
     if (params?.state) qs.set("state", params.state);
+    if (params?.stage) qs.set("stage", params.stage);
     const q = qs.toString();
     return request<PathwayHubResponse>(
       `/v1/pathways/hub${q ? `?${q}` : ""}`,

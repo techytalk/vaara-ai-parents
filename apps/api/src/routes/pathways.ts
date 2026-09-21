@@ -5,6 +5,7 @@ import {
   buildPathwayHub,
   getPathwayItemBySlug,
   getPathwayLinksForSlug,
+  parseStageId,
   type HubStream,
 } from "@vaara/shared/pathways";
 import { authMiddleware, type AuthVariables } from "../middleware/auth.js";
@@ -71,6 +72,7 @@ export function createPathwaysRoutes() {
     const childIdParam = c.req.query("childId");
     const stream = parseStream(c.req.query("stream"));
     const stateOverride = c.req.query("state");
+    const stageOverride = parseStageId(c.req.query("stage"));
 
     const [children, locationState] = await Promise.all([
       loadSchoolAgeChildren(userId),
@@ -107,6 +109,7 @@ export function createPathwaysRoutes() {
       locationState: stateOverride || locationState,
       schoolState: child.school_state,
       stream,
+      stageOverride,
     });
 
     if (!context) {

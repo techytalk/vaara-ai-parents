@@ -20,7 +20,7 @@
       "default": "./dist/auth-input.js"
     },
     "./pathways": {
-      "react-native": "./pathways.ts",
+      "react-native": "./dist/pathways.js",
       "types": "./dist/pathways.d.ts",
       "default": "./dist/pathways.js"
     }
