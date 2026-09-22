@@ -12,6 +12,7 @@
     { "source": "/admin/seeds.html", "destination": "/internal/admin/seeds.html", "permanent": false },
     { "source": "/admin/qr.html", "destination": "/internal/admin/qr.html", "permanent": false },
     { "source": "/admin/moderation.html", "destination": "/internal/admin/moderation.html", "permanent": false },
+    { "source": "/admin/signups.html", "destination": "/internal/admin/signups.html", "permanent": false },
     { "source": "/admin/login.html", "destination": "/internal/admin/login.html", "permanent": false },
     { "source": "/admin/login", "destination": "/internal/admin/login.html", "permanent": false }
   ],

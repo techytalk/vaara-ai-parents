@@ -70,9 +70,13 @@
 
   const NAV_GROUPS = [
     {
+      label: "Overview",
+      items: [{ href: "/internal/admin/", label: "Dashboard" }],
+    },
+    {
       label: "Parents",
       items: [
-        { href: "/internal/admin/", label: "Signups" },
+        { href: "/internal/admin/signups.html", label: "Signups" },
         { href: "/internal/admin/moderation.html", label: "Moderation" },
         { href: "/internal/admin/seeds.html", label: "Seed parents" },
       ],

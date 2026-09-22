@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex,nofollow" />
-    <title>Vaara — Parent signups</title>
+    <title>Vaara — Admin dashboard</title>
     <style>
       :root {
         color-scheme: light;
@@ -26,98 +26,146 @@
         color: var(--text);
       }
       h1 { font-size: 1.45rem; margin: 0 0 6px; }
-      h2 { font-size: 1.05rem; margin: 22px 0 10px; }
+      h2 {
+        font-size: 1.02rem;
+        margin: 0;
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      h2 a { font-size: 0.82rem; font-weight: 600; }
       .muted { color: var(--muted); font-size: 0.9rem; margin: 0 0 18px; }
       a { color: var(--teal-dark); }
-      label { display: block; font-size: 0.85rem; margin: 0 0 4px; color: var(--muted); }
-      input, select, button {
-        font: inherit;
-        padding: 8px 10px;
-        border-radius: 10px;
-        border: 1px solid var(--border);
-      }
       button {
+        font: inherit;
+        padding: 8px 12px;
+        border-radius: 10px;
+        border: none;
         background: var(--teal);
         color: #fff;
-        border: none;
         cursor: pointer;
-        margin-right: 8px;
       }
-      button.secondary { background: #44403c; }
       button:disabled { opacity: 0.55; cursor: wait; }
       .toolbar {
         display: flex;
-        gap: 12px;
-        flex-wrap: wrap;
+        justify-content: space-between;
         align-items: end;
+        gap: 12px;
         margin-bottom: 16px;
+        flex-wrap: wrap;
       }
       .stats {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
         gap: 10px;
-        margin-bottom: 16px;
+        margin-bottom: 18px;
       }
       .stat {
         background: var(--card);
         border: 1px solid var(--border);
         border-radius: 12px;
-        padding: 12px 14px;
+        padding: 14px 16px;
       }
-      .stat .n { font-size: 1.6rem; font-weight: 700; }
-      .stat .l { font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
-      .days {
-        display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
-        margin-bottom: 14px;
+      .stat .n { font-size: 1.7rem; font-weight: 700; letter-spacing: -0.03em; }
+      .stat .l { font-size: 0.8rem; color: var(--muted); margin-top: 4px; line-height: 1.35; }
+      .stat.warn .n { color: var(--warn); }
+      .grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.3fr) minmax(280px, 0.9fr);
+        gap: 16px;
+        align-items: start;
       }
-      .day-chip {
-        background: var(--card);
-        border: 1px solid var(--border);
-        border-radius: 999px;
-        padding: 6px 12px;
-        cursor: pointer;
-        font-size: 0.85rem;
-      }
-      .day-chip.active {
-        background: #eaf8f6;
-        border-color: var(--teal);
-        color: var(--teal-dark);
-        font-weight: 600;
-      }
-      table {
-        width: 100%;
-        border-collapse: collapse;
+      .panel {
         background: var(--card);
         border: 1px solid var(--border);
         border-radius: 12px;
-        overflow: hidden;
+        padding: 14px 16px 8px;
+      }
+      .panel + .panel { margin-top: 16px; }
+      .section-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 10px;
+        margin-bottom: 10px;
+      }
+      .hint { font-size: 0.8rem; color: var(--muted); }
+      table {
+        width: 100%;
+        border-collapse: collapse;
         font-size: 0.9rem;
       }
       th, td {
         text-align: left;
-        padding: 10px 12px;
+        padding: 9px 6px;
         border-bottom: 1px solid var(--border);
         vertical-align: top;
       }
       th {
-        background: #f7f4ee;
-        font-size: 0.78rem;
+        font-size: 0.72rem;
         text-transform: uppercase;
         letter-spacing: 0.03em;
         color: var(--muted);
       }
       tr:last-child td { border-bottom: none; }
+      .name { font-weight: 600; }
+      .meta { font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
       .badge {
         display: inline-block;
         border-radius: 999px;
         padding: 2px 8px;
-        font-size: 0.75rem;
+        font-size: 0.72rem;
         font-weight: 700;
       }
       .badge.ok { background: #e7f7f4; color: var(--ok); }
       .badge.warn { background: #fff2d9; color: var(--warn); }
+      .badge.soft { background: #f1eee8; color: var(--muted); }
+      .spark {
+        display: flex;
+        align-items: end;
+        gap: 6px;
+        height: 56px;
+        margin: 4px 0 14px;
+      }
+      .spark-col {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        min-width: 0;
+      }
+      .spark-bar {
+        width: 100%;
+        max-width: 28px;
+        background: #eaf8f6;
+        border-radius: 4px 4px 2px 2px;
+        min-height: 3px;
+      }
+      .spark-bar.has { background: var(--teal); }
+      .spark-label {
+        font-size: 0.65rem;
+        color: var(--muted);
+        white-space: nowrap;
+      }
+      .school-cards {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-bottom: 8px;
+      }
+      .school-card {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 12px;
+        background: #fffcf7;
+      }
+      .school-card .n {
+        font-size: 1.35rem;
+        font-weight: 700;
+        color: var(--teal-dark);
+      }
       .err {
         color: #b91c1c;
         background: #feecec;
@@ -126,180 +174,247 @@
         margin-bottom: 12px;
         display: none;
       }
-      .nav { margin-bottom: 14px; font-size: 0.9rem; }
-      .empty { color: var(--muted); padding: 18px 0; }
-      @media (max-width: 720px) {
+      .empty { color: var(--muted); padding: 12px 0; }
+      @media (max-width: 980px) {
         body { padding: 14px; }
-        table { display: block; overflow-x: auto; }
+        .grid, .school-cards { grid-template-columns: 1fr; }
       }
     </style>
   </head>
   <body>
     <div id="adminNav"></div>
-    <h1>Parent signups</h1>
-    <p class="muted">Date-wise parent accounts (Asia/Kolkata).</p>
-
     <div class="toolbar">
       <div>
-        <label>Date</label>
-        <input id="date" type="date" />
-      </div>
-      <div>
-        <label>Status</label>
-        <select id="status">
-          <option value="all">All</option>
-          <option value="complete">Complete</option>
-          <option value="incomplete">Incomplete</option>
-        </select>
+        <h1>Dashboard</h1>
+        <p class="muted" id="subtitle">Live parent, circle, and school snapshot · Asia/Kolkata</p>
       </div>
       <button id="refresh" type="button">Refresh</button>
-      <button id="today" class="secondary" type="button">Today</button>
     </div>
-
     <div id="err" class="err"></div>
-
-    <div class="stats" id="stats">
-      <div class="stat"><div class="n" id="nTotal">—</div><div class="l">Total that day</div></div>
-      <div class="stat"><div class="n" id="nComplete">—</div><div class="l">Onboarding complete</div></div>
-      <div class="stat"><div class="n" id="nIncomplete">—</div><div class="l">Incomplete</div></div>
+    <div class="stats" id="stats"></div>
+    <div class="grid">
+      <div>
+        <div class="panel">
+          <div class="section-head">
+            <h2>
+              Circle activity
+              <a href="/internal/admin/moderation.html">Moderation</a>
+            </h2>
+            <span class="hint">New messages and replies · last 7 days</span>
+          </div>
+          <div id="circles"><p class="empty">Loading…</p></div>
+        </div>
+        <div class="panel">
+          <div class="section-head">
+            <h2>
+              Unverified schools
+              <a href="/internal/admin/schools.html">School tools</a>
+            </h2>
+            <span class="hint" id="unverifiedHint">Newest first</span>
+          </div>
+          <div id="unverified"><p class="empty">Loading…</p></div>
+        </div>
+      </div>
+      <div>
+        <div class="panel">
+          <div class="section-head">
+            <h2>
+              Completes
+              <a href="/internal/admin/signups.html">Signups</a>
+            </h2>
+            <span class="hint">Fully onboarded parents</span>
+          </div>
+          <div class="spark" id="spark"></div>
+          <div id="completes"><p class="empty">Loading…</p></div>
+        </div>
+        <div class="panel">
+          <div class="section-head">
+            <h2>
+              Schools with most parents
+              <a href="/internal/admin/circles.html">Circles</a>
+            </h2>
+          </div>
+          <div class="school-cards" id="topSchools"><p class="empty">Loading…</p></div>
+        </div>
+      </div>
     </div>
-
-    <h2>Last 14 days</h2>
-    <div class="days" id="days"></div>
-
-    <h2>Parents</h2>
-    <div id="list"><p class="empty">Loading…</p></div>
-
     <script src="/internal/admin/admin-auth.js"></script>
     <script>
       const API_BASE = VaaraAdmin.API_BASE;
-
       function $(id) { return document.getElementById(id); }
-
-      function todayIst() {
-        const fmt = new Intl.DateTimeFormat("en-CA", {
-          timeZone: "Asia/Kolkata",
-          year: "numeric",
-          month: "2-digit",
-          day: "2-digit",
-        });
-        return fmt.format(new Date());
-      }
-
-      function showError(msg) {
-        const box = $("err");
-        if (!msg) {
-          box.style.display = "none";
-          box.textContent = "";
-          return;
-        }
-        box.style.display = "block";
-        box.textContent = msg;
-      }
-
-      function locationLine(p) {
-        const parts = [p.locality, p.city, p.state, p.pin_code].filter(Boolean);
-        return parts.length ? parts.join(" · ") : "—";
-      }
-
-      function renderDays(recentDays, activeDate) {
-        const wrap = $("days");
-        wrap.replaceChildren();
-        if (!recentDays || !recentDays.length) {
-          wrap.appendChild(Object.assign(document.createElement("span"), {
-            className: "empty",
-            textContent: "No signups in the last 14 days.",
-          }));
-          return;
-        }
-        for (const d of recentDays) {
-          const chip = document.createElement("button");
-          chip.type = "button";
-          chip.className = "day-chip" + (d.date === activeDate ? " active" : "");
-          chip.textContent = `${d.date} · ${d.total} (${d.complete}✓ / ${d.incomplete}…)`;
-          chip.addEventListener("click", () => {
-            $("date").value = d.date;
-            loadParents();
-          });
-          wrap.appendChild(chip);
-        }
-      }
-
-      function renderParents(parents) {
-        const list = $("list");
-        list.replaceChildren();
-        if (!parents || !parents.length) {
-          list.appendChild(Object.assign(document.createElement("p"), {
-            className: "empty",
-            textContent: "No parents for this date / filter.",
-          }));
-          return;
-        }
-
-        const table = document.createElement("table");
-        table.innerHTML = `
-          <thead>
-            <tr>
-              <th>Created (IST)</th>
-              <th>Email</th>
-              <th>Status</th>
-              <th>Location</th>
-              <th>Children</th>
-              <th>School</th>
-            </tr>
-          </thead>
-        `;
-        const tbody = document.createElement("tbody");
-        for (const p of parents) {
-          const tr = document.createElement("tr");
-          const status = p.onboarding_complete
-            ? '<span class="badge ok">Complete</span>'
-            : '<span class="badge warn">Incomplete</span>';
-          tr.innerHTML = `
-            <td>${p.created_ist || "—"}</td>
-            <td>${escapeHtml(p.email || "—")}</td>
-            <td>${status}</td>
-            <td>${escapeHtml(locationLine(p))}</td>
-            <td>${p.child_count ?? 0}</td>
-            <td>${escapeHtml(p.first_school || "—")}</td>
-          `;
-          tbody.appendChild(tr);
-        }
-        table.appendChild(tbody);
-        list.appendChild(table);
-      }
-
       function escapeHtml(value) {
-        return String(value)
+        return String(value ?? "")
           .replace(/&/g, "&amp;")
           .replace(/</g, "&lt;")
           .replace(/>/g, "&gt;")
           .replace(/"/g, "&quot;");
       }
+      function showError(msg) {
+        const box = $("err");
+        if (!msg) { box.style.display = "none"; box.textContent = ""; return; }
+        box.style.display = "block";
+        box.textContent = msg;
+      }
+      function typeLabel(type) {
+        return ({
+          locality: "PIN",
+          school: "School",
+          class: "Class",
+          curriculum: "Board",
+          school_class: "School + class",
+          school_age: "School + age",
+          age_locality: "PIN + age",
+          community: "Community",
+        })[type] || type || "";
+      }
+      function schoolLabel(row) {
+        return [row.name, row.branch, row.city].filter(Boolean).join(" · ");
+      }
+      function weekday(date) {
+        if (!date) return "";
+        const [y, m, d] = String(date).split("-").map(Number);
+        return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-IN", {
+          weekday: "short",
+          timeZone: "UTC",
+        });
+      }
 
-      async function loadParents() {
-        showError("");
+      function renderStats(data) {
+        const today = data.signups?.today || {};
+        const week = data.signups?.last7Days || {};
+        const chat = data.chat?.last7Days || {};
+        const unverified = data.schools?.unverifiedTotal ?? 0;
+        $("stats").innerHTML = `
+          <div class="stat">
+            <div class="n">${today.complete ?? 0}</div>
+            <div class="l">Completed onboarding today</div>
+          </div>
+          <div class="stat">
+            <div class="n">${today.total ?? 0}</div>
+            <div class="l">New parents today · ${today.incomplete ?? 0} still incomplete</div>
+          </div>
+          <div class="stat">
+            <div class="n">${week.complete ?? 0}</div>
+            <div class="l">Completed in the last 7 days · ${week.total ?? 0} new</div>
+          </div>
+          <div class="stat">
+            <div class="n">${chat.last_24h ?? 0}</div>
+            <div class="l">Chat messages + replies in last 24h</div>
+          </div>
+          <div class="stat${unverified ? " warn" : ""}">
+            <div class="n">${unverified}</div>
+            <div class="l">Unverified schools in the catalog</div>
+          </div>
+        `;
+      }
+
+      function renderSpark(days) {
+        const wrap = $("spark");
+        const byDate = new Map((days || []).map((d) => [d.date, d]));
+        const today = new Date();
+        const points = [];
+        for (let i = 6; i >= 0; i--) {
+          const d = new Date(today);
+          d.setDate(today.getDate() - i);
+          const key = d.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+          points.push(byDate.get(key) || { date: key, complete: 0, total: 0 });
+        }
+        const max = Math.max(1, ...points.map((p) => p.complete || 0));
+        wrap.innerHTML = points.map((p) => {
+          const h = Math.max(6, Math.round(((p.complete || 0) / max) * 42));
+          return `<div class="spark-col" title="${escapeHtml(p.date)}: ${p.complete} complete">
+            <div class="spark-bar${p.complete ? " has" : ""}" style="height:${h}px"></div>
+            <div class="spark-label">${escapeHtml(weekday(p.date))}</div>
+          </div>`;
+        }).join("");
+        $("completes").innerHTML = `<p class="hint" style="padding-bottom:10px;">
+          Bars are fully completed new parents each day.
+        </p>`;
+      }
+
+      function renderCircles(rows, totals) {
+        const el = $("circles");
+        if (!rows.length) {
+          el.innerHTML = `<p class="empty">No parent messages in the last 7 days.</p>`;
+          return;
+        }
+        const head = `<p class="hint" style="margin:0 0 8px;">
+          ${totals.messages || 0} new messages · ${totals.replies || 0} replies
+        </p>`;
+        el.innerHTML = head + `<table>
+          <thead><tr><th>Circle</th><th>Msgs</th><th>Replies</th><th>Last</th></tr></thead>
+          <tbody>${rows.map((c) => `
+            <tr>
+              <td>
+                <a class="name" href="/internal/admin/moderation.html?circleId=${encodeURIComponent(c.id)}">${escapeHtml(c.display_name)}</a>
+                <div class="meta">${escapeHtml(typeLabel(c.circle_type))}${c.last_24h ? ` · ${c.last_24h} in 24h` : ""}</div>
+              </td>
+              <td>${c.messages || 0}</td>
+              <td>${c.replies || 0}</td>
+              <td class="meta">${escapeHtml(c.last_ist || "—")}</td>
+            </tr>`).join("")}
+          </tbody>
+        </table>`;
+      }
+
+      function renderUnverified(rows, total) {
+        $("unverifiedHint").textContent = total ? `${total} waiting` : "None waiting";
+        const el = $("unverified");
+        if (!rows.length) {
+          el.innerHTML = `<p class="empty">All catalog schools are verified.</p>`;
+          return;
+        }
+        el.innerHTML = `<table>
+          <thead><tr><th>School</th><th>Parents</th><th>Added</th></tr></thead>
+          <tbody>${rows.map((s) => `
+            <tr>
+              <td>
+                <div class="name">${escapeHtml(schoolLabel(s))}</div>
+                <div class="meta">${escapeHtml(s.locality || s.city || "")}</div>
+              </td>
+              <td>${s.parent_count || 0}</td>
+              <td class="meta">${escapeHtml(s.created_ist || "—")}</td>
+            </tr>`).join("")}
+          </tbody>
+        </table>`;
+      }
+
+      function renderTopSchools(rows) {
+        const el = $("topSchools");
+        if (!rows.length) {
+          el.innerHTML = `<p class="empty">No school memberships yet.</p>`;
+          return;
+        }
+        el.innerHTML = rows.map((s) => `
+          <div class="school-card">
+            <div class="n">${s.parent_count || 0}</div>
+            <div class="name">${escapeHtml(schoolLabel(s))}</div>
+            <div class="meta" style="margin-top:6px;">
+              ${s.verified
+                ? '<span class="badge ok">verified</span>'
+                : '<span class="badge warn">unverified</span>'}
+              parents
+            </div>
+          </div>`).join("");
+      }
+
+      async function loadDashboard() {
         const btn = $("refresh");
         btn.disabled = true;
+        showError("");
         try {
-          const date = $("date").value || todayIst();
-          $("date").value = date;
-          const status = $("status").value;
-          const url =
-            `${API_BASE}/internal/admin/parents` +
-            `?date=${encodeURIComponent(date)}` +
-            `&status=${encodeURIComponent(status)}`;
-          const res = await fetch(url, { headers: VaaraAdmin.headers(false) });
+          const res = await fetch(`${API_BASE}/internal/admin/dashboard`, {
+            headers: VaaraAdmin.headers(false),
+          });
           const data = await res.json().catch(() => ({}));
-          if (!res.ok) {
-            throw new Error(data.error || `HTTP ${res.status}`);
-          }
-          const s = data.summary || {};
-          $("nTotal").textContent = s.total ?? 0;
-          $("nComplete").textContent = s.complete ?? 0;
-          $("nIncomplete").textContent = s.incomplete ?? 0;
-          renderDays(data.recentDays || [], s.date || date);
-          renderParents(data.parents || []);
+          if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+          $("subtitle").textContent =
+            `Today ${data.signups?.today?.date || ""} · Asia/Kolkata · test and internal accounts hidden`;
+          renderStats(data);
+          renderSpark(data.signups?.recentDays || []);
+          renderCircles(data.chat?.circles || [], data.chat?.last7Days || {});
+          renderUnverified(data.schools?.unverified || [], data.schools?.unverifiedTotal || 0);
+          renderTopSchools(data.schools?.topByParents || []);
         } catch (e) {
           showError(e instanceof Error ? e.message : "Failed to load");
         } finally {
@@ -307,20 +422,12 @@
         }
       }
 
-      $("refresh").addEventListener("click", loadParents);
-      $("today").addEventListener("click", () => {
-        $("date").value = todayIst();
-        loadParents();
-      });
-      $("status").addEventListener("change", loadParents);
-      $("date").addEventListener("change", loadParents);
-
-      $("date").value = todayIst();
+      $("refresh").addEventListener("click", loadDashboard);
       (async () => {
         const ok = await VaaraAdmin.requireAuth();
         if (!ok) return;
         VaaraAdmin.mountBar($("adminNav"));
-        loadParents();
+        loadDashboard();
       })();
     </script>
   </body>

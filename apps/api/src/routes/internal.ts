@@ -27,6 +27,7 @@ import {
 import { publishChatNudge } from "../services/chat.js";
 import { signAdminToken, verifyAdminToken } from "../lib/jwt.js";
 import { mountAdminModeration } from "./admin-moderation.js";
+import { getAdminDashboard } from "../services/admin-dashboard.js";
 
 function requireCronSecret(c: { req: { header: (n: string) => string | undefined } }) {
   const secret = c.req.header("X-Cron-Secret");
@@ -1260,6 +1261,17 @@ export function createInternalRoutes() {
   });
 
   mountAdminModeration(app, requireAdminAuth);
+
+  app.get("/admin/dashboard", async (c) => {
+    if (!(await requireAdminAuth(c))) return c.json({ error: "Unauthorized" }, 401);
+    const client = await pool.connect();
+    try {
+      const dashboard = await getAdminDashboard(client);
+      return c.json({ ok: true, ...dashboard });
+    } finally {
+      client.release();
+    }
+  });
 
   return app;
 }
