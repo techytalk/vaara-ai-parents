@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -15,25 +15,50 @@ import {
 } from "@/lib/api";
 import { getToken } from "@/lib/session";
 
-function defaultExpanded(nodes: PathExploreNode[]): Set<string> {
-  const open = new Set<string>();
-  const root = nodes.find((node) => node.depth === 0);
-  if (!root) return open;
-  open.add(root.id);
-  const first = nodes.find((node) => node.parentId === root.id);
-  if (first) open.add(first.id);
-  return open;
+function stageTabLabel(node: PathExploreNode): { line1: string; line2: string } {
+  const title = node.title;
+  if (/this year/i.test(title) || node.slug.includes("-now")) {
+    return { line1: "Grade 9", line2: "This year" };
+  }
+  if (/next year/i.test(title)) {
+    return { line1: "Grade 10", line2: "Next year" };
+  }
+  if (/explore ahead|after grade 10|options after/i.test(title)) {
+    return { line1: "After Grade 10", line2: "Explore ahead" };
+  }
+  if (/after class 10|after ssc|after igcse/i.test(title)) {
+    return { line1: title.replace(/^After\s+/i, ""), line2: "Explore ahead" };
+  }
+  const parts = title.split(/[·—-]/).map((part) => part.trim()).filter(Boolean);
+  if (parts.length >= 2) return { line1: parts[0], line2: parts.slice(1).join(" · ") };
+  return { line1: title, line2: node.kicker || "Explore" };
+}
+
+function pathToNode(
+  nodes: PathExploreNode[],
+  focusId: string
+): PathExploreNode[] {
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const chain: PathExploreNode[] = [];
+  let current = byId.get(focusId);
+  while (current) {
+    chain.unshift(current);
+    current = current.parentId ? byId.get(current.parentId) : undefined;
+  }
+  return chain;
 }
 
 export default function PathwaysHubScreen() {
   const router = useRouter();
   const [data, setData] = useState<PathExploreResponse | null>(null);
   const [childId, setChildId] = useState<string | undefined>();
+  const [focusId, setFocusId] = useState<string | null>(null);
+  const [activeStageId, setActiveStageId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [discussions, setDiscussions] = useState<
     Record<string, PathDiscussionLink[] | "loading" | "error">
   >({});
-  const [askingId, setAskingId] = useState<string | null>(null);
+  const [asking, setAsking] = useState(false);
   const [askDraft, setAskDraft] = useState("");
   const [askBusy, setAskBusy] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -47,11 +72,26 @@ export default function PathwaysHubScreen() {
     try {
       const next = await api.getPathExplore(token, childId);
       if (seq !== loadSeq.current) return;
+      const root = next.nodes.find((node) => node.depth === 0);
+      const direct = root
+        ? next.nodes.filter((node) => node.parentId === root.id)
+        : [];
+      const panes = direct.filter(
+        (node) =>
+          node.kind === "section" ||
+          /this year|next year|explore ahead|after grade|after class|options after/i.test(
+            node.title
+          )
+      );
+      const stages = panes.length >= 2 ? panes : [];
+      const firstFocus = stages[0] ?? root;
       setData(next);
       setError(null);
-      setExpanded(defaultExpanded(next.nodes));
+      setExpanded(new Set());
       setDiscussions({});
-      setAskingId(null);
+      setAsking(false);
+      setActiveStageId(stages[0]?.id ?? null);
+      setFocusId(firstFocus?.id ?? null);
       if (!childId && next.context.childId) setChildId(next.context.childId);
       trackEvent("child_path_opened", { family: next.locationTitle });
     } catch (e) {
@@ -74,33 +114,118 @@ export default function PathwaysHubScreen() {
 
   const selectedId = childId ?? data?.context.childId ?? null;
 
-  function toggle(id: string) {
-    const node = data?.nodes.find((row) => row.id === id);
-    if (!node) return;
+  const root = useMemo(
+    () => data?.nodes.find((node) => node.depth === 0) ?? null,
+    [data]
+  );
+
+  const stageNodes = useMemo(() => {
+    if (!data || !root) return [];
+    const direct = data.nodes.filter((node) => node.parentId === root.id);
+    const panes = direct.filter(
+      (node) =>
+        node.kind === "section" ||
+        /this year|next year|explore ahead|after grade|after class|options after/i.test(
+          node.title
+        )
+    );
+    return panes.length >= 2 ? panes : [];
+  }, [data, root]);
+
+  const stageTabs = useMemo(
+    () =>
+      stageNodes.map((node) => {
+        const label = stageTabLabel(node);
+        return { id: node.id, ...label };
+      }),
+    [stageNodes]
+  );
+
+  const focus =
+    data?.nodes.find((node) => node.id === focusId) ??
+    stageNodes[0] ??
+    root;
+
+  const breadcrumb = useMemo(() => {
+    if (!data || !focus) return [];
+    const full = pathToNode(data.nodes, focus.id);
+    // Drop the absolute root when stage panes exist.
+    if (stageNodes.length > 0 && full[0]?.id === root?.id) return full.slice(1);
+    return full;
+  }, [data, focus, root, stageNodes]);
+
+  const cards = useMemo(() => {
+    if (!data || !focus) return [];
+    return data.nodes
+      .filter((node) => node.parentId === focus.id)
+      .sort((a, b) => {
+        const ai = data.nodes.findIndex((row) => row.id === a.id);
+        const bi = data.nodes.findIndex((row) => row.id === b.id);
+        return ai - bi;
+      });
+  }, [data, focus]);
+
+  const nestedByParent = useMemo(() => {
+    if (!data) return {};
+    const map: Record<string, PathExploreNode[]> = {};
+    for (const card of cards) {
+      if (card.kind !== "section") continue;
+      map[card.id] = data.nodes.filter((node) => node.parentId === card.id);
+    }
+    return map;
+  }, [cards, data]);
+
+  function selectStage(id: string) {
+    setActiveStageId(id);
+    setFocusId(id);
+    setExpanded(new Set());
+    setAsking(false);
+    trackEvent("path_branch_opened", { branch: id });
+  }
+
+  function openCard(node: PathExploreNode) {
+    setFocusId(node.id);
+    setAsking(false);
+    if (stageNodes.some((stage) => stage.id === node.id)) {
+      setActiveStageId(node.id);
+    }
+    trackEvent("path_branch_opened", { branch: node.slug });
+  }
+
+  function levelUp() {
+    if (!focus?.parentId) return;
+    const parentIsRoot = focus.parentId === root?.id;
+    if (parentIsRoot) {
+      setFocusId(activeStageId ?? focus.parentId);
+      return;
+    }
+    setFocusId(focus.parentId);
+  }
+
+  function toggleExpand(id: string) {
     setExpanded((current) => {
       const next = new Set(current);
-      if (next.has(id)) {
-        next.delete(id);
-        return next;
+      if (next.has(id)) next.delete(id);
+      else {
+        for (const card of cards) {
+          if (card.kind === "section") next.delete(card.id);
+        }
+        next.add(id);
       }
-      for (const other of data?.nodes ?? []) {
-        if (other.parentId === node.parentId) next.delete(other.id);
-      }
-      next.add(id);
-      trackEvent("path_branch_opened", { branch: node.slug });
       return next;
     });
   }
 
-  async function readDiscussions(nodeId: string) {
+  async function readDiscussions() {
+    if (!focus) return;
     const token = await getToken();
     if (!token) return;
-    setDiscussions((current) => ({ ...current, [nodeId]: "loading" }));
+    setDiscussions((current) => ({ ...current, [focus.id]: "loading" }));
     try {
-      const result = await api.getPathDiscussions(token, nodeId);
-      setDiscussions((current) => ({ ...current, [nodeId]: result.discussions }));
+      const result = await api.getPathDiscussions(token, focus.id);
+      setDiscussions((current) => ({ ...current, [focus.id]: result.discussions }));
     } catch {
-      setDiscussions((current) => ({ ...current, [nodeId]: "error" }));
+      setDiscussions((current) => ({ ...current, [focus.id]: "error" }));
     }
   }
 
@@ -119,18 +244,18 @@ export default function PathwaysHubScreen() {
   }
 
   async function sendAsk() {
-    if (!data || !askingId || !selectedId) return;
+    if (!data || !focus || !selectedId) return;
     const token = await getToken();
     if (!token) return;
     setAskBusy(true);
     try {
       const result = await api.askOnPath(token, {
         childId: selectedId,
-        nodeId: askingId,
+        nodeId: focus.id,
         body: askDraft.trim(),
       });
-      trackEvent("path_composer_opened", { branch: askingId });
-      setAskingId(null);
+      trackEvent("path_composer_opened", { branch: focus.slug });
+      setAsking(false);
       setAskDraft("");
       router.push({
         pathname: "/(app)/messages/threads/[threadId]",
@@ -159,23 +284,27 @@ export default function PathwaysHubScreen() {
     );
   }
 
-  if (!data) return null;
+  if (!data || !focus) return null;
 
   return (
     <SafeAreaView style={styles.screen} edges={["top"]}>
       <ScrollView contentContainerStyle={styles.content}>
         <PathExploreThread
           locationTitle={data.locationTitle}
-          locationMeta={data.locationMeta}
           stateLabel={data.context.stateLabel ?? "India (national)"}
           lockLine={data.lockLine}
           postingCircleName={data.postingCircle?.displayName ?? null}
-          nodes={data.nodes}
           children={data.children}
           selectedChildId={selectedId}
+          stageTabs={stageTabs}
+          activeStageId={activeStageId}
+          focus={focus}
+          breadcrumb={breadcrumb}
+          cards={cards}
+          nestedByParent={nestedByParent}
           expandedIds={expanded}
-          discussions={discussions}
-          askingId={askingId}
+          discussions={discussions[focus.id]}
+          asking={asking}
           askDraft={askDraft}
           askBusy={askBusy}
           onMore={() => router.back()}
@@ -183,7 +312,10 @@ export default function PathwaysHubScreen() {
             if (id === selectedId) return;
             setChildId(id);
           }}
-          onToggle={toggle}
+          onSelectStage={selectStage}
+          onOpenCard={openCard}
+          onToggleExpand={toggleExpand}
+          onLevelUp={levelUp}
           onOpenDetail={(slug, title) =>
             router.push({
               pathname: "/(app)/pathways/[slug]",
@@ -192,15 +324,17 @@ export default function PathwaysHubScreen() {
           }
           onRead={readDiscussions}
           onOpenDiscussion={openDiscussion}
-          onStartAsk={(node) => {
-            setAskingId(node.id);
-            setAskDraft(node.askPrompt ?? "");
+          onStartAsk={() => {
+            setAsking(true);
+            setAskDraft(focus.askPrompt ?? "");
           }}
           onChangeAsk={setAskDraft}
           onSendAsk={sendAsk}
-          onCancelAsk={() => setAskingId(null)}
+          onCancelAsk={() => setAsking(false)}
         />
-        {error ? <EmptyState icon="alert-circle-outline" title="Could not post" message={error} /> : null}
+        {error ? (
+          <EmptyState icon="alert-circle-outline" title="Could not post" message={error} />
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );

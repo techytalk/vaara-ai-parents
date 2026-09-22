@@ -16,69 +16,85 @@ import type {
 } from "@/lib/api";
 import { childSwitcherTabLabel } from "@/lib/child-switcher-label";
 
-const LINE_COLORS = [
-  colors.teal,
-  colors.navy,
-  colors.amber,
-  colors.coral,
-  colors.lavender,
-] as const;
+const THREAD = colors.primary;
+const RAIL = 20;
 
-const RAIL = 18;
+type StageTab = {
+  id: string;
+  line1: string;
+  line2: string;
+};
 
 type Props = {
   locationTitle: string;
-  locationMeta: string;
   stateLabel: string;
   lockLine: string;
   postingCircleName: string | null;
-  nodes: PathExploreNode[];
   children: PathwayHubChild[];
   selectedChildId: string | null;
+  stageTabs: StageTab[];
+  activeStageId: string | null;
+  focus: PathExploreNode;
+  breadcrumb: PathExploreNode[];
+  cards: PathExploreNode[];
+  nestedByParent: Record<string, PathExploreNode[]>;
   expandedIds: Set<string>;
-  discussions: Record<string, PathDiscussionLink[] | "loading" | "error">;
-  askingId: string | null;
+  discussions: PathDiscussionLink[] | "loading" | "error" | undefined;
+  asking: boolean;
   askDraft: string;
   askBusy: boolean;
   onMore: () => void;
   onSelectChild: (id: string) => void;
-  onToggle: (id: string) => void;
+  onSelectStage: (id: string) => void;
+  onOpenCard: (node: PathExploreNode) => void;
+  onToggleExpand: (id: string) => void;
+  onLevelUp: () => void;
   onOpenDetail: (slug: string, title: string) => void;
-  onRead: (id: string) => void;
+  onRead: () => void;
   onOpenDiscussion: (link: PathDiscussionLink) => void;
-  onStartAsk: (node: PathExploreNode) => void;
+  onStartAsk: () => void;
   onChangeAsk: (text: string) => void;
   onSendAsk: () => void;
   onCancelAsk: () => void;
 };
 
-function lineColor(depth: number) {
-  return LINE_COLORS[Math.max(depth, 0) % LINE_COLORS.length];
+function stageEyebrow(focus: PathExploreNode, isStageRoot: boolean) {
+  if (!isStageRoot) return null;
+  const kick = (focus.kicker ?? "").toLowerCase();
+  if (kick.includes("this year") || focus.slug.includes("-now")) return "YOUR CHILD NOW";
+  if (kick.includes("next")) return "EXPLORING AHEAD";
+  if (kick.includes("explore") || kick.includes("after")) return "EXPLORING AHEAD";
+  return "EXPLORING AHEAD";
 }
 
-function showsActions(node: PathExploreNode, open: boolean) {
-  if (node.kind === "root" || node.kind === "section") return false;
-  if (!node.allowAsk && !node.allowDiscussions) return false;
-  return open || !node.hasChildren;
+function aboutLabel(title: string) {
+  return `About ${title.toLowerCase()}`;
 }
 
 export function PathExploreThread({
   locationTitle,
-  locationMeta,
   stateLabel,
   lockLine,
   postingCircleName,
-  nodes,
   children,
   selectedChildId,
+  stageTabs,
+  activeStageId,
+  focus,
+  breadcrumb,
+  cards,
+  nestedByParent,
   expandedIds,
   discussions,
-  askingId,
+  asking,
   askDraft,
   askBusy,
   onMore,
   onSelectChild,
-  onToggle,
+  onSelectStage,
+  onOpenCard,
+  onToggleExpand,
+  onLevelUp,
   onOpenDetail,
   onRead,
   onOpenDiscussion,
@@ -87,12 +103,13 @@ export function PathExploreThread({
   onSendAsk,
   onCancelAsk,
 }: Props) {
-  const visible = nodes.filter(
-    (node) => node.depth === 0 || (node.parentId && expandedIds.has(node.parentId))
-  );
-  const crumb = nodes
-    .filter((node) => expandedIds.has(node.id))
-    .sort((a, b) => a.depth - b.depth);
+  const isStageRoot = stageTabs.some((tab) => tab.id === focus.id);
+  const eyebrow = stageEyebrow(focus, isStageRoot);
+  const showLevelUp = breadcrumb.length > 1;
+  const unsure = cards.find((node) => /unsure|not sure/i.test(node.title));
+  const visibleCards = cards.filter((node) => node.id !== unsure?.id);
+  const canAsk = focus.allowAsk;
+  const canRead = focus.allowDiscussions;
 
   return (
     <View style={styles.page}>
@@ -114,7 +131,7 @@ export function PathExploreThread({
                 onPress={() => onSelectChild(child.id)}
                 style={[styles.childChip, selected && styles.chipOn]}
               >
-                <Text style={[styles.chipText, selected && styles.chipTextOn]}>
+                <Text style={[styles.chipText, selected && styles.chipTextOn]} numberOfLines={2}>
                   {childSwitcherTabLabel(child, index)}
                 </Text>
               </Pressable>
@@ -123,186 +140,212 @@ export function PathExploreThread({
         </View>
       ) : null}
 
-      <Text style={styles.eyebrow}>{stateLabel}</Text>
-      <Text style={styles.headline}>Explore what comes next</Text>
-
-      <View style={styles.location}>
-        <Text style={styles.kicker}>YOUR CHILD IS HERE</Text>
-        <Text style={styles.locationTitle}>{locationTitle}</Text>
-        <Text style={styles.meta}>{locationMeta}</Text>
+      <View style={styles.here}>
+        <View style={styles.hereDot} />
+        <View style={styles.hereBody}>
+          <Text style={styles.hereTitle}>{locationTitle}</Text>
+          <Text style={styles.hereMeta}>Current stage · {stateLabel}</Text>
+        </View>
       </View>
 
-      {crumb.length > 1 ? (
-        <View style={styles.crumbRow}>
-          {crumb.map((node, index) => (
-            <View key={node.id} style={styles.crumbItem}>
-              {index > 0 ? (
-                <Ionicons name="chevron-forward" size={12} color={t.kicker} />
-              ) : null}
-              <Text style={[styles.crumbText, { color: lineColor(node.depth) }]} numberOfLines={1}>
-                {node.title}
-              </Text>
-            </View>
-          ))}
+      {stageTabs.length > 1 ? (
+        <View style={styles.stageRow}>
+          {stageTabs.map((tab) => {
+            const on = tab.id === activeStageId;
+            return (
+              <Pressable
+                key={tab.id}
+                onPress={() => onSelectStage(tab.id)}
+                style={[styles.stageTab, on && styles.stageTabOn]}
+              >
+                <Text style={[styles.stageLine1, on && styles.stageLineOn]} numberOfLines={1}>
+                  {tab.line1}
+                </Text>
+                <Text style={[styles.stageLine2, on && styles.stageLineOn]} numberOfLines={2}>
+                  {tab.line2}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
       ) : null}
 
-      <View style={styles.tree}>
-        {visible.map((node) => {
-          const open = expandedIds.has(node.id);
-          const discussionState = discussions[node.id];
-          const color = lineColor(Math.max(node.depth - 1, 0));
-          const body = open ? node.lead || node.summary : node.summary;
-          const actions = showsActions(node, open);
-          return (
-            <View key={node.id} style={styles.threadItem}>
-              {node.depth > 0 ? (
-                <View style={[styles.rails, { width: node.depth * RAIL }]} pointerEvents="none">
-                  {Array.from({ length: node.depth }, (_, level) => (
-                    <View key={level} style={styles.railTrack}>
-                      <View
-                        style={[
-                          styles.rail,
-                          { backgroundColor: lineColor(level) },
-                        ]}
-                      />
-                    </View>
-                  ))}
-                  <View
-                    style={[
-                      styles.branch,
-                      {
-                        backgroundColor: color,
-                        left: (node.depth - 1) * RAIL + RAIL / 2,
-                      },
-                    ]}
-                  />
-                </View>
-              ) : null}
+      {showLevelUp ? (
+        <View style={styles.crumbBlock}>
+          <Text style={styles.crumbPath} numberOfLines={2}>
+            {breadcrumb.map((node) => node.title).join("  ›  ")}
+          </Text>
+          <Pressable onPress={onLevelUp} hitSlop={8}>
+            <Text style={styles.levelUp}>← One level up</Text>
+          </Pressable>
+        </View>
+      ) : null}
 
-              <View style={[styles.threadBody, { marginLeft: node.depth * RAIL }]}>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityState={{ expanded: open }}
-                  onPress={() => (node.hasChildren ? onToggle(node.id) : undefined)}
-                  style={styles.row}
-                >
-                  <Ionicons
-                    name={
-                      node.hasChildren
-                        ? open
-                          ? "chevron-down"
-                          : "chevron-forward"
-                        : "ellipse"
-                    }
-                    size={node.hasChildren ? 16 : 8}
-                    color={node.depth === 0 ? lineColor(0) : color}
-                  />
-                  <View style={styles.rowBody}>
-                    {node.kicker ? <Text style={styles.rowKicker}>{node.kicker}</Text> : null}
-                    <Text style={styles.rowTitle}>{node.title}</Text>
-                    {body && !open ? <Text style={styles.rowSummary}>{body}</Text> : null}
-                  </View>
-                </Pressable>
-
-                {open && (node.lead || node.summary) ? (
-                  <View style={[styles.copy, { borderLeftColor: node.depth === 0 ? lineColor(0) : color }]}>
-                    <Text style={styles.copyText}>{node.lead || node.summary}</Text>
-                  </View>
-                ) : null}
-
-                {node.pathwayItemSlug && (open || !node.hasChildren) ? (
-                  <Pressable
-                    onPress={() => onOpenDetail(node.pathwayItemSlug!, node.title)}
-                    style={styles.iconBtn}
-                  >
-                    <Ionicons name="open-outline" size={16} color={t.textLink} />
-                    <Text style={styles.link}>Official details</Text>
-                  </Pressable>
-                ) : null}
-
-                {actions ? (
-                  <View style={styles.actions}>
-                    {node.allowDiscussions ? (
-                      <Pressable onPress={() => onRead(node.id)} style={styles.actionBtn}>
-                        <Ionicons name="chatbubbles-outline" size={16} color={t.textLink} />
-                        <Text style={styles.link}>Read discussions</Text>
-                      </Pressable>
-                    ) : null}
-                    {node.allowAsk ? (
-                      <Pressable
-                        onPress={() => onStartAsk(node)}
-                        disabled={!postingCircleName}
-                        style={styles.actionBtn}
-                      >
-                        <Ionicons
-                          name="create-outline"
-                          size={16}
-                          color={postingCircleName ? t.textLink : t.dimmed}
-                        />
-                        <Text style={[styles.link, !postingCircleName && styles.dim]}>
-                          Ask parents
-                        </Text>
-                      </Pressable>
-                    ) : null}
-                  </View>
-                ) : null}
-
-                {askingId === node.id ? (
-                  <View style={styles.composer}>
-                    {postingCircleName ? (
-                      <Text style={styles.where}>Posts in {postingCircleName}</Text>
-                    ) : null}
-                    <TextInput
-                      value={askDraft}
-                      onChangeText={onChangeAsk}
-                      multiline
-                      style={styles.input}
-                      placeholder={node.askPrompt || "Your question"}
-                      placeholderTextColor={t.dimmed}
-                    />
-                    <View style={styles.composerRow}>
-                      <Pressable onPress={onCancelAsk}><Text style={styles.link}>Cancel</Text></Pressable>
-                      <Pressable onPress={onSendAsk} disabled={askBusy || !askDraft.trim()} style={styles.send}>
-                        {askBusy ? (
-                          <ActivityIndicator color={t.ctaText} />
-                        ) : (
-                          <Text style={styles.sendText}>Post</Text>
-                        )}
-                      </Pressable>
-                    </View>
-                  </View>
-                ) : null}
-
-                {discussionState === "loading" ? (
-                  <ActivityIndicator color={t.navWordmark} />
-                ) : null}
-                {discussionState === "error" ? (
-                  <Text style={styles.meta}>Could not load discussions. Tap Read to retry.</Text>
-                ) : null}
-                {Array.isArray(discussionState) && discussionState.length === 0 ? (
-                  <Text style={styles.meta}>No discussions on this branch yet.</Text>
-                ) : null}
-                {Array.isArray(discussionState)
-                  ? discussionState.map((link) => (
-                      <Pressable key={link.messageId} onPress={() => onOpenDiscussion(link)} style={styles.discussion}>
-                        <Text style={styles.rowTitle} numberOfLines={2}>{link.preview || "Question"}</Text>
-                        <Text style={styles.meta}>
-                          {link.circleName}
-                          {link.openAs === "thread" ? ` · ${link.replyCount} replies` : " · message"}
-                        </Text>
-                      </Pressable>
-                    ))
-                  : null}
-              </View>
-            </View>
-          );
-        })}
+      <View style={styles.pane}>
+        {eyebrow ? <Text style={styles.paneEyebrow}>{eyebrow}</Text> : null}
+        <Text style={styles.paneTitle}>{focus.title}</Text>
+        {focus.summary || focus.lead ? (
+          <Text style={styles.paneDeck}>{focus.summary || focus.lead}</Text>
+        ) : null}
+        {focus.lead && focus.summary && focus.lead !== focus.summary && !isStageRoot ? (
+          <Text style={styles.paneLead}>{focus.lead}</Text>
+        ) : null}
       </View>
 
-      <View style={styles.lockRow}>
-        <Ionicons name="lock-closed-outline" size={14} color={t.lock} />
-        <Text style={styles.lock}>{lockLine}</Text>
+      {visibleCards.length > 0 ? (
+        <View style={styles.thread}>
+          <View style={styles.threadRail} />
+          {visibleCards.map((node) => {
+            const nested = nestedByParent[node.id] ?? [];
+            const expandable = nested.length > 0 && node.kind === "section";
+            const open = expandedIds.has(node.id);
+            return (
+              <View key={node.id} style={styles.threadItem}>
+                <View style={styles.threadBranch} />
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: expandable ? open : undefined }}
+                  onPress={() =>
+                    expandable ? onToggleExpand(node.id) : onOpenCard(node)
+                  }
+                  style={[styles.card, open && styles.cardOpen]}
+                >
+                  <View style={styles.cardBody}>
+                    <Text style={styles.cardTitle}>{node.title}</Text>
+                    {node.summary ? (
+                      <Text style={styles.cardSummary} numberOfLines={2}>
+                        {node.summary}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <Ionicons
+                    name={expandable ? (open ? "remove" : "add") : "chevron-forward"}
+                    size={18}
+                    color={t.kicker}
+                  />
+                </Pressable>
+
+                {expandable && open ? (
+                  <View style={styles.nested}>
+                    <View style={styles.nestedRail} />
+                    {nested.map((child) => (
+                      <View key={child.id} style={styles.nestedItem}>
+                        <View style={styles.nestedBranch} />
+                        <Pressable
+                          onPress={() => onOpenCard(child)}
+                          style={styles.nestedRow}
+                        >
+                          <Text style={styles.nestedTitle}>{child.title}</Text>
+                          <Ionicons name="chevron-forward" size={16} color={t.kicker} />
+                        </Pressable>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+              </View>
+            );
+          })}
+        </View>
+      ) : null}
+
+      {unsure ? (
+        <Pressable onPress={() => onOpenCard(unsure)} style={styles.unsure}>
+          <Text style={styles.unsureText}>Not sure yet? Ask about the options →</Text>
+        </Pressable>
+      ) : null}
+
+      {focus.pathwayItemSlug ? (
+        <Pressable
+          onPress={() => onOpenDetail(focus.pathwayItemSlug!, focus.title)}
+          style={styles.official}
+        >
+          <Ionicons name="open-outline" size={16} color={t.textLink} />
+          <Text style={styles.link}>Official details</Text>
+        </Pressable>
+      ) : null}
+
+      <View style={styles.footer}>
+        <Text style={styles.about}>{aboutLabel(focus.title)}</Text>
+        <View style={styles.ctaRow}>
+          {canRead ? (
+            <Pressable onPress={onRead} style={styles.ctaSecondary}>
+              <Ionicons name="chatbubbles-outline" size={16} color={t.textLink} />
+              <Text style={styles.ctaSecondaryText}>Read discussions</Text>
+            </Pressable>
+          ) : null}
+          {canAsk ? (
+            <Pressable
+              onPress={onStartAsk}
+              disabled={!postingCircleName}
+              style={[styles.ctaPrimary, !postingCircleName && styles.ctaDisabled]}
+            >
+              <Ionicons name="create-outline" size={16} color={t.ctaText} />
+              <Text style={styles.ctaPrimaryText}>Ask parents</Text>
+            </Pressable>
+          ) : null}
+        </View>
+
+        {asking ? (
+          <View style={styles.composer}>
+            {postingCircleName ? (
+              <Text style={styles.where}>Posts in {postingCircleName}</Text>
+            ) : null}
+            <TextInput
+              value={askDraft}
+              onChangeText={onChangeAsk}
+              multiline
+              style={styles.input}
+              placeholder={focus.askPrompt || "Your question"}
+              placeholderTextColor={t.dimmed}
+            />
+            <View style={styles.composerRow}>
+              <Pressable onPress={onCancelAsk}>
+                <Text style={styles.link}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={onSendAsk}
+                disabled={askBusy || !askDraft.trim()}
+                style={styles.send}
+              >
+                {askBusy ? (
+                  <ActivityIndicator color={t.ctaText} />
+                ) : (
+                  <Text style={styles.sendText}>Post</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
+
+        {discussions === "loading" ? <ActivityIndicator color={t.navWordmark} /> : null}
+        {discussions === "error" ? (
+          <Text style={styles.meta}>Could not load discussions. Tap Read to retry.</Text>
+        ) : null}
+        {Array.isArray(discussions) && discussions.length === 0 ? (
+          <Text style={styles.meta}>No discussions on this branch yet.</Text>
+        ) : null}
+        {Array.isArray(discussions)
+          ? discussions.map((link) => (
+              <Pressable
+                key={link.messageId}
+                onPress={() => onOpenDiscussion(link)}
+                style={styles.discussion}
+              >
+                <Text style={styles.cardTitle} numberOfLines={2}>
+                  {link.preview || "Question"}
+                </Text>
+                <Text style={styles.meta}>
+                  {link.circleName}
+                  {link.openAs === "thread" ? ` · ${link.replyCount} replies` : " · message"}
+                </Text>
+              </Pressable>
+            ))
+          : null}
+
+        <View style={styles.lockRow}>
+          <Ionicons name="lock-closed-outline" size={14} color={t.lock} />
+          <Text style={styles.lock}>{lockLine}</Text>
+        </View>
       </View>
     </View>
   );
@@ -310,15 +353,31 @@ export function PathExploreThread({
 
 const styles = StyleSheet.create({
   page: { gap: spacing.sm, paddingBottom: spacing.xxl },
-  nav: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 44 },
-  wordmark: { ...typography.supporting, color: t.navWordmark, fontFamily: typography.semibold, width: 64 },
+  nav: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    minHeight: 44,
+  },
+  wordmark: {
+    ...typography.supporting,
+    color: t.navWordmark,
+    fontFamily: typography.semibold,
+    width: 72,
+  },
   navTitle: { ...typography.body, color: t.navTitle, fontFamily: typography.semibold },
-  navAction: { ...typography.supporting, color: t.navAction, fontFamily: typography.semibold, width: 64, textAlign: "right" },
+  navAction: {
+    ...typography.supporting,
+    color: t.navAction,
+    fontFamily: typography.semibold,
+    width: 72,
+    textAlign: "right",
+  },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
   childChip: {
     flexGrow: 1,
     flexBasis: "46%",
-    minHeight: 44,
+    minHeight: 40,
     justifyContent: "center",
     paddingHorizontal: spacing.sm,
     borderRadius: radii.pill,
@@ -326,71 +385,167 @@ const styles = StyleSheet.create({
     borderColor: t.chipIdleBorder,
     backgroundColor: t.chipIdleFill,
   },
-  chipOn: { backgroundColor: t.chipActiveFill, borderColor: t.chipActiveFill },
+  chipOn: { borderColor: t.ctaFill, backgroundColor: t.chipIdleFill },
   chipText: { ...typography.caption, color: t.chipIdleText, fontFamily: typography.semibold },
   chipTextOn: { color: t.chipActiveText },
-  eyebrow: { ...typography.caption, color: t.eyebrow, fontFamily: typography.medium },
-  headline: { ...typography.screenTitle, color: t.title, fontFamily: typography.bold },
-  location: {
+  here: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm, marginTop: 4 },
+  hereDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.primary,
+    marginTop: 7,
+  },
+  hereBody: { flex: 1, gap: 2 },
+  hereTitle: { ...typography.sectionTitle, color: t.title, fontFamily: typography.bold },
+  hereMeta: { ...typography.supporting, color: t.deck },
+  stageRow: { flexDirection: "row", gap: 6, marginTop: 4 },
+  stageTab: {
+    flex: 1,
+    minHeight: 58,
+    borderRadius: radii.lg,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    justifyContent: "center",
+    backgroundColor: colors.surfaceMuted,
+  },
+  stageTabOn: { backgroundColor: colors.primarySoft, borderWidth: 1, borderColor: colors.primaryLight },
+  stageLine1: { ...typography.caption, color: t.deck, fontFamily: typography.semibold },
+  stageLine2: { ...typography.supporting, color: t.title, fontFamily: typography.semibold },
+  stageLineOn: { color: colors.primaryDark },
+  crumbBlock: { gap: 4, marginTop: 2 },
+  crumbPath: { ...typography.caption, color: t.textLink, fontFamily: typography.semibold },
+  levelUp: { ...typography.supporting, color: t.textLink, fontFamily: typography.semibold },
+  pane: { gap: 4, marginTop: 4 },
+  paneEyebrow: {
+    ...typography.caption,
+    color: t.kicker,
+    letterSpacing: 0.7,
+    fontFamily: typography.bold,
+  },
+  paneTitle: { ...typography.screenTitle, color: t.title, fontFamily: typography.bold },
+  paneDeck: { ...typography.supporting, color: t.deck },
+  paneLead: { ...typography.supporting, color: t.title, lineHeight: 20, marginTop: 4 },
+  thread: { position: "relative", marginTop: spacing.xs, paddingLeft: RAIL },
+  threadRail: {
+    position: "absolute",
+    left: 7,
+    top: 22,
+    bottom: 22,
+    width: 2,
+    backgroundColor: THREAD,
+    borderRadius: 1,
+  },
+  threadItem: { marginBottom: spacing.sm, position: "relative" },
+  threadBranch: {
+    position: "absolute",
+    left: -RAIL + 7,
+    top: 24,
+    width: RAIL - 7,
+    height: 2,
+    backgroundColor: THREAD,
+  },
+  card: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    minHeight: 56,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: t.nodeBorder,
     backgroundColor: t.nodeFill,
-    borderRadius: radii.xl,
-    padding: spacing.md,
-    gap: 4,
   },
-  kicker: { ...typography.caption, color: t.kicker, letterSpacing: 0.6, fontFamily: typography.bold },
-  locationTitle: { ...typography.sectionTitle, color: t.nodeTitle, fontFamily: typography.bold },
-  meta: { ...typography.supporting, color: t.nodeMeta },
-  crumbRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 4 },
-  crumbItem: { flexDirection: "row", alignItems: "center", gap: 4, maxWidth: "100%" },
-  crumbText: { ...typography.caption, fontFamily: typography.semibold },
-  tree: { marginTop: spacing.xs },
-  threadItem: { position: "relative", minHeight: 36 },
-  rails: {
+  cardOpen: { borderColor: colors.primaryLight, backgroundColor: colors.primarySoft },
+  cardBody: { flex: 1, gap: 2 },
+  cardTitle: { ...typography.body, color: t.title, fontFamily: typography.semibold },
+  cardSummary: { ...typography.supporting, color: t.deck },
+  nested: { marginTop: spacing.xs, marginLeft: spacing.md, position: "relative", paddingLeft: 14 },
+  nestedRail: {
     position: "absolute",
     left: 0,
-    top: 0,
-    bottom: 0,
-    flexDirection: "row",
-  },
-  railTrack: { width: RAIL, alignItems: "center" },
-  rail: { width: 2, flex: 1, borderRadius: 1 },
-  branch: {
-    position: "absolute",
-    top: 18,
-    width: RAIL / 2,
-    height: 2,
+    top: 8,
+    bottom: 8,
+    width: 2,
+    backgroundColor: colors.primaryLight,
     borderRadius: 1,
   },
-  threadBody: { paddingBottom: spacing.sm },
-  row: { flexDirection: "row", gap: spacing.xs, alignItems: "flex-start", minHeight: 36, paddingTop: 8 },
-  rowBody: { flex: 1, gap: 2 },
-  rowKicker: { ...typography.caption, color: t.kicker, fontFamily: typography.semibold },
-  rowTitle: { ...typography.body, color: t.title, fontFamily: typography.semibold },
-  rowSummary: { ...typography.supporting, color: t.deck },
-  copy: {
-    marginLeft: 22,
-    marginTop: 4,
-    marginBottom: 6,
-    paddingLeft: spacing.sm,
-    borderLeftWidth: 2,
+  nestedItem: { position: "relative", marginBottom: 2 },
+  nestedBranch: {
+    position: "absolute",
+    left: -14,
+    top: 20,
+    width: 14,
+    height: 2,
+    backgroundColor: colors.primaryLight,
   },
-  copyText: { ...typography.supporting, color: t.title, lineHeight: 20 },
-  actions: { marginLeft: 22, gap: 2 },
-  actionBtn: { flexDirection: "row", alignItems: "center", gap: 6, minHeight: 32 },
-  iconBtn: {
+  nestedRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    minHeight: 44,
+    paddingVertical: 8,
+    paddingRight: 4,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.panelBorder,
+  },
+  nestedTitle: { ...typography.body, color: t.title, flex: 1, paddingRight: 8 },
+  unsure: { paddingVertical: spacing.xs },
+  unsureText: { ...typography.supporting, color: t.textLink, fontFamily: typography.semibold },
+  official: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     minHeight: 32,
-    paddingVertical: 2,
-    marginLeft: 22,
   },
   link: { ...typography.supporting, color: t.textLink, fontFamily: typography.semibold },
-  dim: { color: t.dimmed },
+  footer: {
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.panelBorder,
+    gap: spacing.sm,
+  },
+  about: { ...typography.caption, color: t.kicker },
+  ctaRow: { flexDirection: "row", gap: spacing.sm },
+  ctaSecondary: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: t.panelFill,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingHorizontal: spacing.sm,
+  },
+  ctaSecondaryText: {
+    ...typography.supporting,
+    color: t.textLink,
+    fontFamily: typography.semibold,
+  },
+  ctaPrimary: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: radii.lg,
+    backgroundColor: t.ctaFill,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingHorizontal: spacing.sm,
+  },
+  ctaDisabled: { opacity: 0.45 },
+  ctaPrimaryText: {
+    ...typography.supporting,
+    color: t.ctaText,
+    fontFamily: typography.semibold,
+  },
+  composer: { gap: spacing.xs },
   where: { ...typography.caption, color: t.lock },
-  composer: { marginLeft: 22, gap: spacing.xs, marginTop: 4 },
   input: {
     minHeight: 88,
     borderWidth: 1,
@@ -401,11 +556,20 @@ const styles = StyleSheet.create({
     backgroundColor: t.panelFill,
     textAlignVertical: "top",
   },
-  composerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  send: { backgroundColor: t.ctaFill, borderRadius: radii.pill, paddingHorizontal: spacing.md, minHeight: 36, justifyContent: "center" },
+  composerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  send: {
+    backgroundColor: t.ctaFill,
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.md,
+    minHeight: 36,
+    justifyContent: "center",
+  },
   sendText: { color: t.ctaText, fontFamily: typography.semibold },
   discussion: {
-    marginLeft: 22,
     padding: spacing.sm,
     borderWidth: 1,
     borderColor: t.panelBorder,
@@ -413,6 +577,7 @@ const styles = StyleSheet.create({
     backgroundColor: t.panelFill,
     gap: 2,
   },
-  lockRow: { flexDirection: "row", gap: 6, alignItems: "center", marginTop: spacing.md },
+  meta: { ...typography.supporting, color: t.nodeMeta },
+  lockRow: { flexDirection: "row", gap: 6, alignItems: "center", marginTop: 4 },
   lock: { ...typography.caption, color: t.lock, flex: 1 },
 });

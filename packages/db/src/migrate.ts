@@ -122,6 +122,10 @@ const MIGRATIONS = [
     version: "059_path_node_orientation_copy",
     file: "059_path_node_orientation_copy.sql",
   },
+  {
+    version: "060_path_g9_stage_panes",
+    file: "060_path_g9_stage_panes.sql",
+  },
 ];
 
 async function isMigrationApplied(
