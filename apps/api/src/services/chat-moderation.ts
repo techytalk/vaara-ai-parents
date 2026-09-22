@@ -45,6 +45,15 @@ export function parseMessageIds(raw: unknown): string[] | { error: string } {
   return ids;
 }
 
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, "\\$&");
+}
+
+function isUndefinedColumn(err: unknown, column: string): boolean {
+  const e = err as { code?: string; message?: string };
+  return e.code === "42703" || (e.message ?? "").includes(column);
+}
+
 export async function searchModeration(
   client: PoolClient,
   q: string
@@ -55,24 +64,26 @@ export async function searchModeration(
   const query = q.trim();
   if (query.length < 2) return { parents: [], circles: [] };
 
+  const like = `%${escapeLike(query)}%`;
   const uuid = isUuid(query) ? query : null;
   const handleExact = HANDLE_RE.test(query) ? query : null;
+  const parentParams = [like, uuid, handleExact];
 
-  const parents = await client.query(
+  const parentSql = (blockedColumn: boolean) =>
     `SELECT
        u.id,
        u.email,
        u.anonymous_handle,
        u.display_name,
-       u.content_blocked,
+       ${blockedColumn ? "u.content_blocked" : "false AS content_blocked"},
        to_char(u.created_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD HH24:MI') AS created_ist
      FROM users u
      WHERE u.role = 'parent'
        AND (
          ($2::uuid IS NOT NULL AND u.id = $2)
          OR ($3::text IS NOT NULL AND u.anonymous_handle ILIKE $3)
-         OR u.anonymous_handle ILIKE '%' || $1 || '%'
-         OR u.email ILIKE '%' || $1 || '%'
+         OR u.anonymous_handle ILIKE $1 ESCAPE '\\'
+         OR u.email ILIKE $1 ESCAPE '\\'
        )
      ORDER BY
        CASE
@@ -81,9 +92,15 @@ export async function searchModeration(
          ELSE 1
        END,
        u.created_at DESC
-     LIMIT 20`,
-    [query, uuid, handleExact]
-  );
+     LIMIT 20`;
+
+  let parentRows: Array<Record<string, unknown>> = [];
+  try {
+    parentRows = (await client.query(parentSql(true), parentParams)).rows;
+  } catch (err) {
+    if (!isUndefinedColumn(err, "content_blocked")) throw err;
+    parentRows = (await client.query(parentSql(false), parentParams)).rows;
+  }
 
   const circles = await client.query(
     `SELECT
@@ -94,16 +111,18 @@ export async function searchModeration(
        COUNT(m.id)::int AS hit_count
      FROM circles c
      LEFT JOIN circle_messages m ON m.circle_id = c.id
-     WHERE c.display_name ILIKE '%' || $1 || '%'
-        OR c.key ILIKE '%' || $1 || '%'
-        OR coalesce(c.metadata->>'pin_code', '') ILIKE '%' || $1 || '%'
+     WHERE c.display_name ILIKE $1 ESCAPE '\\'
+        OR c.key ILIKE $1 ESCAPE '\\'
+        OR coalesce(c.metadata->>'pin_code', '') ILIKE $1 ESCAPE '\\'
+        OR coalesce(c.metadata->>'code', '') ILIKE $1 ESCAPE '\\'
+        OR coalesce(c.metadata->>'normalized_key', '') ILIKE $1 ESCAPE '\\'
      GROUP BY c.id
      ORDER BY COUNT(m.id) DESC, c.display_name
      LIMIT 40`,
-    [query]
+    [like]
   );
 
-  return { parents: parents.rows, circles: circles.rows };
+  return { parents: parentRows, circles: circles.rows };
 }
 
 export async function listParentModerationCircles(

@@ -172,6 +172,8 @@
     <h1>Chat moderation</h1>
     <p class="muted">
       Look up a parent or circle, select messages, and hide them.
+      Search is case-insensitive. Try a handle (<strong>Parent-MXS3</strong>),
+      email, or circle name (<strong>CBSE</strong>).
       Parents see: <strong>Blocked as inappropriate</strong>.
       Suspend a profile to stop them sending anything new.
     </p>
@@ -179,7 +181,7 @@
     <div class="toolbar">
       <div>
         <label>Search</label>
-        <input id="q" type="search" size="32" placeholder="Parent-MXS3, email, or circle…" />
+        <input id="q" type="search" size="32" placeholder="Parent-MXS3, email, or CBSE" />
       </div>
       <button id="searchBtn" type="button">Search</button>
       <button id="clear" class="secondary" type="button">Clear</button>
@@ -445,79 +447,139 @@
           selectedMessageId = "";
           replies = [];
         }
-        renderCircles();
+        if (selectedParent) renderCircles();
+        else if (parents.length || circles.length) renderSearchHits();
         $("msgPanel").innerHTML = `<p class="empty">Loading…</p>`;
-        const qs = new URLSearchParams({ limit: "50" });
-        if (selectedParent?.id) qs.set("authorId", selectedParent.id);
-        const data = await api(
-          `/internal/admin/moderation/circles/${encodeURIComponent(circleId)}/messages?${qs}`,
-          { headers: adminHeaders(false) }
-        );
-        messages = data.messages || [];
-        renderMessages();
-        renderReplies();
+        try {
+          const qs = new URLSearchParams({ limit: "50" });
+          if (selectedParent?.id) qs.set("authorId", selectedParent.id);
+          const data = await api(
+            `/internal/admin/moderation/circles/${encodeURIComponent(circleId)}/messages?${qs}`,
+            { headers: adminHeaders(false) }
+          );
+          messages = data.messages || [];
+          renderMessages();
+          renderReplies();
+        } catch (err) {
+          showError(err.message || String(err));
+          $("msgPanel").innerHTML = `<p class="empty">Could not load messages.</p>`;
+        }
       }
 
       async function loadReplies(messageId) {
         selectedMessageId = messageId;
         renderMessages();
         $("replyPanel").innerHTML = `<p class="empty">Loading replies…</p>`;
-        const data = await api(
-          `/internal/admin/moderation/messages/${encodeURIComponent(messageId)}/replies`,
-          { headers: adminHeaders(false) }
-        );
-        replies = data.replies || [];
-        renderReplies();
+        try {
+          const data = await api(
+            `/internal/admin/moderation/messages/${encodeURIComponent(messageId)}/replies`,
+            { headers: adminHeaders(false) }
+          );
+          replies = data.replies || [];
+          renderReplies();
+        } catch (err) {
+          showError(err.message || String(err));
+          $("replyPanel").innerHTML = `<p class="empty">Could not load replies.</p>`;
+        }
+      }
+
+      function bindParentHits() {
+        $("circlePanel").querySelectorAll("[data-parent-id]").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const parent = parents.find((p) => p.id === btn.getAttribute("data-parent-id"));
+            if (parent) void selectParent(parent);
+          });
+        });
+      }
+
+      function renderSearchHits() {
+        const panel = $("circlePanel");
+        const parentHtml = parents.length
+          ? `<p class="empty" style="padding:0 0 8px;">${parents.length} parent${parents.length === 1 ? "" : "s"}</p>` +
+            parents.map((p) =>
+              `<button type="button" class="circle-btn" data-parent-id="${escapeHtml(p.id)}">
+                <span>${escapeHtml(p.anonymous_handle)}<div class="meta">${escapeHtml(p.email || "")}</div></span>
+              </button>`
+            ).join("")
+          : "";
+        const circleHtml = circles.length
+          ? `<p class="empty" style="padding:${parents.length ? "12px" : "0"} 0 8px;">${circles.length} circle${circles.length === 1 ? "" : "s"}</p>` +
+            circles.map((c) => {
+              const counts = c.hit_count != null ? `${c.hit_count} msgs` : "";
+              return `<button type="button" class="circle-btn${c.id === selectedCircleId ? " active" : ""}" data-id="${escapeHtml(c.id)}">
+                <span>${escapeHtml(c.display_name)}<div class="meta">${escapeHtml(typeLabel(c.circle_type))}${counts ? " · " + escapeHtml(counts) : ""}</div></span>
+              </button>`;
+            }).join("")
+          : "";
+        if (!parentHtml && !circleHtml) {
+          panel.innerHTML = `<p class="empty">No parents or circles matched.</p>`;
+          return;
+        }
+        panel.innerHTML = parentHtml + circleHtml;
+        bindParentHits();
+        panel.querySelectorAll(".circle-btn[data-id]").forEach((btn) => {
+          btn.addEventListener("click", () => void loadMessages(btn.getAttribute("data-id")));
+        });
       }
 
       async function selectParent(parent) {
         selectedParent = parent;
         renderParentBar();
-        const data = await api(
-          `/internal/admin/moderation/parents/${encodeURIComponent(parent.id)}/circles`,
-          { headers: adminHeaders(false) }
-        );
-        circles = data.circles || [];
-        renderCircles();
-        if (selectedCircleId && circles.some((c) => c.id === selectedCircleId)) {
-          await loadMessages(selectedCircleId);
-        } else if (circles[0]) {
-          await loadMessages(circles[0].id);
+        $("circlePanel").innerHTML = `<p class="empty">Loading circles…</p>`;
+        try {
+          const data = await api(
+            `/internal/admin/moderation/parents/${encodeURIComponent(parent.id)}/circles`,
+            { headers: adminHeaders(false) }
+          );
+          circles = data.circles || [];
+          renderCircles();
+          if (selectedCircleId && circles.some((c) => c.id === selectedCircleId)) {
+            await loadMessages(selectedCircleId);
+          } else if (circles[0]) {
+            await loadMessages(circles[0].id);
+          } else {
+            $("msgPanel").innerHTML = `<p class="empty">No messages from this parent.</p>`;
+          }
+        } catch (err) {
+          showError(err.message || String(err));
+          $("circlePanel").innerHTML = `<p class="empty">Could not load this parent’s circles.</p>`;
         }
       }
 
-      async function runSearch(q) {
+      async function runSearch(raw) {
+        const q = String(raw || "").trim();
         showError("");
-        const data = await api(
-          `/internal/admin/moderation/search?q=${encodeURIComponent(q)}`,
-          { headers: adminHeaders(false) }
-        );
-        parents = data.parents || [];
-        if (parents.length === 1) {
-          await selectParent(parents[0]);
+        if (q.length < 2) {
+          showError("Type at least 2 characters.");
           return;
         }
-        if (parents.length > 1) {
-          selectedParent = null;
-          renderParentBar();
-          $("circlePanel").innerHTML = parents.map((p) =>
-            `<button type="button" class="circle-btn" data-id="${escapeHtml(p.id)}">
-              <span>${escapeHtml(p.anonymous_handle)}<div class="meta">${escapeHtml(p.email || "")}</div></span>
-            </button>`
-          ).join("");
-          $("circlePanel").querySelectorAll(".circle-btn").forEach((btn) => {
-            btn.addEventListener("click", () => {
-              const parent = parents.find((p) => p.id === btn.getAttribute("data-id"));
-              if (parent) void selectParent(parent);
-            });
-          });
-        }
-        if (!parents.length) {
+        $("circlePanel").innerHTML = `<p class="empty">Searching…</p>`;
+        $("msgPanel").innerHTML = `<p class="empty">Pick a circle.</p>`;
+        $("replyPanel").innerHTML = `<p class="empty">Replies show here.</p>`;
+        try {
+          const data = await api(
+            `/internal/admin/moderation/search?q=${encodeURIComponent(q)}`,
+            { headers: adminHeaders(false) }
+          );
+          parents = data.parents || [];
           circles = data.circles || [];
+          const exactParent =
+            parents.length === 1 && (
+              /^Parent-[A-HJ-NP-Z2-9]{4}$/i.test(q) ||
+              q.includes("@") ||
+              /^[0-9a-f-]{36}$/i.test(q)
+            );
+          if (exactParent) {
+            await selectParent(parents[0]);
+            return;
+          }
           selectedParent = null;
           renderParentBar();
-          renderCircles();
-          if (circles[0]) await loadMessages(circles[0].id);
+          renderSearchHits();
+          if (!parents.length && circles[0]) await loadMessages(circles[0].id);
+        } catch (err) {
+          showError(err.message || String(err));
+          $("circlePanel").innerHTML = `<p class="empty">Search failed.</p>`;
         }
       }
 

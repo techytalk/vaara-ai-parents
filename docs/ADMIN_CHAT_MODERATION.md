@@ -216,7 +216,8 @@ All under `/internal/admin`. Same `requireAdminAuth` as Circles / Seeds.
 `GET /internal/admin/moderation/search?q=Parent-MXS3`
 
 `q` matches `anonymous_handle`, email, user id, circle display name, circle
-key, PIN, school name.
+key, PIN, curriculum code, and school key. Matching is **case-insensitive**
+(`cbse` and `CBSE` are the same).
 
 Returns:
 
