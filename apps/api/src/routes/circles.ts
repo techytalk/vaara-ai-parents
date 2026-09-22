@@ -17,6 +17,7 @@ import {
 } from "../lib/author.js";
 import { resolveAvatarKey } from "../lib/avatar.js";
 import { getOrCreateConversation, resolveConversationRoles } from "../lib/conversations.js";
+import { assertCanPost } from "../services/chat-moderation.js";
 import {
   loadCirclesForPosts,
   type PostCircleSummary,
@@ -481,6 +482,11 @@ export function createCirclesRoutes() {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+      const posting = await assertCanPost(client, userId);
+      if (posting) {
+        await client.query("ROLLBACK");
+        return c.json({ error: posting.error }, posting.status as 403);
+      }
       await syncCircleMembership(client, userId);
 
       const targetResult = await client.query(
@@ -1049,6 +1055,11 @@ export function createCirclesRoutes() {
     const droppedKeys: string[] = [];
     try {
       await client.query("BEGIN");
+      const posting = await assertCanPost(client, userId);
+      if (posting) {
+        await client.query("ROLLBACK");
+        return c.json({ error: posting.error }, posting.status as 403);
+      }
 
       const access = await resolveThreadAccess(client, {
         userId,
@@ -1497,6 +1508,8 @@ export function createCirclesRoutes() {
       if (await isBlocked(client, userId, String(postCheck.rows[0].author_id))) {
         return c.json({ error: "You cannot reply to this post" }, 403);
       }
+      const posting = await assertCanPost(client, userId);
+      if (posting) return c.json({ error: posting.error }, posting.status as 403);
 
       const { rows } = await client.query(
         `INSERT INTO circle_post_replies (post_id, author_id, body)
@@ -1936,6 +1949,8 @@ export function createConversationsRoutes() {
       if (await isBlocked(client, userId, peerUserId)) {
         return c.json({ error: "Cannot contact this parent" }, 403);
       }
+      const posting = await assertCanPost(client, userId);
+      if (posting) return c.json({ error: posting.error }, posting.status as 403);
 
       if (await assertSharedCircle(client, userId, peerUserId)) {
         const conversationId = await getOrCreateParentConversation(
@@ -2242,6 +2257,8 @@ export function createConversationsRoutes() {
       if (await isBlocked(client, userId, peerUserId)) {
         return c.json({ error: "Cannot message this parent" }, 403);
       }
+      const posting = await assertCanPost(client, userId);
+      if (posting) return c.json({ error: posting.error }, posting.status as 403);
 
       const shared = await assertSharedCircle(client, userId, peerUserId);
       const roles = await resolveConversationRoles(
@@ -2395,6 +2412,8 @@ export function createConversationsRoutes() {
       if (await isBlocked(client, userId, peerId)) {
         return c.json({ error: "Cannot message this parent" }, 403);
       }
+      const posting = await assertCanPost(client, userId);
+      if (posting) return c.json({ error: posting.error }, posting.status as 403);
 
       const { rows } = await client.query(
         `INSERT INTO direct_messages (conversation_id, sender_id, body)

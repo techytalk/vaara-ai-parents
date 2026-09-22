@@ -304,6 +304,10 @@ export default function PostThreadScreen() {
   async function onComment() {
     const text = commentText.trim();
     if (!text) return;
+    if (queryClient.getQueryData<AuthUser>(["sessionUser"])?.suspended) {
+      setError("This profile is suspended");
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -437,7 +441,12 @@ export default function PostThreadScreen() {
     authoritative && isOwnPost && (capabilities?.canEdit ?? !readOnly);
   const canDelete =
     authoritative && isOwnPost && (capabilities?.canDelete ?? true);
-  const canReply = authoritative && (capabilities?.canReply ?? !readOnly);
+  const canReply =
+    authoritative &&
+    (capabilities?.canReply ?? !readOnly) &&
+    queryClient.getQueryData<AuthUser>(["sessionUser"])?.suspended !== true;
+  const suspended =
+    queryClient.getQueryData<AuthUser>(["sessionUser"])?.suspended === true;
   const canVote = authoritative && (capabilities?.canVote ?? !readOnly);
   const isPreview = authoritative && readOnly;
   const seededDiscovery = Boolean(
@@ -779,7 +788,19 @@ export default function PostThreadScreen() {
         </View>
       ) : null}
 
-      {canReply ? (
+      {suspended ? (
+        <View
+          style={[
+            styles.composer,
+            cardShadow(),
+            androidDockOffset > 0
+              ? { marginBottom: androidDockOffset }
+              : null,
+          ]}
+        >
+          <Text style={styles.readOnlyNote}>This profile is suspended</Text>
+        </View>
+      ) : canReply ? (
       <View
         style={[
           styles.composer,

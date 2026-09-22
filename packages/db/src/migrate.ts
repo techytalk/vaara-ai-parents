@@ -130,6 +130,10 @@ const MIGRATIONS = [
     version: "061_admin_moderation_actions",
     file: "061_admin_moderation_actions.sql",
   },
+  {
+    version: "062_content_blocked",
+    file: "062_content_blocked.sql",
+  },
 ];
 
 async function isMigrationApplied(

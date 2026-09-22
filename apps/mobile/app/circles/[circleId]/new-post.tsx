@@ -489,6 +489,13 @@ export default function NewPostScreen() {
   }
 
   async function onSubmit() {
+    const sessionUser =
+      queryClient.getQueryData<AuthUser>(["sessionUser"]) ??
+      (await getStoredUser());
+    if (sessionUser?.suspended) {
+      showSubmitError("This profile is suspended");
+      return;
+    }
     const text = body.trim();
     const options = pollOptions.map((o) => o.trim()).filter(Boolean);
     const hasContent =
@@ -645,7 +652,10 @@ export default function NewPostScreen() {
   const submitRef = useRef(onSubmit);
   submitRef.current = onSubmit;
 
+  const suspended =
+    queryClient.getQueryData<AuthUser>(["sessionUser"])?.suspended === true;
   const canPost =
+    !suspended &&
     (body.trim().length > 0 ||
       media.length > 0 ||
       documents.some((d) => d.status === "clean") ||
@@ -1050,6 +1060,9 @@ export default function NewPostScreen() {
         >
           Posts must follow our Community Guidelines. You can report or block from the ⋯ menu on any post or chat.
         </Text>
+        {suspended ? (
+          <Text style={styles.suspendedNote}>This profile is suspended</Text>
+        ) : (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={isEditing ? "Save post" : "Publish post"}
@@ -1069,6 +1082,7 @@ export default function NewPostScreen() {
             </Text>
           )}
         </Pressable>
+        )}
       </View>
 
       <AudienceSheet
@@ -1448,5 +1462,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 4,
     paddingBottom: 8,
+  },
+  suspendedNote: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: theme.textMuted,
+    fontStyle: "italic",
+    textAlign: "center",
+    paddingHorizontal: 16,
+    paddingBottom: 10,
   },
 });

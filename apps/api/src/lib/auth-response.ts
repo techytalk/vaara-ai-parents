@@ -10,6 +10,7 @@ type UserAuthRow = {
   onboarding_complete: boolean;
   avatar_key?: string | null;
   session_version?: number | null;
+  content_blocked?: boolean | null;
 };
 
 export async function buildAuthResponse(
@@ -34,6 +35,7 @@ export async function buildAuthResponse(
       anonymousHandle: user.anonymous_handle,
       onboardingComplete: user.onboarding_complete,
       avatarKey: resolveAvatarKey(user.avatar_key, user.anonymous_handle),
+      suspended: user.content_blocked === true,
     },
   };
 }

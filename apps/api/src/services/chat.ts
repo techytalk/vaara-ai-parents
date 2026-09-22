@@ -19,6 +19,7 @@ import {
 import { isBlocked } from "../lib/author.js";
 import { MODERATED_MESSAGE_COPY } from "../lib/chat-copy.js";
 import { userHasRole } from "../lib/user-roles.js";
+import { assertCanPost } from "./chat-moderation.js";
 import {
   insertChatAttachments,
   loadAttachmentPreviewLabels,
@@ -44,6 +45,7 @@ export type ChatAuthor = {
   avatarKey: string | null;
   role: "parent" | "provider";
   isGuest: boolean;
+  suspended: boolean;
 };
 
 export type ChatMessageView = {
@@ -147,11 +149,12 @@ async function authorView(
   isGuest: boolean
 ): Promise<ChatAuthor> {
   const { rows } = await client.query(
-    `SELECT anonymous_handle, display_name, avatar_key
+    `SELECT anonymous_handle, display_name, avatar_key, content_blocked
      FROM users WHERE id = $1`,
     [userId]
   );
   const handle = rows[0]?.anonymous_handle ?? "Parent";
+  const suspended = rows[0]?.content_blocked === true;
   if (role === "provider") {
     const provider = await client.query(
       `SELECT org_name FROM providers WHERE user_id = $1`,
@@ -163,6 +166,7 @@ async function authorView(
       avatarKey: rows[0]?.avatar_key ?? null,
       role,
       isGuest,
+      suspended,
     };
   }
   return {
@@ -171,6 +175,7 @@ async function authorView(
     avatarKey: rows[0]?.avatar_key ?? null,
     role,
     isGuest,
+    suspended,
   };
 }
 
@@ -265,6 +270,8 @@ export async function editCircleMessage(params: {
   if (body.length > 4000) return { error: "Message is too long", status: 400 };
   const blocked = guardText(body);
   if (blocked) return { error: blocked.error, status: 400 };
+  const posting = await assertCanPost(params.client, params.userId);
+  if (posting) return posting;
   const { rows } = await params.client.query(
     `SELECT * FROM circle_messages WHERE id = $1 AND circle_id = $2`,
     [params.messageId, params.circleId]
@@ -494,6 +501,8 @@ export async function createThread(params: {
   const client = params.client;
   const isParent = await userHasRole(client, params.userId, "parent");
   if (!isParent) return { error: "Parent role required", status: 403 };
+  const posting = await assertCanPost(client, params.userId);
+  if (posting) return posting;
 
   const member = await isCircleMember(client, params.circleId, params.userId);
   if (params.guest) {
@@ -659,6 +668,9 @@ export async function createCircleMessage(params: {
     await attachAttachments(client, [replay]);
     return { message: replay };
   }
+
+  const posting = await assertCanPost(client, params.userId);
+  if (posting) return posting;
 
   const verified = await verifyChatAttachments({
     userId: params.userId,

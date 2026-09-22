@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { MODERATED_MESSAGE_COPY } from "../src/lib/chat-copy.js";
-import { parseMessageIds } from "../src/services/chat-moderation.js";
+import {
+  parseMessageIds,
+  POSTING_BLOCKED_ERROR,
+} from "../src/services/chat-moderation.js";
 
 test("moderated tombstone copy is short for mobile bubbles", () => {
   assert.equal(MODERATED_MESSAGE_COPY, "Blocked as inappropriate");
@@ -21,4 +24,8 @@ test("parseMessageIds de-dupes valid ids", () => {
   const id = "11111111-1111-1111-1111-111111111111";
   const parsed = parseMessageIds([id, id, ` ${id} `]);
   assert.deepEqual(parsed, [id]);
+});
+
+test("posting-block copy tells the parent their profile is suspended", () => {
+  assert.equal(POSTING_BLOCKED_ERROR, "This profile is suspended");
 });

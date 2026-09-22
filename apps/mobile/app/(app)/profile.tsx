@@ -185,6 +185,9 @@ export default function ProfileScreen() {
           />
         </Pressable>
         <Text style={styles.handle}>{user?.anonymousHandle ?? "Parent"}</Text>
+        {user?.suspended ? (
+          <Text style={styles.suspended}>This profile is suspended</Text>
+        ) : null}
         <Pressable
           accessibilityRole="button"
           onPress={() => router.push("/(app)/settings/avatar" as never)}
@@ -320,6 +323,12 @@ const styles = StyleSheet.create({
     color: colors.textInverse,
     fontFamily: typography.bold,
     marginTop: spacing.sm,
+  },
+  suspended: {
+    ...typography.caption,
+    color: colors.amber,
+    fontFamily: typography.semibold,
+    marginTop: 6,
   },
   changeAvatar: {
     ...typography.caption,

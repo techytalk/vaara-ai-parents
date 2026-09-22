@@ -32,7 +32,7 @@ async function generateUniqueHandle(client: PoolClient): Promise<string> {
 }
 
 const AUTH_USER_COLS =
-  `id, email, role, display_name, anonymous_handle, onboarding_complete, avatar_key, session_version, is_internal, internal_status`;
+  `id, email, role, display_name, anonymous_handle, onboarding_complete, avatar_key, session_version, is_internal, internal_status, content_blocked`;
 
 function rejectIfInactive(
   user: { is_internal?: boolean; internal_status?: string }
@@ -173,7 +173,7 @@ export function createAuthRoutes() {
     try {
       const { rows } = await client.query(
         `SELECT id, email, role, display_name, anonymous_handle, onboarding_complete, avatar_key, password_hash, google_sub, apple_sub,
-                session_version, is_internal, internal_status
+                session_version, is_internal, internal_status, content_blocked
          FROM users WHERE email = $1`,
         [email]
       );

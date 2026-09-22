@@ -82,6 +82,10 @@ export default function NewMessageScreen() {
   });
 
   async function openSuggestion(parent: MessageableParent) {
+    if (me?.suspended && !parent.existingConversationId) {
+      setError("This profile is suspended");
+      return;
+    }
     setWorkingId(parent.userId);
     setError(null);
     try {
@@ -130,6 +134,10 @@ export default function NewMessageScreen() {
   }
 
   async function sendRequest() {
+    if (me?.suspended) {
+      setError("This profile is suspended");
+      return;
+    }
     const exactHandle = handle.trim();
     if (!exactHandle) {
       setError("Enter the complete anonymous handle");
@@ -259,6 +267,10 @@ export default function NewMessageScreen() {
 
       {error ? <InlineError message={error} /> : null}
 
+      {me?.suspended ? (
+        <Text style={styles.suspendedBanner}>This profile is suspended</Text>
+      ) : null}
+
       {incoming.length > 0 ? (
         <View style={styles.section}>
           <SectionHeader title="Connection requests" />
@@ -348,6 +360,7 @@ export default function NewMessageScreen() {
         )}
       </View>
 
+      {me?.suspended ? null : (
       <View style={styles.section}>
         <SectionHeader title="Connect by exact handle" />
         <View style={styles.exactCard}>
@@ -380,6 +393,7 @@ export default function NewMessageScreen() {
           </Pressable>
         </View>
       </View>
+      )}
 
       {outgoing.length > 0 ? (
         <View style={styles.section}>
@@ -436,6 +450,14 @@ const styles = StyleSheet.create({
     fontFamily: typography.regular,
     lineHeight: 18,
     marginTop: 3,
+  },
+  suspendedBanner: {
+    ...typography.body,
+    color: colors.textMuted,
+    fontFamily: typography.medium,
+    fontStyle: "italic",
+    textAlign: "center",
+    paddingVertical: spacing.sm,
   },
   parentRow: {
     minHeight: 62,

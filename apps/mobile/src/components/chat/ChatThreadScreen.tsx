@@ -290,10 +290,12 @@ export function ChatThreadScreen({
     }
   }, [circleId, maxSeq, mode, threadId, threadQuery.data]);
 
+  const suspended = meQuery.data?.suspended === true;
   const canReply =
-    mode === "group"
+    !suspended &&
+    (mode === "group"
       ? true
-      : Boolean(threadQuery.data?.access.canReply);
+      : Boolean(threadQuery.data?.access.canReply));
 
   const mediaBusy = pendingMedia.some((item) => item.status === "uploading");
   const docsBusy = documentsBusy(pendingDocs);
@@ -986,6 +988,8 @@ export function ChatThreadScreen({
             </Pressable>
           </View>
         </View>
+      ) : suspended ? (
+        <Text style={[styles.readonly, dockStyle]}>This profile is suspended</Text>
       ) : (
         <Text style={[styles.readonly, dockStyle]}>
           You can read this thread, not reply.
@@ -1153,8 +1157,10 @@ function Bubble({
       >
         {!mine ? (
           <Text style={styles.author} numberOfLines={1}>
-            {message.author.displayName}
-            {role ? ` · ${role}` : ""}
+            {message.author.suspended
+              ? "Profile suspended"
+              : message.author.displayName}
+            {role && !message.author.suspended ? ` · ${role}` : ""}
           </Text>
         ) : null}
         <Pressable

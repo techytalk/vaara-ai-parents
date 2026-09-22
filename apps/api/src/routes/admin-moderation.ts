@@ -12,6 +12,7 @@ import {
   parseMessageIds,
   searchModeration,
   unhideMessages,
+  setParentPostingBlock,
 } from "../services/chat-moderation.js";
 
 type AdminAuth = (c: {
@@ -202,6 +203,44 @@ export function mountAdminModeration(app: Hono, requireAdminAuth: AdminAuth) {
         updated: result.updated,
         skipped: result.skipped,
       });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  });
+
+  app.post("/admin/moderation/parents/:userId/posting", async (c) => {
+    const admin = await requireAdminAuth(c);
+    if (!admin) return c.json({ error: "Unauthorized" }, 401);
+    const userId = (c.req.param("userId") ?? "").trim();
+    if (!isUuid(userId)) return c.json({ error: "Invalid user id" }, 400);
+    let body: { blocked?: unknown; reason?: string; note?: string };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    if (typeof body.blocked !== "boolean") {
+      return c.json({ error: "blocked must be true or false" }, 400);
+    }
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await setParentPostingBlock(client, {
+        userId,
+        blocked: body.blocked,
+        actor: admin.email,
+        reason: body.reason,
+        note: body.note,
+      });
+      if ("error" in result) {
+        await client.query("ROLLBACK");
+        return c.json({ error: result.error }, result.status as 404);
+      }
+      await client.query("COMMIT");
+      return c.json({ ok: true, ...result });
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;

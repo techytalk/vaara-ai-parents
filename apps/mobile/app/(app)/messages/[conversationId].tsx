@@ -189,6 +189,11 @@ export default function ChatScreen() {
   async function onSend() {
     const body = text.trim();
     if (!body) return;
+    const me = queryClient.getQueryData<{ suspended?: boolean }>(["sessionUser"]);
+    if (me?.suspended) {
+      setError("This profile is suspended");
+      return;
+    }
     setSending(true);
     setError(null);
     try {
@@ -302,6 +307,10 @@ export default function ChatScreen() {
 
       {error ? <InlineError message={error} /> : null}
 
+      {queryClient.getQueryData<{ suspended?: boolean }>(["sessionUser"])
+        ?.suspended ? (
+        <Text style={styles.suspendedBanner}>This profile is suspended</Text>
+      ) : (
       <View
         style={[
           styles.inputRow,
@@ -326,6 +335,7 @@ export default function ChatScreen() {
           <Ionicons name="send" size={18} color="#fff" />
         </Pressable>
       </View>
+      )}
 
       <DisclosurePrompt
         visible={promptLevel != null}
@@ -430,6 +440,18 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   bubbleTextMine: { color: colors.textInverse },
+  suspendedBanner: {
+    ...typography.body,
+    color: colors.textMuted,
+    fontFamily: typography.medium,
+    fontStyle: "italic",
+    textAlign: "center",
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    backgroundColor: colors.card,
+  },
   inputRow: {
     flexDirection: "row",
     paddingHorizontal: spacing.sm,

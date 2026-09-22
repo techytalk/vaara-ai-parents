@@ -1,4 +1,5 @@
 import type { PoolClient } from "pg";
+import { PROFILE_SUSPENDED_COPY } from "../lib/chat-copy.js";
 import { insertChatOutbox } from "./chat-access.js";
 
 const UUID_RE =
@@ -8,6 +9,22 @@ const HANDLE_RE = /^Parent-[A-HJ-NP-Z2-9]{4}$/i;
 
 export function isUuid(value: string): boolean {
   return UUID_RE.test(value);
+}
+
+export const POSTING_BLOCKED_ERROR = PROFILE_SUSPENDED_COPY;
+
+export async function assertCanPost(
+  client: PoolClient,
+  userId: string
+): Promise<{ error: string; status: number } | null> {
+  const { rows } = await client.query(
+    `SELECT content_blocked FROM users WHERE id = $1`,
+    [userId]
+  );
+  if (rows[0]?.content_blocked === true) {
+    return { error: POSTING_BLOCKED_ERROR, status: 403 };
+  }
+  return null;
 }
 
 export function parseMessageIds(raw: unknown): string[] | { error: string } {
@@ -47,6 +64,7 @@ export async function searchModeration(
        u.email,
        u.anonymous_handle,
        u.display_name,
+       u.content_blocked,
        to_char(u.created_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD HH24:MI') AS created_ist
      FROM users u
      WHERE u.role = 'parent'
@@ -436,6 +454,70 @@ export async function unhideMessages(
     skipped,
     circleIds,
     nudges,
+  };
+}
+
+export async function setParentPostingBlock(
+  client: PoolClient,
+  params: {
+    userId: string;
+    blocked: boolean;
+    actor: string;
+    reason?: string;
+    note?: string;
+  }
+): Promise<
+  | {
+      userId: string;
+      anonymousHandle: string;
+      contentBlocked: boolean;
+    }
+  | { error: string; status: number }
+> {
+  const updated = await client.query<{
+    id: string;
+    anonymous_handle: string;
+    content_blocked: boolean;
+  }>(
+    `UPDATE users
+     SET
+       content_blocked = $2,
+       content_blocked_at = CASE
+         WHEN $2 THEN now()
+         ELSE content_blocked_at
+       END,
+       content_blocked_reason = CASE
+         WHEN $2 THEN COALESCE(NULLIF($3, ''), 'not_appropriate')
+         ELSE content_blocked_reason
+       END,
+       updated_at = now()
+     WHERE id = $1 AND role = 'parent'
+     RETURNING id, anonymous_handle, content_blocked`,
+    [params.userId, params.blocked, params.reason?.trim() || null]
+  );
+  if (updated.rows.length === 0) {
+    return { error: "Parent not found", status: 404 };
+  }
+  await client.query(
+    `INSERT INTO admin_moderation_actions (
+       action, actor, reason, note, message_ids, payload
+     )
+     VALUES ($1, $2, $3, $4, '{}'::uuid[], $5::jsonb)`,
+    [
+      params.blocked ? "block_posting" : "unblock_posting",
+      params.actor,
+      params.blocked ? params.reason?.trim() || "not_appropriate" : null,
+      params.note?.trim() || null,
+      JSON.stringify({
+        userId: params.userId,
+        anonymousHandle: updated.rows[0].anonymous_handle,
+      }),
+    ]
+  );
+  return {
+    userId: String(updated.rows[0].id),
+    anonymousHandle: String(updated.rows[0].anonymous_handle),
+    contentBlocked: updated.rows[0].content_blocked === true,
   };
 }
 

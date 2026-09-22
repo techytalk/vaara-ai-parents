@@ -16,6 +16,7 @@ export type AuthUser = {
   anonymousHandle: string;
   onboardingComplete: boolean;
   avatarKey?: string;
+  suspended?: boolean;
 };
 
 export type AuthResponse = {
@@ -578,6 +579,7 @@ export type ChatMessage = {
     avatarKey: string | null;
     role: "parent" | "provider";
     isGuest: boolean;
+    suspended?: boolean;
   };
   createdAt: string;
   editedAt: string | null;

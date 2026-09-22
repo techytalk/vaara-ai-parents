@@ -172,7 +172,8 @@
     <h1>Chat moderation</h1>
     <p class="muted">
       Look up a parent or circle, select messages, and hide them.
-      Parents see: <strong>Blocked as inappropriate</strong>
+      Parents see: <strong>Blocked as inappropriate</strong>.
+      Suspend a profile to stop them sending anything new.
     </p>
 
     <div class="toolbar">
@@ -261,7 +262,42 @@
       function renderParentBar() {
         const bar = $("parentBar");
         if (!selectedParent) { bar.replaceChildren(); return; }
-        bar.innerHTML = `<span class="parent-chip">${escapeHtml(selectedParent.anonymous_handle)} · ${escapeHtml(selectedParent.email || "")}</span>`;
+        const blocked = selectedParent.content_blocked === true;
+        bar.innerHTML = `<span class="parent-chip">${escapeHtml(selectedParent.anonymous_handle)} · ${escapeHtml(selectedParent.email || "")}</span>
+          ${blocked ? '<span class="badge hidden">suspended</span>' : ""}
+          <button type="button" class="${blocked ? "secondary" : "danger"}" id="blockPosting">${blocked ? "Unsuspend profile" : "Suspend profile"}</button>`;
+        $("blockPosting")?.addEventListener("click", () => void togglePosting(!blocked));
+      }
+
+      async function togglePosting(blocked) {
+        if (!selectedParent) return;
+        const ok = confirm(
+          blocked
+            ? `Suspend ${selectedParent.anonymous_handle}? They will not be able to send messages.`
+            : `Unsuspend ${selectedParent.anonymous_handle}?`
+        );
+        if (!ok) return;
+        showError("");
+        try {
+          const data = await api(
+            `/internal/admin/moderation/parents/${encodeURIComponent(selectedParent.id)}/posting`,
+            {
+              method: "POST",
+              headers: adminHeaders(true),
+              body: JSON.stringify({
+                blocked,
+                reason: "not_appropriate",
+              }),
+            }
+          );
+          selectedParent = {
+            ...selectedParent,
+            content_blocked: data.contentBlocked === true,
+          };
+          renderParentBar();
+        } catch (err) {
+          showError(err.message || String(err));
+        }
       }
 
       function renderCircles() {

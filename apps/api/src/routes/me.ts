@@ -127,7 +127,7 @@ async function fetchAuthUserById(
   userId: string
 ) {
   const { rows } = await client.query(
-    `SELECT id, email, role, display_name, anonymous_handle, onboarding_complete, avatar_key
+    `SELECT id, email, role, display_name, anonymous_handle, onboarding_complete, avatar_key, content_blocked
      FROM users WHERE id = $1`,
     [userId]
   );
@@ -141,6 +141,7 @@ async function fetchAuthUserById(
     anonymousHandle: user.anonymous_handle,
     onboardingComplete: user.onboarding_complete,
     avatarKey: resolveAvatarKey(user.avatar_key, user.anonymous_handle),
+    suspended: user.content_blocked === true,
   };
 }
 
@@ -199,25 +200,14 @@ export function createMeRoutes() {
     const jwtUser = c.get("user");
     const client = await pool.connect();
     try {
-      const { rows } = await client.query(
-        `SELECT id, email, role, display_name, anonymous_handle, onboarding_complete, avatar_key
-         FROM users WHERE id = $1`,
-        [jwtUser.sub]
-      );
-      if (rows.length === 0) {
+      const user = await fetchAuthUserById(client, jwtUser.sub);
+      if (!user) {
         return c.json({ error: "User not found" }, 404);
       }
-      const user = rows[0];
       const roles = await listUserRoles(client, String(user.id));
       return c.json({
-        id: user.id,
-        email: user.email,
-        role: user.role,
+        ...user,
         roles,
-        displayName: user.display_name,
-        anonymousHandle: user.anonymous_handle,
-        onboardingComplete: user.onboarding_complete,
-        avatarKey: resolveAvatarKey(user.avatar_key, user.anonymous_handle),
       });
     } finally {
       client.release();

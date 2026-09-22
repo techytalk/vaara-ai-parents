@@ -194,7 +194,7 @@ Attachments: hidden with the message. No separate “hide photo only” in v1.
 
 | Action | v1 |
 | --- | --- |
-| Ban the parent from posting again | No. Separate follow-up (`users.content_blocked`). |
+| Suspend the profile | Yes. `users.content_blocked` stops group, thread, and DM sends. Parents see **This profile is suspended**. |
 | Remove the parent from circles | No. Membership follows the child profile. |
 | Hide 1:1 DMs | No. Group/channel + thread replies only. |
 | Auto-hide every message by that parent | No. Ops selects rows. A later “Hide all from this parent in this circle” is allowed as a convenience **after** the list is on screen, still with confirm. |
@@ -307,8 +307,8 @@ The HTML page is not enough on its own.
 4. **Vercel redirect** — `/admin/moderation.html` →
    `/internal/admin/moderation.html`.
 
-No change to parent write APIs for v1 hide. A blocked parent can still post
-until a later posting-block flag exists.
+Hide does not stop new sends. Use **Suspend profile** (`users.content_blocked`)
+for that. The parent can still read.
 
 ---
 
@@ -348,7 +348,7 @@ until a later posting-block flag exists.
 
 ### Phase 3 — later, not this page’s job
 
-- [ ] Posting block on the user (`content_blocked`) so they cannot send more
+- [x] Profile suspension (`content_blocked`) so they cannot send more
 - [ ] Reports queue
 - [ ] Thread-level takedown (`circle_threads.status = 'moderated'`) if we ever
       want the whole topic gone instead of a tombstone
@@ -366,7 +366,9 @@ until a later posting-block flag exists.
 6. **Hide selected** → confirm.
 7. Spot-check the circle in the app: bubble shows
    **Blocked as inappropriate**.
-8. If the wrong line was hidden, check it and **Unhide selected**.
+8. Use **Suspend profile** on the parent header to stop new group, thread, and
+   DM sends. The app shows **This profile is suspended**. Migration `062` also
+   sets this for `Parent-MXS3`.
 
 ---
 
@@ -375,7 +377,8 @@ until a later posting-block flag exists.
 1. **Tombstone copy:** `Blocked as inappropriate` (short enough for a chat
    bubble; same job as “Message deleted”)
 2. **Author-delete copy stays:** `Message deleted`
-3. **v1 action:** select and hide messages. Do not auto-ban the parent.
+3. **v1 action:** select and hide messages. Ops can also **suspend the profile**
+   so they cannot send new group, thread, or DM messages.
 4. **Admin always sees original text**, including after hide.
 5. **Thread stays open.** Replies from other parents remain unless also
    selected.
