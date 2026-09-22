@@ -17,6 +17,7 @@ import {
   parseChatHomeCursor,
 } from "../lib/chat-home-cursor.js";
 import { isBlocked } from "../lib/author.js";
+import { MODERATED_MESSAGE_COPY } from "../lib/chat-copy.js";
 import { userHasRole } from "../lib/user-roles.js";
 import {
   insertChatAttachments,
@@ -87,6 +88,17 @@ export type ChatThreadView = {
 function previewText(body: string | null, title: string | null): string {
   const source = (title ?? body ?? "").trim();
   return source.slice(0, 140);
+}
+
+function parentThreadPreview(
+  rootStatus: unknown,
+  body: string | null,
+  title: string | null
+): { title: string | null; preview: string } {
+  if (rootStatus === "moderated") {
+    return { title: null, preview: MODERATED_MESSAGE_COPY };
+  }
+  return { title, preview: previewText(body, title) };
 }
 
 function guardText(text: string): { error: string } | null {
@@ -393,10 +405,12 @@ export async function listMatchedServiceThreads(
 ) {
   const { rows } = await client.query(
     `SELECT t.id, t.title, t.body, t.kind, t.last_message_at, t.reply_count,
-            c.display_name, c.circle_type, c.circle_type AS circle_label
+            c.display_name, c.circle_type, c.circle_type AS circle_label,
+            root.status AS root_status
      FROM circle_threads t
      JOIN circles c ON c.id = t.circle_id
      JOIN providers p ON p.user_id = $1
+     LEFT JOIN circle_messages root ON root.id = t.root_message_id
      WHERE t.service_replies_allowed = true
        AND t.status = 'open'
        AND NOT EXISTS (
@@ -420,16 +434,19 @@ export async function listMatchedServiceThreads(
      LIMIT 40`,
     [providerUserId]
   );
-  return rows.map((row) => ({
-    id: row.id,
-    title: row.title,
-    body: previewText(row.body, row.title),
-    kind: row.kind,
-    circleName: row.display_name,
-    circleType: row.circle_type,
-    lastMessageAt: row.last_message_at,
-    replyCount: row.reply_count,
-  }));
+  return rows.map((row) => {
+    const preview = parentThreadPreview(row.root_status, row.body, row.title);
+    return {
+      id: row.id,
+      title: preview.title,
+      body: preview.preview,
+      kind: row.kind,
+      circleName: row.display_name,
+      circleType: row.circle_type,
+      lastMessageAt: row.last_message_at,
+      replyCount: row.reply_count,
+    };
+  });
 }
 
 export async function openProviderThread(
@@ -1135,9 +1152,13 @@ export async function listInbox(client: PoolClient, userId: string) {
      ) linear ON true
      LEFT JOIN LATERAL (
        SELECT t.last_message_at AS last_at,
-              COALESCE(t.title, t.body) AS preview,
+              CASE
+                WHEN root.status = 'moderated' THEN $2
+                ELSE COALESCE(t.title, t.body)
+              END AS preview,
               t.root_message_id AS preview_message_id
        FROM circle_threads t
+       LEFT JOIN circle_messages root ON root.id = t.root_message_id
        WHERE t.circle_id = c.id AND t.status = 'open'
        ORDER BY t.last_activity_seq DESC
        LIMIT 1
@@ -1198,7 +1219,7 @@ export async function listInbox(client: PoolClient, userId: string) {
      ) thread_unread ON true
      WHERE cm.user_id = $1
      ORDER BY last_at DESC NULLS LAST, c.display_name`,
-    [userId]
+    [userId, MODERATED_MESSAGE_COPY]
   );
 
   const dms = await client.query(
@@ -1260,6 +1281,7 @@ export async function listInbox(client: PoolClient, userId: string) {
        t.last_message_at,
        t.reply_count,
        t.root_message_id,
+       root.status AS root_status,
        c.id AS circle_id,
        c.display_name AS circle_name,
        COALESCE(tr.last_read_seq, 0) AS last_read_seq,
@@ -1267,6 +1289,7 @@ export async function listInbox(client: PoolClient, userId: string) {
      FROM circle_thread_access_grants g
      JOIN circle_threads t ON t.id = g.thread_id
      JOIN circles c ON c.id = t.circle_id
+     LEFT JOIN circle_messages root ON root.id = t.root_message_id
      LEFT JOIN circle_thread_reads tr
        ON tr.thread_id = t.id AND tr.user_id = $1
      WHERE g.user_id = $1
@@ -1291,7 +1314,10 @@ export async function listInbox(client: PoolClient, userId: string) {
       .map((row) => String(row.preview_message_id)),
     ...guestThreads.rows
       .filter(
-        (row) => row.root_message_id && !previewText(row.body, row.title)
+        (row) =>
+          row.root_status !== "moderated" &&
+          row.root_message_id &&
+          !previewText(row.body, row.title)
       )
       .map((row) => String(row.root_message_id)),
   ];
@@ -1313,22 +1339,25 @@ export async function listInbox(client: PoolClient, userId: string) {
       lastAt: row.last_at,
       unreadCount: Number(row.unread_count ?? 0),
     })),
-    guestThreads: guestThreads.rows.map((row) => ({
-      kind: "guest_thread" as const,
-      id: row.id,
-      circleId: row.circle_id,
-      circleName: row.circle_name,
-      title: row.title,
-      preview:
-        previewText(row.body, row.title) ||
-        (row.root_message_id
-          ? previewLabels.get(String(row.root_message_id)) ?? ""
-          : ""),
-      lastAt: row.last_message_at,
-      replyCount: Number(row.reply_count ?? 0),
-      unreadCount:
-        Number(row.last_activity_seq) > Number(row.last_read_seq ?? 0) ? 1 : 0,
-    })),
+    guestThreads: guestThreads.rows.map((row) => {
+      const preview = parentThreadPreview(row.root_status, row.body, row.title);
+      return {
+        kind: "guest_thread" as const,
+        id: row.id,
+        circleId: row.circle_id,
+        circleName: row.circle_name,
+        title: preview.title,
+        preview:
+          preview.preview ||
+          (row.root_message_id
+            ? previewLabels.get(String(row.root_message_id)) ?? ""
+            : ""),
+        lastAt: row.last_message_at,
+        replyCount: Number(row.reply_count ?? 0),
+        unreadCount:
+          Number(row.last_activity_seq) > Number(row.last_read_seq ?? 0) ? 1 : 0,
+      };
+    }),
     dms: dms.rows.map((row) => ({
       kind: "dm" as const,
       id: row.id,
@@ -1371,7 +1400,8 @@ export async function listHome(
        t.*, c.display_name, c.circle_type, c.key,
        COALESCE(tr.following, false) AS following,
        tr.last_read_seq,
-       hi.first_seen_at
+       hi.first_seen_at,
+       root.status AS root_status
      FROM circle_members cm
      JOIN circle_threads t ON t.circle_id = cm.circle_id
      JOIN circles c ON c.id = t.circle_id
@@ -1379,6 +1409,7 @@ export async function listHome(
        ON tr.thread_id = t.id AND tr.user_id = $1
      LEFT JOIN home_thread_impressions hi
        ON hi.thread_id = t.id AND hi.user_id = $1
+     LEFT JOIN circle_messages root ON root.id = t.root_message_id
      WHERE cm.user_id = $1
        AND t.status = 'open'
        AND t.home_visibility <> 'hidden'
@@ -1406,11 +1437,13 @@ export async function listHome(
        t.*, c.display_name, c.circle_type, c.key,
        false AS following,
        NULL::bigint AS last_read_seq,
-       hi.first_seen_at
+       hi.first_seen_at,
+       root.status AS root_status
      FROM circle_threads t
      JOIN circles c ON c.id = t.circle_id
      LEFT JOIN home_thread_impressions hi
        ON hi.thread_id = t.id AND hi.user_id = $1
+     LEFT JOIN circle_messages root ON root.id = t.root_message_id
      WHERE t.status = 'open'
        AND t.home_visibility = 'discoverable'
        AND (
@@ -1456,18 +1489,30 @@ export async function listHome(
   const homePreviewLabels = await loadAttachmentPreviewLabels(client, [
     ...new Set(
       [...memberThreads.rows, ...discovery.rows]
-        .filter((row) => row.root_message_id && !previewText(row.body, row.title))
+        .filter(
+          (row) =>
+            row.root_status !== "moderated" &&
+            row.root_message_id &&
+            !previewText(row.body, row.title)
+        )
         .map((row) => String(row.root_message_id))
     ),
   ]);
-  const homePreview = (row: Record<string, unknown>): string =>
-    previewText(
+  const homePreview = (row: Record<string, unknown>) => {
+    const preview = parentThreadPreview(
+      row.root_status,
       (row.body as string | null) ?? null,
       (row.title as string | null) ?? null
-    ) ||
-    (row.root_message_id
-      ? homePreviewLabels.get(String(row.root_message_id)) ?? ""
-      : "");
+    );
+    return {
+      title: preview.title,
+      body:
+        preview.preview ||
+        (row.root_message_id
+          ? homePreviewLabels.get(String(row.root_message_id)) ?? ""
+          : ""),
+    };
+  };
 
   type Row = {
     kind: "thread" | "service";
@@ -1508,8 +1553,8 @@ export async function listHome(
         circleId: row.circle_id,
         circleName: row.display_name,
         circleType: row.circle_type,
-        title: row.title,
-        body: homePreview(row),
+        title: homePreview(row).title,
+        body: homePreview(row).body,
         lastMessageAt: row.last_message_at,
         replyCount: row.reply_count,
         following,
@@ -1532,8 +1577,8 @@ export async function listHome(
         circleId: row.circle_id,
         circleName: row.display_name,
         circleType: row.circle_type,
-        title: row.title,
-        body: homePreview(row),
+        title: homePreview(row).title,
+        body: homePreview(row).body,
         lastMessageAt: row.last_message_at,
         replyCount: row.reply_count,
         following: false,

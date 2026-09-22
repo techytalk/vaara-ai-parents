@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow" />
+    <title>Vaara — Chat moderation</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+        --teal: #0e9a8a;
+        --teal-dark: #08786d;
+        --bg: #fffcf7;
+        --card: #fff;
+        --text: #0d1b2a;
+        --muted: #5e6974;
+        --border: #e8e3db;
+        --ok: #078675;
+        --warn: #b96d00;
+      }
+      body { margin: 0; padding: 24px; background: var(--bg); color: var(--text); }
+      h1 { font-size: 1.45rem; margin: 0 0 6px; }
+      h2 { font-size: 1.05rem; margin: 0 0 10px; }
+      .muted { color: var(--muted); font-size: 0.9rem; margin: 0 0 18px; }
+      a { color: var(--teal-dark); }
+      label { display: block; font-size: 0.85rem; margin: 0 0 4px; color: var(--muted); }
+      input, button {
+        font: inherit;
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+      }
+      button {
+        background: var(--teal);
+        color: #fff;
+        border: none;
+        cursor: pointer;
+        margin-right: 8px;
+      }
+      button.secondary { background: #44403c; }
+      button.danger { background: #b91c1c; }
+      button:disabled { opacity: 0.55; cursor: wait; }
+      .toolbar {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        align-items: end;
+        margin-bottom: 16px;
+      }
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(180px, 240px) minmax(0, 1fr) minmax(280px, 360px);
+        gap: 16px;
+        align-items: start;
+      }
+      .panel {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 12px;
+        max-height: 75vh;
+        overflow: auto;
+      }
+      .circle-btn, .type-btn {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        width: 100%;
+        text-align: left;
+        background: transparent;
+        color: var(--text);
+        border: 1px solid transparent;
+        border-radius: 8px;
+        padding: 8px 10px;
+        margin: 0 0 4px;
+        cursor: pointer;
+      }
+      .circle-btn:hover { background: #f7f4ee; }
+      .circle-btn.active {
+        background: #eaf8f6;
+        border-color: var(--teal);
+        color: var(--teal-dark);
+        font-weight: 600;
+      }
+      .msg {
+        display: grid;
+        grid-template-columns: 22px 1fr;
+        gap: 8px;
+        border-bottom: 1px solid var(--border);
+        padding: 10px 0;
+        cursor: pointer;
+      }
+      .msg:last-child { border-bottom: none; }
+      .msg.active { background: #eaf8f6; margin: 0 -8px; padding: 10px 8px; border-radius: 8px; }
+      .msg .name { font-weight: 600; }
+      .msg .meta { font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
+      .msg .body { white-space: pre-wrap; margin-top: 6px; font-size: 0.92rem; }
+      .badge {
+        display: inline-block;
+        border-radius: 999px;
+        padding: 2px 8px;
+        font-size: 0.75rem;
+        font-weight: 700;
+      }
+      .badge.ok { background: #e7f7f4; color: var(--ok); }
+      .badge.warn { background: #fff2d9; color: var(--warn); }
+      .badge.soft { background: #f1eee8; color: var(--muted); }
+      .badge.hidden { background: #feecec; color: #b91c1c; }
+      .err {
+        color: #b91c1c;
+        background: #feecec;
+        border-radius: 10px;
+        padding: 10px 12px;
+        margin-bottom: 12px;
+        display: none;
+      }
+      .nav { margin-bottom: 14px; font-size: 0.9rem; }
+      .empty { color: var(--muted); padding: 18px 0; }
+      .bar {
+        position: sticky;
+        bottom: 0;
+        background: var(--card);
+        border-top: 1px solid var(--border);
+        padding: 10px 0 0;
+        margin-top: 10px;
+      }
+      .parent-chip {
+        display: inline-block;
+        background: #eaf8f6;
+        border-radius: 999px;
+        padding: 4px 10px;
+        margin: 0 8px 12px 0;
+        font-size: 0.85rem;
+      }
+      .modal {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(13, 27, 42, 0.4);
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      }
+      .modal.open { display: flex; }
+      .modal .box {
+        background: #fff;
+        border-radius: 12px;
+        padding: 18px;
+        max-width: 420px;
+        width: 100%;
+      }
+      .check-label { display: flex; align-items: center; gap: 8px; margin: 12px 0; }
+      @media (max-width: 980px) {
+        .layout { grid-template-columns: 1fr; }
+        .panel { max-height: none; }
+        body { padding: 14px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="nav" id="adminNav">
+      <strong>Admin</strong> · Moderation ·
+      <a href="/internal/admin/">Parent signups</a> ·
+      <a href="/internal/admin/circles.html">Circles</a> ·
+      <a href="/internal/admin/seeds.html">Seed parents</a> ·
+      <a href="/internal/admin/directory.html">School directory</a> ·
+      <a href="/internal/admin/compare.html">School compare</a> ·
+      <a href="/internal/admin/schools.html">School tools</a> ·
+      <a href="/internal/admin/qr.html">QR codes</a>
+    </div>
+    <h1>Chat moderation</h1>
+    <p class="muted">
+      Look up a parent or circle, select messages, and hide them.
+      Parents see: <strong>Blocked as inappropriate</strong>
+    </p>
+
+    <div class="toolbar">
+      <div>
+        <label>Search</label>
+        <input id="q" type="search" size="32" placeholder="Parent-MXS3, email, or circle…" />
+      </div>
+      <button id="searchBtn" type="button">Search</button>
+      <button id="clear" class="secondary" type="button">Clear</button>
+    </div>
+    <div id="parentBar"></div>
+    <div id="err" class="err"></div>
+
+    <div class="layout">
+      <div class="panel" id="circlePanel"><p class="empty">Search a parent handle to start.</p></div>
+      <div class="panel" id="msgPanel"><p class="empty">Pick a circle.</p></div>
+      <div class="panel" id="replyPanel"><p class="empty">Replies show here.</p></div>
+    </div>
+
+    <div id="confirm" class="modal">
+      <div class="box">
+        <h2>Hide selected?</h2>
+        <p class="muted" id="confirmCopy"></p>
+        <label class="check-label">
+          <input id="includeReplies" type="checkbox" />
+          Also hide replies on selected channel messages
+        </label>
+        <button type="button" class="danger" id="confirmHide">Hide</button>
+        <button type="button" class="secondary" id="confirmCancel">Cancel</button>
+      </div>
+    </div>
+
+    <script src="/internal/admin/admin-auth.js"></script>
+    <script>
+      const API_BASE = VaaraAdmin.API_BASE;
+      const params = new URLSearchParams(location.search);
+      let parents = [];
+      let selectedParent = null;
+      let circles = [];
+      let selectedCircleId = params.get("circleId") || "";
+      let messages = [];
+      let selectedMessageId = params.get("messageId") || "";
+      let replies = [];
+      let checked = new Set();
+
+      function $(id) { return document.getElementById(id); }
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+      function showError(msg) {
+        const box = $("err");
+        if (!msg) { box.style.display = "none"; box.textContent = ""; return; }
+        box.style.display = "block";
+        box.textContent = msg;
+      }
+      function adminHeaders(json) { return VaaraAdmin.headers(json); }
+      function typeLabel(type) {
+        return ({
+          locality: "PIN",
+          school: "School",
+          class: "Class",
+          curriculum: "Board",
+          school_class: "School + class",
+          school_age: "School + age",
+          age_locality: "PIN + age",
+          community: "Community",
+        })[type] || type;
+      }
+      function statusBadge(status) {
+        if (status === "moderated") return '<span class="badge hidden">hidden</span>';
+        if (status === "deleted") return '<span class="badge warn">deleted</span>';
+        return '<span class="badge ok">visible</span>';
+      }
+      function selectedIds() { return [...checked]; }
+      async function api(path, opts) {
+        const res = await fetch(`${API_BASE}${path}`, opts);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        return data;
+      }
+
+      function renderParentBar() {
+        const bar = $("parentBar");
+        if (!selectedParent) { bar.replaceChildren(); return; }
+        bar.innerHTML = `<span class="parent-chip">${escapeHtml(selectedParent.anonymous_handle)} · ${escapeHtml(selectedParent.email || "")}</span>`;
+      }
+
+      function renderCircles() {
+        const panel = $("circlePanel");
+        if (!circles.length) {
+          panel.innerHTML = `<p class="empty">No circles with messages.</p>`;
+          return;
+        }
+        panel.innerHTML = circles.map((c) => {
+          const counts = [c.visible_count != null ? `${c.visible_count} visible` : null, c.moderated_count ? `${c.moderated_count} hidden` : null, c.hit_count != null ? `${c.hit_count} msgs` : null]
+            .filter(Boolean)
+            .join(" · ");
+          return `<button type="button" class="circle-btn${c.id === selectedCircleId ? " active" : ""}" data-id="${escapeHtml(c.id)}">
+            <span>${escapeHtml(c.display_name)}<div class="meta">${escapeHtml(typeLabel(c.circle_type))}${counts ? " · " + escapeHtml(counts) : ""}</div></span>
+          </button>`;
+        }).join("");
+        panel.querySelectorAll(".circle-btn").forEach((btn) => {
+          btn.addEventListener("click", () => void loadMessages(btn.getAttribute("data-id")));
+        });
+      }
+
+      function renderMessages() {
+        const panel = $("msgPanel");
+        if (!messages.length) {
+          panel.innerHTML = `<p class="empty">No channel messages.</p>`;
+          return;
+        }
+        const rows = messages.map((m) => {
+          const active = m.id === selectedMessageId ? " active" : "";
+          return `<div class="msg${active}" data-id="${escapeHtml(m.id)}">
+            <input type="checkbox" data-id="${escapeHtml(m.id)}" ${checked.has(m.id) ? "checked" : ""} />
+            <div>
+              <div class="name">${escapeHtml(m.anonymous_handle)} ${statusBadge(m.status)}</div>
+              <div class="meta">${escapeHtml(m.created_ist)} · ${m.reply_count || 0} replies${m.attachment_count ? " · " + m.attachment_count + " files" : ""}</div>
+              <div class="body">${escapeHtml(m.body || "")}</div>
+            </div>
+          </div>`;
+        }).join("");
+        const n = selectedIds().length;
+        panel.innerHTML = rows + `<div class="bar">
+          <button type="button" class="danger" id="hideBtn" ${n ? "" : "disabled"}>Hide selected (${n})</button>
+          <button type="button" class="secondary" id="unhideBtn" ${n ? "" : "disabled"}>Unhide selected</button>
+        </div>`;
+        panel.querySelectorAll(".msg").forEach((row) => {
+          row.addEventListener("click", (e) => {
+            if (e.target.closest("input")) return;
+            void loadReplies(row.getAttribute("data-id"));
+          });
+        });
+        panel.querySelectorAll("input[type=checkbox]").forEach((box) => {
+          box.addEventListener("change", () => {
+            const id = box.getAttribute("data-id");
+            if (box.checked) checked.add(id); else checked.delete(id);
+            renderMessages();
+            renderReplies();
+          });
+        });
+        $("hideBtn")?.addEventListener("click", openConfirm);
+        $("unhideBtn")?.addEventListener("click", () => void unhideSelected());
+      }
+
+      function renderReplies() {
+        const panel = $("replyPanel");
+        if (!selectedMessageId) {
+          panel.innerHTML = `<p class="empty">Click a channel message to see replies.</p>`;
+          return;
+        }
+        if (!replies.length) {
+          panel.innerHTML = `<p class="empty">No replies.</p>`;
+          return;
+        }
+        panel.innerHTML = replies.map((m) => `<div class="msg">
+          <input type="checkbox" data-id="${escapeHtml(m.id)}" ${checked.has(m.id) ? "checked" : ""} />
+          <div>
+            <div class="name">${escapeHtml(m.anonymous_handle)} ${statusBadge(m.status)}</div>
+            <div class="meta">${escapeHtml(m.created_ist)}</div>
+            <div class="body">${escapeHtml(m.body || "")}</div>
+          </div>
+        </div>`).join("");
+        panel.querySelectorAll("input[type=checkbox]").forEach((box) => {
+          box.addEventListener("change", () => {
+            const id = box.getAttribute("data-id");
+            if (box.checked) checked.add(id); else checked.delete(id);
+            renderMessages();
+            renderReplies();
+          });
+        });
+      }
+
+      function openConfirm() {
+        const n = selectedIds().length;
+        $("confirmCopy").textContent = `Hide ${n} message(s)? Parents will see: Blocked as inappropriate`;
+        $("includeReplies").checked = false;
+        $("confirm").classList.add("open");
+      }
+
+      async function hideSelected() {
+        const messageIds = selectedIds();
+        if (!messageIds.length) return;
+        $("confirm").classList.remove("open");
+        showError("");
+        try {
+          const data = await api("/internal/admin/moderation/messages/hide", {
+            method: "POST",
+            headers: adminHeaders(true),
+            body: JSON.stringify({
+              messageIds,
+              reason: "not_appropriate",
+              includeReplies: $("includeReplies").checked,
+            }),
+          });
+          checked = new Set();
+          if (selectedCircleId) await loadMessages(selectedCircleId, true);
+          if (selectedMessageId) await loadReplies(selectedMessageId);
+          if (data.skipped?.length) {
+            showError(`Hidden ${data.updated.length}. Skipped ${data.skipped.length} (already hidden or deleted).`);
+          }
+        } catch (err) {
+          showError(err.message || String(err));
+        }
+      }
+
+      async function unhideSelected() {
+        const messageIds = selectedIds();
+        if (!messageIds.length) return;
+        if (!confirm(`Unhide ${messageIds.length} message(s)?`)) return;
+        showError("");
+        try {
+          await api("/internal/admin/moderation/messages/unhide", {
+            method: "POST",
+            headers: adminHeaders(true),
+            body: JSON.stringify({ messageIds }),
+          });
+          checked = new Set();
+          if (selectedCircleId) await loadMessages(selectedCircleId, true);
+          if (selectedMessageId) await loadReplies(selectedMessageId);
+        } catch (err) {
+          showError(err.message || String(err));
+        }
+      }
+
+      async function loadMessages(circleId, keepSelection) {
+        selectedCircleId = circleId;
+        if (!keepSelection) {
+          selectedMessageId = "";
+          replies = [];
+        }
+        renderCircles();
+        $("msgPanel").innerHTML = `<p class="empty">Loading…</p>`;
+        const qs = new URLSearchParams({ limit: "50" });
+        if (selectedParent?.id) qs.set("authorId", selectedParent.id);
+        const data = await api(
+          `/internal/admin/moderation/circles/${encodeURIComponent(circleId)}/messages?${qs}`,
+          { headers: adminHeaders(false) }
+        );
+        messages = data.messages || [];
+        renderMessages();
+        renderReplies();
+      }
+
+      async function loadReplies(messageId) {
+        selectedMessageId = messageId;
+        renderMessages();
+        $("replyPanel").innerHTML = `<p class="empty">Loading replies…</p>`;
+        const data = await api(
+          `/internal/admin/moderation/messages/${encodeURIComponent(messageId)}/replies`,
+          { headers: adminHeaders(false) }
+        );
+        replies = data.replies || [];
+        renderReplies();
+      }
+
+      async function selectParent(parent) {
+        selectedParent = parent;
+        renderParentBar();
+        const data = await api(
+          `/internal/admin/moderation/parents/${encodeURIComponent(parent.id)}/circles`,
+          { headers: adminHeaders(false) }
+        );
+        circles = data.circles || [];
+        renderCircles();
+        if (selectedCircleId && circles.some((c) => c.id === selectedCircleId)) {
+          await loadMessages(selectedCircleId);
+        } else if (circles[0]) {
+          await loadMessages(circles[0].id);
+        }
+      }
+
+      async function runSearch(q) {
+        showError("");
+        const data = await api(
+          `/internal/admin/moderation/search?q=${encodeURIComponent(q)}`,
+          { headers: adminHeaders(false) }
+        );
+        parents = data.parents || [];
+        if (parents.length === 1) {
+          await selectParent(parents[0]);
+          return;
+        }
+        if (parents.length > 1) {
+          selectedParent = null;
+          renderParentBar();
+          $("circlePanel").innerHTML = parents.map((p) =>
+            `<button type="button" class="circle-btn" data-id="${escapeHtml(p.id)}">
+              <span>${escapeHtml(p.anonymous_handle)}<div class="meta">${escapeHtml(p.email || "")}</div></span>
+            </button>`
+          ).join("");
+          $("circlePanel").querySelectorAll(".circle-btn").forEach((btn) => {
+            btn.addEventListener("click", () => {
+              const parent = parents.find((p) => p.id === btn.getAttribute("data-id"));
+              if (parent) void selectParent(parent);
+            });
+          });
+        }
+        if (!parents.length) {
+          circles = data.circles || [];
+          selectedParent = null;
+          renderParentBar();
+          renderCircles();
+          if (circles[0]) await loadMessages(circles[0].id);
+        }
+      }
+
+      $("searchBtn").addEventListener("click", () => void runSearch($("q").value));
+      $("q").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") void runSearch($("q").value);
+      });
+      $("clear").addEventListener("click", () => {
+        $("q").value = "";
+        parents = [];
+        selectedParent = null;
+        circles = [];
+        messages = [];
+        replies = [];
+        checked = new Set();
+        selectedCircleId = "";
+        selectedMessageId = "";
+        renderParentBar();
+        $("circlePanel").innerHTML = `<p class="empty">Search a parent handle to start.</p>`;
+        $("msgPanel").innerHTML = `<p class="empty">Pick a circle.</p>`;
+        $("replyPanel").innerHTML = `<p class="empty">Replies show here.</p>`;
+      });
+      $("confirmCancel").addEventListener("click", () => $("confirm").classList.remove("open"));
+      $("confirmHide").addEventListener("click", () => void hideSelected());
+
+      (async () => {
+        const ok = await VaaraAdmin.requireAuth();
+        if (!ok) return;
+        VaaraAdmin.mountBar($("adminNav"));
+        const handle = params.get("handle") || params.get("email") || params.get("userId") || "";
+        const q = handle || params.get("q") || "";
+        if (q) {
+          $("q").value = q;
+          await runSearch(q);
+        } else if (params.get("circleId")) {
+          await loadMessages(params.get("circleId"));
+        }
+        if (params.get("threadId")) {
+          const thread = await api(
+            `/internal/admin/moderation/threads/${encodeURIComponent(params.get("threadId"))}`,
+            { headers: adminHeaders(false) }
+          );
+          selectedCircleId = thread.circleId;
+          if (!selectedParent) await loadMessages(thread.circleId);
+          await loadReplies(thread.rootMessageId);
+        } else if (params.get("messageId") && selectedCircleId) {
+          await loadReplies(params.get("messageId"));
+        }
+      })().catch((err) => showError(err.message || String(err)));
+    </script>
+  </body>
+</html>

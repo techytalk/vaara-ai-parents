@@ -260,11 +260,7 @@ export function ChatThreadScreen({
           : null,
     onEvent: (event) => {
       if (event.type === "chat.message" || event.type === "access.revoked") {
-        if (mode === "group" && "threadId" in event && event.threadId) {
-          void listQuery.refetch();
-        } else {
-          void catchUp();
-        }
+        void listQuery.refetch();
         if (event.type === "access.revoked") {
           void threadQuery.refetch();
         }
@@ -1190,7 +1186,13 @@ function Bubble({
               {message.body}
             </Text>
           ) : null}
-          {!visible ? (
+          {message.status === "moderated" ? (
+            <Text style={[styles.body, styles.bodyDeleted]}>
+              Blocked as inappropriate
+            </Text>
+          ) : null}
+          {message.status === "deleted" ||
+          (!visible && message.status !== "moderated") ? (
             <Text style={[styles.body, styles.bodyDeleted]}>Message deleted</Text>
           ) : null}
           {visible && !message.body && !(message.attachments?.length) ? (

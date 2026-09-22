@@ -9,6 +9,7 @@ import { isBlocked } from "../lib/author.js";
 import { parseReportReason } from "../lib/report-reasons.js";
 import { userHasRole } from "../lib/user-roles.js";
 import { parseChatAttachments } from "../lib/chat-attachments.js";
+import { MODERATED_MESSAGE_COPY } from "../lib/chat-copy.js";
 import {
   createChatMediaUrl,
   createDocumentDownloadUrl,
@@ -559,10 +560,12 @@ export function createCircleChatRoutes() {
       const localOnly =
         circle.rows[0]?.circle_type === "curriculum" && scope !== "all";
       const { rows } = await client.query(
-        `SELECT t.*, COALESCE(tr.following, false) AS following, tr.last_read_seq
+        `SELECT t.*, COALESCE(tr.following, false) AS following, tr.last_read_seq,
+                root.status AS root_status
          FROM circle_threads t
          LEFT JOIN circle_thread_reads tr
            ON tr.thread_id = t.id AND tr.user_id = $2
+         LEFT JOIN circle_messages root ON root.id = t.root_message_id
          WHERE t.circle_id = $1
            AND t.status <> 'deleted'
            ${
@@ -586,8 +589,11 @@ export function createCircleChatRoutes() {
         linear: true,
         threads: rows.map((row) => ({
           id: row.id,
-          title: row.title,
-          body: row.body,
+          title: row.root_status === "moderated" ? null : row.title,
+          body:
+            row.root_status === "moderated"
+              ? MODERATED_MESSAGE_COPY
+              : row.body,
           kind: row.kind,
           replyCount: row.reply_count,
           lastMessageAt: row.last_message_at,
@@ -699,9 +705,10 @@ export function createThreadRoutes() {
         return c.json({ error: "Thread not found" }, 404);
       }
       const { rows } = await client.query(
-        `SELECT t.*, c.display_name, c.circle_type
+        `SELECT t.*, c.display_name, c.circle_type, root.status AS root_status
          FROM circle_threads t
          JOIN circles c ON c.id = t.circle_id
+         LEFT JOIN circle_messages root ON root.id = t.root_message_id
          WHERE t.id = $1`,
         [threadId]
       );
@@ -716,8 +723,11 @@ export function createThreadRoutes() {
         circleId: row.circle_id,
         circleName: row.display_name,
         circleType: row.circle_type,
-        title: row.title,
-        body: row.body,
+        title: row.root_status === "moderated" ? null : row.title,
+        body:
+          row.root_status === "moderated"
+            ? MODERATED_MESSAGE_COPY
+            : row.body,
         kind: row.kind,
         status: row.status,
         replyCount: row.reply_count,

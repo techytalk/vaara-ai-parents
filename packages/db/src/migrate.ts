@@ -126,6 +126,10 @@ const MIGRATIONS = [
     version: "060_path_g9_stage_panes",
     file: "060_path_g9_stage_panes.sql",
   },
+  {
+    version: "061_admin_moderation_actions",
+    file: "061_admin_moderation_actions.sql",
+  },
 ];
 
 async function isMigrationApplied(

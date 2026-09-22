@@ -26,6 +26,7 @@ import {
 } from "../services/internal-seed.js";
 import { publishChatNudge } from "../services/chat.js";
 import { signAdminToken, verifyAdminToken } from "../lib/jwt.js";
+import { mountAdminModeration } from "./admin-moderation.js";
 
 function requireCronSecret(c: { req: { header: (n: string) => string | undefined } }) {
   const secret = c.req.header("X-Cron-Secret");
@@ -1257,6 +1258,8 @@ export function createInternalRoutes() {
       client.release();
     }
   });
+
+  mountAdminModeration(app, requireAdminAuth);
 
   return app;
 }
