@@ -262,7 +262,10 @@ async function loadCircleChatAccess(
   );
   if (!rows[0]) return null;
   return {
-    isMember: rows[0].is_member === true,
+    isMember:
+      rows[0].is_member === true ||
+      rows[0].is_member === "t" ||
+      rows[0].is_member === "true",
     circleType: String(rows[0].circle_type),
     joinedAt: rows[0].joined_at ? new Date(rows[0].joined_at) : null,
     wide: WIDE_CIRCLE_TYPES.has(String(rows[0].circle_type)),
@@ -1132,7 +1135,12 @@ export async function listLinearMessages(params: {
   const fillCache =
     params.beforeSeq == null && params.afterSeq == null;
   const filters = [`m.circle_id = $1`, `m.thread_id IS NULL`];
-  const values: unknown[] = [params.circleId, params.userId];
+  const values: unknown[] = [params.circleId];
+  let userParam = 0;
+  if (!fillCache) {
+    values.push(params.userId);
+    userParam = values.length;
+  }
   if (!fillCache && access.joinedAt) {
     values.push(access.joinedAt.toISOString());
     const joinedIdx = values.length;
@@ -1161,13 +1169,14 @@ export async function listLinearMessages(params: {
     ? Math.max(params.limit, CHAT_PAGE_MAX)
     : params.limit;
   values.push(fetchLimit);
-  const blockFilter = fillCache
-    ? ""
-    : `AND NOT EXISTS (
+  const blockFilter =
+    userParam > 0
+      ? `AND NOT EXISTS (
          SELECT 1 FROM user_blocks ub
-         WHERE (ub.blocker_id = $2 AND ub.blocked_id = m.author_id)
-            OR (ub.blocker_id = m.author_id AND ub.blocked_id = $2)
-       )`;
+         WHERE (ub.blocker_id = $${userParam} AND ub.blocked_id = m.author_id)
+            OR (ub.blocker_id = m.author_id AND ub.blocked_id = $${userParam})
+       )`
+      : "";
   const { rows } = await params.client.query(
     `SELECT m.*,
             t.id AS side_thread_id,
@@ -1298,7 +1307,12 @@ export async function listThreadMessages(params: {
   const fillCache =
     params.beforeSeq == null && params.afterSeq == null;
   const filters = [`m.thread_id = $1`];
-  const values: unknown[] = [params.threadId, params.userId];
+  const values: unknown[] = [params.threadId];
+  let userParam = 0;
+  if (!fillCache) {
+    values.push(params.userId);
+    userParam = values.length;
+  }
   if (params.beforeSeq != null) {
     values.push(params.beforeSeq);
     filters.push(`m.seq < $${values.length}`);
@@ -1311,13 +1325,14 @@ export async function listThreadMessages(params: {
     ? Math.max(params.limit, CHAT_PAGE_MAX)
     : params.limit;
   values.push(fetchLimit);
-  const blockFilter = fillCache
-    ? ""
-    : `AND NOT EXISTS (
+  const blockFilter =
+    userParam > 0
+      ? `AND NOT EXISTS (
          SELECT 1 FROM user_blocks ub
-         WHERE (ub.blocker_id = $2 AND ub.blocked_id = m.author_id)
-            OR (ub.blocker_id = m.author_id AND ub.blocked_id = $2)
-       )`;
+         WHERE (ub.blocker_id = $${userParam} AND ub.blocked_id = m.author_id)
+            OR (ub.blocker_id = m.author_id AND ub.blocked_id = $${userParam})
+       )`
+      : "";
   const { rows } = await params.client.query(
     `SELECT m.*
      FROM circle_messages m
