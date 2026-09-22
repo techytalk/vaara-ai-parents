@@ -242,11 +242,17 @@ export async function listCircleModerationMessages(
           )
         : Promise.resolve({ rows: [] as Array<{ thread_id: string; reply_count: number }> }),
     ]);
-    const mediaCounts = new Map(
-      media.rows.map((row) => [String(row.message_id), Number(row.attachment_count)])
+    const mediaCounts = new Map<string, number>(
+      media.rows.map((row) => [
+        String(row.message_id),
+        Number(row.attachment_count),
+      ] as [string, number])
     );
-    const replyCounts = new Map(
-      replies.rows.map((row) => [String(row.thread_id), Number(row.reply_count)])
+    const replyCounts = new Map<string, number>(
+      replies.rows.map((row) => [
+        String(row.thread_id),
+        Number(row.reply_count),
+      ] as [string, number])
     );
     for (const row of rows) {
       row.attachment_count = mediaCounts.get(String(row.id)) ?? 0;
@@ -316,8 +322,11 @@ export async function listMessageReplies(
        GROUP BY message_id`,
       [replyIds]
     );
-    const counts = new Map(
-      media.rows.map((row) => [String(row.message_id), Number(row.attachment_count)])
+    const counts = new Map<string, number>(
+      media.rows.map((row) => [
+        String(row.message_id),
+        Number(row.attachment_count),
+      ] as [string, number])
     );
     for (const row of rows) {
       row.attachment_count = counts.get(String(row.id)) ?? 0;
