@@ -3,6 +3,12 @@ import { Ionicons } from "@expo/vector-icons";
 import { pathTheme as t } from "@/constants/path-theme";
 import { radii, spacing, typography } from "@/constants/theme";
 import type { PathBranch, PathBranchMap, PathTopicId, PathwayCard } from "@/lib/api";
+import {
+  childSwitcherTabLabel,
+  type ChildSwitcherFields,
+} from "@/lib/child-switcher-label";
+
+type ChildChip = ChildSwitcherFields & { id: string };
 
 type Props = {
   childLabel: string;
@@ -14,7 +20,7 @@ type Props = {
   streamId: string;
   streamChips: Array<{ id: string; label: string }>;
   showStreamChips: boolean;
-  children: Array<{ id: string; nickname: string | null }>;
+  children: ChildChip[];
   selectedChildId: string | null;
   itemLead: string | null;
   collegeCards: PathwayCard[];
@@ -88,16 +94,21 @@ export function PathBranchHub({
 
       {children.length > 1 ? (
         <View style={styles.chipRow}>
-          {children.map((child) => {
+          {children.map((child, index) => {
             const selected = child.id === selectedChildId;
             return (
               <Pressable
                 key={child.id}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
                 onPress={() => onSelectChild(child.id)}
-                style={[styles.miniChip, selected && styles.miniChipOn]}
+                style={[styles.childChip, selected && styles.miniChipOn]}
               >
-                <Text style={[styles.miniChipText, selected && styles.miniChipTextOn]}>
-                  {child.nickname?.trim() || "Child"}
+                <Text
+                  style={[styles.miniChipText, selected && styles.miniChipTextOn]}
+                  numberOfLines={2}
+                >
+                  {childSwitcherTabLabel(child, index)}
                 </Text>
               </Pressable>
             );
@@ -481,6 +492,17 @@ const styles = StyleSheet.create({
   miniChipOn: {
     backgroundColor: t.chipActiveFill,
     borderColor: t.chipActiveFill,
+  },
+  childChip: {
+    flexGrow: 1,
+    flexBasis: "46%",
+    minHeight: 44,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: t.chipIdleBorder,
+    justifyContent: "center",
   },
   miniChipText: {
     ...typography.caption,

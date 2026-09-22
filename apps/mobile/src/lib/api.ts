@@ -736,7 +736,59 @@ export type PathwayHubChild = {
   id: string;
   nickname: string | null;
   curriculumCode: string | null;
+  curriculumName: string | null;
   gradeLabel: string | null;
+};
+
+export type PathExploreNode = {
+  id: string;
+  slug: string;
+  parentId: string | null;
+  kind: string;
+  title: string;
+  kicker: string | null;
+  summary: string | null;
+  depth: number;
+  hasChildren: boolean;
+  allowAsk: boolean;
+  allowDiscussions: boolean;
+  pathwayItemSlug: string | null;
+  askPrompt: string | null;
+};
+
+export type PathExploreResponse = {
+  context: {
+    childId: string | null;
+    childLabel: string;
+    stateLabel: string | null;
+    boardLabel: string;
+    gradeLabel: string;
+  };
+  locationTitle: string;
+  locationMeta: string;
+  lockLine: string;
+  postingCircle: { id: string; displayName: string } | null;
+  nodes: PathExploreNode[];
+  children: PathwayHubChild[];
+};
+
+export type PathDiscussionLink = {
+  circleId: string;
+  circleName: string;
+  messageId: string;
+  threadId: string | null;
+  openAs: "thread" | "message";
+  preview: string;
+  replyCount: number;
+  activityAt: string;
+};
+
+export type PathAskResult = {
+  circleId: string;
+  circleName: string;
+  messageId: string;
+  threadId: string;
+  openAs: "thread";
 };
 
 export type PathTopicId =
@@ -2159,6 +2211,27 @@ export const api = {
 
   getPathwayItem: (token: string, slug: string) =>
     request<PathwayItemDetail>(`/v1/pathways/items/${slug}`, {}, token),
+
+  getPathExplore: (token: string, childId?: string) => {
+    const qs = childId ? `?childId=${encodeURIComponent(childId)}` : "";
+    return request<PathExploreResponse>(`/v1/pathways/explore${qs}`, {}, token);
+  },
+
+  getPathDiscussions: (token: string, nodeId: string) =>
+    request<{ discussions: PathDiscussionLink[] }>(
+      `/v1/pathways/nodes/${nodeId}/discussions`,
+      {},
+      token
+    ),
+
+  askOnPath: (
+    token: string,
+    body: { childId: string; nodeId: string; body: string }
+  ) =>
+    request<PathAskResult>("/v1/pathways/ask", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }, token),
 
   discoverPractitioners: (
     token: string,

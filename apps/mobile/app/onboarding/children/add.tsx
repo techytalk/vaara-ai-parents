@@ -1,12 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { api, type Child, type Curriculum, type School } from "@/lib/api";
 import { trackEvent } from "@/lib/analytics";
 import { invalidateFamilyMeta } from "@/lib/authenticated-state";
@@ -17,8 +19,17 @@ import { sortCurricula } from "@/constants/onboarding";
 import { toIsoDateOnly } from "@/lib/dates";
 import { colors, PrimaryButton, useOnboardingContentStyle } from "@/components/onboarding/ui";
 
+function leaveAddChildScreen(router: ReturnType<typeof useRouter>) {
+  if (router.canGoBack()) {
+    router.back();
+    return;
+  }
+  router.replace("/onboarding/children" as never);
+}
+
 export default function AddChildScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
   const { from } = useLocalSearchParams<{ from?: string }>();
   const fromPrompt = from === "prompt";
   const [token, setToken] = useState<string | null>(null);
@@ -38,6 +49,22 @@ export default function AddChildScreen() {
   const [gender, setGender] = useState("");
   const [curriculumId, setCurriculumId] = useState<string | null>(null);
   const [gradeId, setGradeId] = useState<string | null>(null);
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerLeft: () => (
+        <Pressable
+          onPress={() => leaveAddChildScreen(router)}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          style={styles.headerBack}
+        >
+          <Ionicons name="chevron-back" size={28} color={colors.text} />
+        </Pressable>
+      ),
+    });
+  }, [navigation, router]);
 
   useEffect(() => {
     getToken().then(async (t) => {
@@ -101,7 +128,13 @@ export default function AddChildScreen() {
           source: fromPrompt ? "completion_prompt" : "children_list",
         });
       }
-      router.replace(fromPrompt ? "/(app)" : "/onboarding/children");
+      if (fromPrompt) {
+        router.replace("/(app)" as never);
+      } else if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.replace("/onboarding/children" as never);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to add child");
     } finally {
@@ -176,6 +209,7 @@ export default function AddChildScreen() {
 }
 
 const styles = StyleSheet.create({
+  headerBack: { marginLeft: 4, paddingRight: 4 },
   container: { flex: 1, backgroundColor: colors.bg },
   content: {},
   title: {

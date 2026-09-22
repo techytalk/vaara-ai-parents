@@ -114,6 +114,10 @@ const MIGRATIONS = [
     version: "057_path_discussion_tags",
     file: "057_path_discussion_tags.sql",
   },
+  {
+    version: "058_path_exploration_tree",
+    file: "058_path_exploration_tree.sql",
+  },
 ];
 
 async function isMigrationApplied(

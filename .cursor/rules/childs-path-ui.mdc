@@ -1,5 +1,5 @@
 ---
-description: Child's Path — signed branch UI plus functional identity/posting rules
+description: Child's Path — expandable thread UI plus identity/posting rules
 globs: apps/mobile/app/(app)/pathways/**/*.tsx,packages/shared/pathways*.ts,docs/CHILDS_PATH_BRANCH_UI.md,docs/CHILDS_PATH_FUNCTIONAL.md,docs/WHAT_NEXT_AND_OPPORTUNITIES.md
 alwaysApply: false
 ---
@@ -8,19 +8,20 @@ alwaysApply: false
 
 When changing Child's Path:
 
-- **Layout + theme:** `docs/CHILDS_PATH_BRANCH_UI.md` (wins on chrome)
+- **Layout:** `docs/CHILDS_PATH_EXPLORATION_TREE.md` (the only parent screen)
 - **Behaviour:** `docs/CHILDS_PATH_FUNCTIONAL.md` (identity, circles, eligibility, errors)
 - **Catalogue:** `docs/WHAT_NEXT_AND_OPPORTUNITIES.md`
+- `docs/CHILDS_PATH_BRANCH_UI.md` is the retired three-card screen. Do not build it again.
 
-Do not implement Astra’s radial map, question-led hub, five-stop strip on the tree screen, or collapse-on-second-tap.
+Do not implement Astra’s radial map, question-led hub, five-stop strip, or the old three branch cards next to the thread.
 
 ## Must follow
 
-- After-10 fork is a **tree**: location node → 2–3 branch cards (stay first, status Exploring) → one explore panel.
-- Branch tap is **peek only**. Never write `curriculum_id` / `grade_id`. Lock line required.
-- Topic chips: **Subjects / Workload / College plans** (younger stages may substitute Learning / Next grade).
-- Max three top-row branches; overflow under **Other routes / not sure yet?**
-- Dark forest `pathTheme` on Path screens only.
+- Child's Path is one **expandable thread**: location row, then DB nodes. Breadcrumb shows the open path.
+- Node tap is **peek only**. Never write `curriculum_id` / `grade_id`. Lock line required.
+- Subjects, workload, and college plans are **child rows** in the thread, not a second card panel.
+- Ask and Read sit on the expanded node and open the existing curriculum-circle message.
+- Child’s Path uses the same warm-white `pathTheme` as the rest of the app.
 - IGCSE and MYP must not show JEE / NEET / EAPCET as live.
 - Ask anonymously uses existing circles. Show **Where will this be posted?** Tags never widen audience. Exploring DP ≠ DP membership.
 - Browse, interest, or grade alone never produce Eligible.

@@ -1,180 +1,149 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, ScrollView, StyleSheet, View } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ScrollView, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { PathBranchHub } from "@/components/pathways/PathBranchHub";
+import { PathExploreThread } from "@/components/pathways/PathExploreThread";
 import { EmptyState, ScreenLoader } from "@/components/ui";
 import { pathTheme } from "@/constants/path-theme";
 import { spacing } from "@/constants/theme";
 import { trackEvent } from "@/lib/analytics";
 import {
   api,
-  type Circle,
-  type PathBranch,
-  type PathTopicId,
-  type PathwayCard,
-  type PathwayHubChild,
-  type PathwayHubResponse,
+  type PathDiscussionLink,
+  type PathExploreNode,
+  type PathExploreResponse,
 } from "@/lib/api";
 import { getToken } from "@/lib/session";
 
-function pickPostingCircle(circles: Circle[]): Circle | null {
-  // Path questions need mixed-grade replies (e.g. CBSE 11–12 parents),
-  // not only the child’s current class. Use an existing circle only.
-  const order: Circle["circleType"][] = [
-    "curriculum",
-    "school",
-    "school_class",
-    "class",
-    "locality",
-  ];
-  for (const type of order) {
-    const match = circles.find((circle) => circle.circleType === type);
-    if (match) return match;
-  }
-  return circles[0] ?? null;
-}
-
-function allBranches(hub: PathwayHubResponse): PathBranch[] {
-  return [...hub.branchMap.primary, ...hub.branchMap.overflow];
-}
-
-function collegeCards(hub: PathwayHubResponse): PathwayCard[] {
-  return hub.groups
-    .filter((group) => group.id !== "what_next")
-    .flatMap((group) => group.cards)
-    .filter((card) => !card.slug.startsWith("_"));
+function defaultExpanded(nodes: PathExploreNode[]): Set<string> {
+  const open = new Set<string>();
+  const root = nodes.find((node) => node.depth === 0);
+  if (!root) return open;
+  open.add(root.id);
+  const first = nodes.find((node) => node.parentId === root.id);
+  if (first) open.add(first.id);
+  return open;
 }
 
 export default function PathwaysHubScreen() {
   const router = useRouter();
-  const [hub, setHub] = useState<PathwayHubResponse | null>(null);
-  const [circles, setCircles] = useState<Circle[]>([]);
+  const [data, setData] = useState<PathExploreResponse | null>(null);
   const [childId, setChildId] = useState<string | undefined>();
-  const [stream, setStream] = useState("undecided");
-  const [branchId, setBranchId] = useState<string | undefined>();
-  const [topicId, setTopicId] = useState<PathTopicId>("subjects");
-  const [itemLead, setItemLead] = useState<string | null>(null);
-  const [otherOpen, setOtherOpen] = useState(false);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [discussions, setDiscussions] = useState<
+    Record<string, PathDiscussionLink[] | "loading" | "error">
+  >({});
+  const [askingId, setAskingId] = useState<string | null>(null);
+  const [askDraft, setAskDraft] = useState("");
+  const [askBusy, setAskBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const loadSeq = useRef(0);
 
   const load = useCallback(async () => {
     const token = await getToken();
     if (!token) return;
+    const seq = ++loadSeq.current;
     try {
-      const [data, circleList] = await Promise.all([
-        api.getPathwaysHub(token, { childId, stream }),
-        api.getCircles(token).catch(() => [] as Circle[]),
-      ]);
-      setHub(data);
-      setCircles(circleList);
+      const next = await api.getPathExplore(token, childId);
+      if (seq !== loadSeq.current) return;
+      setData(next);
       setError(null);
-      if (!childId && data.context.childId) {
-        setChildId(data.context.childId);
-      }
-      setBranchId((current) => {
-        const ids = allBranches(data).map((branch) => branch.id);
-        if (current && ids.includes(current)) return current;
-        return data.branchMap.defaultBranchId;
-      });
-      trackEvent("child_path_opened", {
-        family: data.context.family,
-        stage: data.context.primaryStage,
-      });
+      setExpanded(defaultExpanded(next.nodes));
+      setDiscussions({});
+      setAskingId(null);
+      if (!childId && next.context.childId) setChildId(next.context.childId);
+      trackEvent("child_path_opened", { family: next.locationTitle });
     } catch (e) {
-      setHub(null);
-      setError(
-        e instanceof Error ? e.message : "Could not load Child's Path."
-      );
+      if (seq !== loadSeq.current) return;
+      setData(null);
+      setError(e instanceof Error ? e.message : "Could not load Child's Path.");
     }
-  }, [childId, stream]);
+  }, [childId]);
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
-    load().finally(() => setLoading(false));
+    load().finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [load]);
 
-  const selectedBranch = useMemo(() => {
-    if (!hub) return null;
-    return (
-      allBranches(hub).find((branch) => branch.id === branchId) ??
-      allBranches(hub)[0] ??
-      null
-    );
-  }, [hub, branchId]);
+  const selectedId = childId ?? data?.context.childId ?? null;
 
-  useEffect(() => {
-    if (!selectedBranch?.itemSlug) {
-      setItemLead(null);
-      return;
-    }
-    const fromHub = hub?.groups
-      .flatMap((group) => group.cards)
-      .find((card) => card.slug === selectedBranch.itemSlug);
-    if (fromHub?.lead) {
-      setItemLead(fromHub.lead);
-      return;
-    }
-    getToken().then((token) => {
-      if (!token || !selectedBranch.itemSlug) return;
-      api
-        .getPathwayItem(token, selectedBranch.itemSlug)
-        .then((detail) => setItemLead(detail.item.lead))
-        .catch(() => setItemLead(null));
+  function toggle(id: string) {
+    const node = data?.nodes.find((row) => row.id === id);
+    if (!node) return;
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(id)) {
+        next.delete(id);
+        return next;
+      }
+      for (const other of data?.nodes ?? []) {
+        if (other.parentId === node.parentId) next.delete(other.id);
+      }
+      next.add(id);
+      trackEvent("path_branch_opened", { branch: node.slug });
+      return next;
     });
-  }, [hub, selectedBranch]);
-
-  function onChildPress(child: PathwayHubChild) {
-    if (child.id === childId) return;
-    setChildId(child.id);
-    setStream("undecided");
-    setBranchId(undefined);
-    setTopicId("subjects");
   }
 
-  const postingCircle = pickPostingCircle(circles);
-
-  function openComposer() {
-    if (!postingCircle || !selectedBranch) return;
-    const prompt =
-      selectedBranch.prompts[topicId] ??
-      selectedBranch.prompts.subjects ??
-      "";
-    trackEvent("path_composer_opened", { branch: selectedBranch.id });
-    router.push({
-      pathname: "/circles/[circleId]/new-post",
-      params: {
-        circleId: postingCircle.id,
-        compose: "question",
-        body: prompt,
-      },
-    } as never);
+  async function readDiscussions(nodeId: string) {
+    const token = await getToken();
+    if (!token) return;
+    setDiscussions((current) => ({ ...current, [nodeId]: "loading" }));
+    try {
+      const result = await api.getPathDiscussions(token, nodeId);
+      setDiscussions((current) => ({ ...current, [nodeId]: result.discussions }));
+    } catch {
+      setDiscussions((current) => ({ ...current, [nodeId]: "error" }));
+    }
   }
 
-  function openDiscussions() {
-    if (!postingCircle) {
-      Alert.alert(
-        "No discussions yet",
-        "Join a class or school circle first. Exploring this branch does not change your child’s profile."
-      );
+  function openDiscussion(link: PathDiscussionLink) {
+    if (link.openAs === "thread" && link.threadId) {
+      router.push({
+        pathname: "/(app)/messages/threads/[threadId]",
+        params: { threadId: link.threadId },
+      } as never);
       return;
     }
     router.push({
-      pathname: "/circles/[circleId]",
-      params: { circleId: postingCircle.id },
+      pathname: "/(app)/messages/groups/[circleId]",
+      params: { circleId: link.circleId, circleName: link.circleName },
     } as never);
   }
 
-  function openDetail() {
-    if (!selectedBranch?.itemSlug) return;
-    router.push({
-      pathname: "/(app)/pathways/[slug]",
-      params: { slug: selectedBranch.itemSlug, title: selectedBranch.title },
-    } as never);
+  async function sendAsk() {
+    if (!data || !askingId || !selectedId) return;
+    const token = await getToken();
+    if (!token) return;
+    setAskBusy(true);
+    try {
+      const result = await api.askOnPath(token, {
+        childId: selectedId,
+        nodeId: askingId,
+        body: askDraft.trim(),
+      });
+      trackEvent("path_composer_opened", { branch: askingId });
+      setAskingId(null);
+      setAskDraft("");
+      router.push({
+        pathname: "/(app)/messages/threads/[threadId]",
+        params: { threadId: result.threadId },
+      } as never);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not post the question.");
+    } finally {
+      setAskBusy(false);
+    }
   }
 
-  if (loading) {
+  if (loading && (!data || (childId && data.context.childId !== childId))) {
     return (
       <View style={styles.screen}>
         <ScreenLoader label="Loading Child's Path" />
@@ -182,71 +151,56 @@ export default function PathwaysHubScreen() {
     );
   }
 
-  if (error || !hub || !selectedBranch) {
+  if (error && !data) {
     return (
       <View style={styles.screen}>
-        <EmptyState
-          icon="map-outline"
-          title="Child's Path unavailable"
-          message={
-            error ??
-            "Add a school-age child with a board to see what comes next."
-          }
-        />
+        <EmptyState icon="map-outline" title="Child's Path unavailable" message={error} />
       </View>
     );
   }
 
+  if (!data) return null;
+
   return (
     <SafeAreaView style={styles.screen} edges={["top"]}>
       <ScrollView contentContainerStyle={styles.content}>
-        <PathBranchHub
-          childLabel={hub.context.childLabel}
-          stateLabel={hub.context.stateLabel ?? "India (national)"}
-          stageLead={hub.context.stageLead}
-          branchMap={hub.branchMap}
-          selectedBranch={selectedBranch}
-          topicId={
-            hub.branchMap.topics.some((topic) => topic.id === topicId)
-              ? topicId
-              : hub.branchMap.topics[0]?.id ?? "subjects"
-          }
-          streamId={stream}
-          streamChips={hub.context.streamChipLabels}
-          showStreamChips={hub.context.showStreamChips}
-          children={hub.children}
-          selectedChildId={hub.context.childId}
-          itemLead={itemLead}
-          collegeCards={collegeCards(hub)}
-          postingCircleName={postingCircle?.displayName ?? null}
-          postingHint={
-            postingCircle
-              ? null
-              : "Ask uses your existing class or school circle. Exploring DP or A Level does not add you to that board’s circle."
-          }
-          otherOpen={otherOpen}
-          onToggleOther={() => setOtherOpen((open) => !open)}
-          onSelectChild={onChildPress}
-          onSelectBranch={(id) => {
-            setBranchId(id);
-            trackEvent("path_branch_opened", { branch: id });
-            if (hub.branchMap.overflow.some((branch) => branch.id === id)) {
-              setOtherOpen(true);
-            }
+        <PathExploreThread
+          locationTitle={data.locationTitle}
+          locationMeta={data.locationMeta}
+          stateLabel={data.context.stateLabel ?? "India (national)"}
+          lockLine={data.lockLine}
+          postingCircleName={data.postingCircle?.displayName ?? null}
+          nodes={data.nodes}
+          children={data.children}
+          selectedChildId={selectedId}
+          expandedIds={expanded}
+          discussions={discussions}
+          askingId={askingId}
+          askDraft={askDraft}
+          askBusy={askBusy}
+          onMore={() => router.back()}
+          onSelectChild={(id) => {
+            if (id === selectedId) return;
+            setChildId(id);
           }}
-          onSelectTopic={setTopicId}
-          onSelectStream={(id) => setStream((prev) => (prev === id ? "undecided" : id))}
-          onAsk={openComposer}
-          onRead={openDiscussions}
-          onLearnMore={openDetail}
-          onOpenCard={(slug, title) =>
+          onToggle={toggle}
+          onOpenDetail={(slug, title) =>
             router.push({
               pathname: "/(app)/pathways/[slug]",
               params: { slug, title },
             } as never)
           }
-          onMore={() => router.back()}
+          onRead={readDiscussions}
+          onOpenDiscussion={openDiscussion}
+          onStartAsk={(node) => {
+            setAskingId(node.id);
+            setAskDraft(node.askPrompt ?? "");
+          }}
+          onChangeAsk={setAskDraft}
+          onSendAsk={sendAsk}
+          onCancelAsk={() => setAskingId(null)}
         />
+        {error ? <EmptyState icon="alert-circle-outline" title="Could not post" message={error} /> : null}
       </ScrollView>
     </SafeAreaView>
   );
@@ -254,8 +208,5 @@ export default function PathwaysHubScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: pathTheme.bg },
-  content: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xxxl,
-  },
+  content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxxl },
 });

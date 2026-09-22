@@ -15,14 +15,15 @@ POLYCET after 10, NTSE paused — see
 [`CHILDS_PATH_OFFICIAL_REVIEW.md`](CHILDS_PATH_OFFICIAL_REVIEW.md).
 Orientation copy is not a counselling certificate.
 
-**Phone layout at the Class 10 fork** is
-[`CHILDS_PATH_BRANCH_UI.md`](CHILDS_PATH_BRANCH_UI.md) (location node,
-stay/switch branches, explore panel, Path theme). **Production behaviour**
-(identity, posting audience, eligibility, errors, QA) is
-[`CHILDS_PATH_FUNCTIONAL.md`](CHILDS_PATH_FUNCTIONAL.md). §14 remains the
-light card-list density for admin preview. Do not mix chromes on one
-screen. Do not replace the signed tree with Astra’s radial map, question-led
-hub, or a five-stop strip on the same view.
+**Parent phone layout** is the expandable thread in
+[`CHILDS_PATH_EXPLORATION_TREE.md`](CHILDS_PATH_EXPLORATION_TREE.md).
+It **replaces** the three branch cards in
+[`CHILDS_PATH_BRANCH_UI.md`](CHILDS_PATH_BRANCH_UI.md) (that file is the
+earlier screen, not a second view). **Production behaviour** (identity,
+posting audience, eligibility, errors, QA) is
+[`CHILDS_PATH_FUNCTIONAL.md`](CHILDS_PATH_FUNCTIONAL.md). §14 remains
+admin card-list density only. Do not show cards and the thread together.
+Do not use Astra’s radial map, question-led hub, or a five-stop strip.
 
 **Parent-facing name:** **Child's Path** (More row and hub title).
 

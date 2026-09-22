@@ -1,7 +1,9 @@
 # Child's Path — branch explorer UI
 
-**Status:** adopted visual format for the after-Class-10 fork. This file is
-the **phone layout and theme** only.
+**Status:** retired for the parent app. The live layout is
+[`CHILDS_PATH_EXPLORATION_TREE.md`](CHILDS_PATH_EXPLORATION_TREE.md)
+(expandable thread). This file records the earlier three-card screen.
+Do not ship it beside the thread.
 
 | Layer | Doc |
 |-------|-----|
