@@ -8,6 +8,15 @@ import {
   type RealtimeEvent,
 } from "@vaara/redis";
 import {
+  CHAT_PAGE_MAX,
+  type CachedChatMessage,
+  readCachedLinearMessages,
+  readCachedThreadMessages,
+  toClientChatMessages,
+  writeCachedLinearMessages,
+  writeCachedThreadMessages,
+} from "../lib/chat-page-cache.js";
+import {
   detectMedicalAdvice,
   rejectObjectionableText,
 } from "../lib/content-guard.js";
@@ -179,6 +188,139 @@ async function authorView(
   };
 }
 
+const WIDE_CIRCLE_TYPES = new Set([
+  "class",
+  "locality",
+  "curriculum",
+  "community",
+]);
+
+async function loadAuthorsForRows(
+  client: PoolClient,
+  rows: Array<Record<string, unknown>>
+): Promise<ChatAuthor[]> {
+  const ids = [...new Set(rows.map((row) => String(row.author_id)))];
+  const byId = new Map<
+    string,
+    {
+      anonymous_handle: string | null;
+      avatar_key: string | null;
+      content_blocked: boolean;
+      org_name: string | null;
+    }
+  >();
+  if (ids.length > 0) {
+    const { rows: users } = await client.query(
+      `SELECT u.id, u.anonymous_handle, u.avatar_key, u.content_blocked, p.org_name
+       FROM users u
+       LEFT JOIN providers p ON p.user_id = u.id
+       WHERE u.id = ANY($1::uuid[])`,
+      [ids]
+    );
+    for (const user of users) {
+      byId.set(String(user.id), user);
+    }
+  }
+  return rows.map((row) => {
+    const user = byId.get(String(row.author_id));
+    const role = row.author_role === "provider" ? "provider" : "parent";
+    const handle = user?.anonymous_handle ?? "Parent";
+    return {
+      userId: String(row.author_id),
+      displayName: role === "provider" ? (user?.org_name ?? handle) : handle,
+      avatarKey: user?.avatar_key ?? null,
+      role,
+      isGuest: row.is_guest_author === true || row.author_was_guest === true,
+      suspended: user?.content_blocked === true,
+    };
+  });
+}
+
+async function loadCircleChatAccess(
+  client: PoolClient,
+  circleId: string,
+  userId: string
+): Promise<{
+  isMember: boolean;
+  circleType: string;
+  joinedAt: Date | null;
+  wide: boolean;
+} | null> {
+  const { rows } = await client.query(
+    `SELECT
+       EXISTS (
+         SELECT 1 FROM circle_members WHERE circle_id = $1 AND user_id = $2
+       ) AS is_member,
+       c.circle_type,
+       (
+         SELECT MAX(joined_at) FROM circle_membership_periods
+         WHERE circle_id = $1 AND user_id = $2 AND left_at IS NULL
+       ) AS joined_at
+     FROM circles c
+     WHERE c.id = $1`,
+    [circleId, userId]
+  );
+  if (!rows[0]) return null;
+  return {
+    isMember: rows[0].is_member === true,
+    circleType: String(rows[0].circle_type),
+    joinedAt: rows[0].joined_at ? new Date(rows[0].joined_at) : null,
+    wide: WIDE_CIRCLE_TYPES.has(String(rows[0].circle_type)),
+  };
+}
+
+async function blockedCounterpartIds(
+  client: PoolClient,
+  userId: string
+): Promise<Set<string>> {
+  const { rows } = await client.query(
+    `SELECT CASE WHEN blocker_id = $1 THEN blocked_id ELSE blocker_id END AS other_id
+     FROM user_blocks WHERE blocker_id = $1 OR blocked_id = $1`,
+    [userId]
+  );
+  return new Set(rows.map((row) => String(row.other_id)));
+}
+
+function applyChatPageFilters(
+  messages: CachedChatMessage[],
+  opts: {
+    blocked: Set<string>;
+    joinedAt?: Date | null;
+    wide?: boolean;
+    beforeSeq?: number;
+    afterSeq?: number;
+    limit: number;
+  }
+): CachedChatMessage[] {
+  let next = messages.filter(
+    (message) => !opts.blocked.has(message.author.userId)
+  );
+  if (opts.joinedAt) {
+    const joinedMs = opts.joinedAt.getTime();
+    next = next.filter((message) => {
+      if (new Date(message.createdAt).getTime() >= joinedMs) return true;
+      return opts.wide === true && message.threadOpen === true;
+    });
+  }
+  if (opts.afterSeq != null) {
+    return next.filter((message) => message.seq > opts.afterSeq!).slice(0, opts.limit);
+  }
+  if (opts.beforeSeq != null) {
+    next = next.filter((message) => message.seq < opts.beforeSeq!);
+  }
+  return next.slice(-opts.limit);
+}
+
+function mapCachedMessageRows(
+  rows: Array<Record<string, unknown>>,
+  authors: ChatAuthor[]
+): CachedChatMessage[] {
+  return rows.map((row, index) => ({
+    ...mapMessageRow(row, authors[index]),
+    threadOpen: row.thread_status === "open",
+  }));
+}
+
 export function mapMessageRow(
   row: Record<string, unknown>,
   author: ChatAuthor
@@ -316,7 +458,7 @@ export async function deleteCircleMessage(params: {
   circleId: string;
   messageId: string;
 }): Promise<
-  | { ok: true; storageKeys: string[] }
+  | { ok: true; storageKeys: string[]; threadId: string | null }
   | { error: string; status: number }
 > {
   const { rows } = await params.client.query(
@@ -357,7 +499,7 @@ export async function deleteCircleMessage(params: {
      WHERE root_message_id = $1 AND status = 'open'`,
     [params.messageId]
   );
-  return { ok: true, storageKeys };
+  return { ok: true, storageKeys, threadId: row.thread_id ? String(row.thread_id) : null };
 }
 
 export async function setMessageReaction(params: {
@@ -949,36 +1091,64 @@ export async function listLinearMessages(params: {
   | { messages: ChatMessageView[]; nextCursor: number | null }
   | { error: string; status: number }
 > {
-  const member = await isCircleMember(
+  const access = await loadCircleChatAccess(
     params.client,
     params.circleId,
     params.userId
   );
-  if (!member) return { error: "Not a member of this group", status: 403 };
+  if (!access?.isMember) return { error: "Not a member of this group", status: 403 };
 
+  const useCache = params.beforeSeq == null;
+  if (useCache) {
+    const cached = await readCachedLinearMessages(params.circleId);
+    if (cached && cached.length > 0) {
+      const maxSeq = cached.reduce((max, item) => Math.max(max, item.seq), 0);
+      const staleCatchUp =
+        params.afterSeq != null && params.afterSeq >= maxSeq;
+      if (!staleCatchUp) {
+        const blocked = await blockedCounterpartIds(
+          params.client,
+          params.userId
+        );
+        const messages = applyChatPageFilters(cached, {
+          blocked,
+          joinedAt: access.joinedAt,
+          wide: access.wide,
+          afterSeq: params.afterSeq,
+          limit: params.limit,
+        });
+        await attachReactions(params.client, messages, params.userId);
+        await attachAttachments(params.client, messages);
+        console.log("[chat.path=redis]", { surface: "linear" });
+        const nextCursor =
+          params.afterSeq == null && messages.length === params.limit
+            ? messages[0]?.seq ?? null
+            : null;
+        return { messages: toClientChatMessages(messages), nextCursor };
+      }
+    }
+  }
+
+  const fillCache =
+    params.beforeSeq == null && params.afterSeq == null;
   const filters = [`m.circle_id = $1`, `m.thread_id IS NULL`];
   const values: unknown[] = [params.circleId, params.userId];
-  // school_class/school: history from current join only.
-  // Wide groups: still-open thread roots remain visible (migrated topics
-  // are channel roots now; hiding them by joined_at made groups look empty).
-  filters.push(`(
-    m.created_at >= COALESCE((
-      SELECT MAX(joined_at) FROM circle_membership_periods
-      WHERE circle_id = $1 AND user_id = $2 AND left_at IS NULL
-    ), m.created_at)
-    OR (
-      EXISTS (
-        SELECT 1 FROM circles c
-        WHERE c.id = $1
-          AND c.circle_type IN ('class', 'locality', 'curriculum', 'community')
-      )
-      AND EXISTS (
-        SELECT 1 FROM circle_threads t
-        WHERE t.root_message_id = m.id
-          AND t.status = 'open'
-      )
-    )
-  )`);
+  if (!fillCache && access.joinedAt) {
+    values.push(access.joinedAt.toISOString());
+    const joinedIdx = values.length;
+    if (access.wide) {
+      filters.push(`(
+        m.created_at >= $${joinedIdx}::timestamptz
+        OR EXISTS (
+          SELECT 1 FROM circle_threads t
+          WHERE t.root_message_id = m.id
+            AND t.status = 'open'
+        )
+      )`);
+    } else {
+      filters.push(`m.created_at >= $${joinedIdx}::timestamptz`);
+    }
+  }
   if (params.beforeSeq != null) {
     values.push(params.beforeSeq);
     filters.push(`m.seq < $${values.length}`);
@@ -987,25 +1157,24 @@ export async function listLinearMessages(params: {
     values.push(params.afterSeq);
     filters.push(`m.seq > $${values.length}`);
   }
-  values.push(params.limit);
+  const fetchLimit = fillCache
+    ? Math.max(params.limit, CHAT_PAGE_MAX)
+    : params.limit;
+  values.push(fetchLimit);
+  const blockFilter = fillCache
+    ? ""
+    : `AND NOT EXISTS (
+         SELECT 1 FROM user_blocks ub
+         WHERE (ub.blocker_id = $2 AND ub.blocked_id = m.author_id)
+            OR (ub.blocker_id = m.author_id AND ub.blocked_id = $2)
+       )`;
   const { rows } = await params.client.query(
     `SELECT m.*,
             t.id AS side_thread_id,
+            t.status AS thread_status,
             COALESCE(t.reply_count, 0) AS reply_count,
-            (
-              SELECT LEFT(r.body, 80)
-              FROM circle_messages r
-              WHERE r.thread_id = t.id AND r.status = 'visible'
-              ORDER BY r.seq DESC
-              LIMIT 1
-            ) AS last_reply_preview,
-            (
-              SELECT r.id
-              FROM circle_messages r
-              WHERE r.thread_id = t.id AND r.status = 'visible'
-              ORDER BY r.seq DESC
-              LIMIT 1
-            ) AS last_reply_id,
+            last_reply.last_reply_preview,
+            last_reply.last_reply_id,
             EXISTS (
               SELECT 1
               FROM circle_thread_access_grants g
@@ -1016,32 +1185,23 @@ export async function listLinearMessages(params: {
      FROM circle_messages m
      LEFT JOIN circle_threads t
        ON t.root_message_id = m.id AND t.status <> 'deleted'
+     LEFT JOIN LATERAL (
+       SELECT LEFT(r.body, 80) AS last_reply_preview, r.id AS last_reply_id
+       FROM circle_messages r
+       WHERE r.thread_id = t.id AND r.status = 'visible'
+       ORDER BY r.seq DESC
+       LIMIT 1
+     ) last_reply ON true
      WHERE ${filters.join(" AND ")}
-       AND NOT EXISTS (
-         SELECT 1 FROM user_blocks ub
-         WHERE (ub.blocker_id = $2 AND ub.blocked_id = m.author_id)
-            OR (ub.blocker_id = m.author_id AND ub.blocked_id = $2)
-       )
+       ${blockFilter}
      ORDER BY m.seq ${params.afterSeq != null ? "ASC" : "DESC"}
      LIMIT $${values.length}`,
     values
   );
   const ordered = params.afterSeq != null ? rows : [...rows].reverse();
-  const messages: ChatMessageView[] = [];
-  for (const row of ordered) {
-    const author = await authorView(
-      params.client,
-      String(row.author_id),
-      row.author_role,
-      row.is_guest_author === true
-    );
-    messages.push(mapMessageRow(row, author));
-  }
-  await attachReactions(params.client, messages, params.userId);
-  await attachAttachments(params.client, messages);
+  const authors = await loadAuthorsForRows(params.client, ordered);
+  const allMessages = mapCachedMessageRows(ordered, authors);
 
-  // A last reply that was attachment-only has no body, which would render as a
-  // blank "N replies" preview.
   const emptyReplyIds = ordered
     .filter((row) => row.last_reply_id && !String(row.last_reply_preview ?? "").trim())
     .map((row) => String(row.last_reply_id));
@@ -1052,16 +1212,38 @@ export async function listLinearMessages(params: {
     for (const [index, row] of ordered.entries()) {
       if (!row.last_reply_id) continue;
       if (String(row.last_reply_preview ?? "").trim()) continue;
-      messages[index].lastReplyPreview =
+      allMessages[index].lastReplyPreview =
         labels.get(String(row.last_reply_id)) ?? null;
     }
   }
 
+  if (fillCache) {
+    await writeCachedLinearMessages(params.circleId, allMessages);
+  }
+
+  let messages = allMessages;
+  if (fillCache) {
+    const blocked = await blockedCounterpartIds(params.client, params.userId);
+    messages = applyChatPageFilters(allMessages, {
+      blocked,
+      joinedAt: access.joinedAt,
+      wide: access.wide,
+      limit: params.limit,
+    });
+  } else {
+    messages =
+      params.afterSeq != null
+        ? allMessages.slice(0, params.limit)
+        : allMessages.slice(-params.limit);
+  }
+  await attachReactions(params.client, messages, params.userId);
+  await attachAttachments(params.client, messages);
+  console.log("[chat.path=sql]", { surface: "linear" });
   const nextCursor =
-    !params.afterSeq && rows.length === params.limit
-      ? Number(rows[rows.length - 1].seq)
+    !params.afterSeq && messages.length === params.limit
+      ? messages[0]?.seq ?? null
       : null;
-  return { messages, nextCursor };
+  return { messages: toClientChatMessages(messages), nextCursor };
 }
 
 export async function listThreadMessages(params: {
@@ -1083,6 +1265,38 @@ export async function listThreadMessages(params: {
   if (!access || !access.canRead) {
     return { error: "Thread not found", status: 404 };
   }
+
+  const useCache = params.beforeSeq == null;
+  if (useCache) {
+    const cached = await readCachedThreadMessages(params.threadId);
+    if (cached && cached.length > 0) {
+      const maxSeq = cached.reduce((max, item) => Math.max(max, item.seq), 0);
+      const staleCatchUp =
+        params.afterSeq != null && params.afterSeq >= maxSeq;
+      if (!staleCatchUp) {
+        const blocked = await blockedCounterpartIds(
+          params.client,
+          params.userId
+        );
+        const messages = applyChatPageFilters(cached, {
+          blocked,
+          afterSeq: params.afterSeq,
+          limit: params.limit,
+        });
+        await attachReactions(params.client, messages, params.userId);
+        await attachAttachments(params.client, messages);
+        console.log("[chat.path=redis]", { surface: "thread" });
+        const nextCursor =
+          params.afterSeq == null && messages.length === params.limit
+            ? messages[0]?.seq ?? null
+            : null;
+        return { messages: toClientChatMessages(messages), nextCursor };
+      }
+    }
+  }
+
+  const fillCache =
+    params.beforeSeq == null && params.afterSeq == null;
   const filters = [`m.thread_id = $1`];
   const values: unknown[] = [params.threadId, params.userId];
   if (params.beforeSeq != null) {
@@ -1093,38 +1307,53 @@ export async function listThreadMessages(params: {
     values.push(params.afterSeq);
     filters.push(`m.seq > $${values.length}`);
   }
-  values.push(params.limit);
+  const fetchLimit = fillCache
+    ? Math.max(params.limit, CHAT_PAGE_MAX)
+    : params.limit;
+  values.push(fetchLimit);
+  const blockFilter = fillCache
+    ? ""
+    : `AND NOT EXISTS (
+         SELECT 1 FROM user_blocks ub
+         WHERE (ub.blocker_id = $2 AND ub.blocked_id = m.author_id)
+            OR (ub.blocker_id = m.author_id AND ub.blocked_id = $2)
+       )`;
   const { rows } = await params.client.query(
     `SELECT m.*
      FROM circle_messages m
      WHERE ${filters.join(" AND ")}
-       AND NOT EXISTS (
-         SELECT 1 FROM user_blocks ub
-         WHERE (ub.blocker_id = $2 AND ub.blocked_id = m.author_id)
-            OR (ub.blocker_id = m.author_id AND ub.blocked_id = $2)
-       )
+       ${blockFilter}
      ORDER BY m.seq ${params.afterSeq != null ? "ASC" : "DESC"}
      LIMIT $${values.length}`,
     values
   );
   const ordered = params.afterSeq != null ? rows : [...rows].reverse();
-  const messages: ChatMessageView[] = [];
-  for (const row of ordered) {
-    const author = await authorView(
-      params.client,
-      String(row.author_id),
-      row.author_role,
-      row.author_was_guest === true
-    );
-    messages.push(mapMessageRow(row, author));
+  const authors = await loadAuthorsForRows(params.client, ordered);
+  const allMessages = mapCachedMessageRows(ordered, authors);
+  if (fillCache) {
+    await writeCachedThreadMessages(params.threadId, allMessages);
+  }
+  let messages = allMessages;
+  if (fillCache) {
+    const blocked = await blockedCounterpartIds(params.client, params.userId);
+    messages = applyChatPageFilters(allMessages, {
+      blocked,
+      limit: params.limit,
+    });
+  } else {
+    messages =
+      params.afterSeq != null
+        ? allMessages.slice(0, params.limit)
+        : allMessages.slice(-params.limit);
   }
   await attachReactions(params.client, messages, params.userId);
   await attachAttachments(params.client, messages);
+  console.log("[chat.path=sql]", { surface: "thread" });
   const nextCursor =
-    !params.afterSeq && rows.length === params.limit
-      ? Number(rows[rows.length - 1].seq)
+    !params.afterSeq && messages.length === params.limit
+      ? messages[0]?.seq ?? null
       : null;
-  return { messages, nextCursor };
+  return { messages: toClientChatMessages(messages), nextCursor };
 }
 
 export async function listInbox(client: PoolClient, userId: string) {

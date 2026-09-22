@@ -7,6 +7,7 @@ export const PAGE_CACHE_TTL = {
   discover: Number(process.env.DISCOVER_CACHE_TTL_SECONDS ?? 90),
   pathTree: Number(process.env.PATH_TREE_CACHE_TTL_SECONDS ?? 1800),
   curricula: Number(process.env.CURRICULA_CACHE_TTL_SECONDS ?? 86400),
+  chat: Number(process.env.CHAT_PAGE_CACHE_TTL_SECONDS ?? 3600),
 } as const;
 
 export function feedCacheKey(params: {
@@ -78,6 +79,27 @@ export function pathTreeKey(params: {
 
 export function curriculaPageKey(): string {
   return "page:curricula:v1";
+}
+
+export function chatLinearPageKey(circleId: string): string {
+  return `chat:linear:v1:${circleId}`;
+}
+
+export function chatThreadPageKey(threadId: string): string {
+  return `chat:thread:v1:${threadId}`;
+}
+
+export async function invalidateChatMessagePages(params: {
+  circleIds?: string[];
+  threadIds?: Array<string | null | undefined>;
+}): Promise<void> {
+  const keys = [
+    ...(params.circleIds ?? []).map(chatLinearPageKey),
+    ...[...new Set((params.threadIds ?? []).filter(Boolean) as string[])].map(
+      chatThreadPageKey
+    ),
+  ];
+  await deleteCachedKeys([...new Set(keys)]);
 }
 
 // A cache outage must never fail a request, so every helper degrades to the

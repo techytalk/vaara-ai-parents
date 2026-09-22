@@ -1,4 +1,4 @@
-import { publishThreadEvent, publishUserInboxEvent } from "@vaara/redis";
+import { invalidateChatMessagePages, publishThreadEvent, publishUserInboxEvent } from "@vaara/redis";
 import { Hono } from "hono";
 import { pool } from "@vaara/db";
 import { randomUUID } from "crypto";
@@ -9,6 +9,10 @@ import { isBlocked } from "../lib/author.js";
 import { parseReportReason } from "../lib/report-reasons.js";
 import { userHasRole } from "../lib/user-roles.js";
 import { parseChatAttachments } from "../lib/chat-attachments.js";
+import {
+  patchCachedLinearSideThread,
+  upsertCachedChatMessage,
+} from "../lib/chat-page-cache.js";
 import { MODERATED_MESSAGE_COPY } from "../lib/chat-copy.js";
 import {
   createChatMediaUrl,
@@ -280,6 +284,7 @@ export function createCircleChatRoutes() {
         return c.json({ error: result.error }, result.status as 400 | 403 | 404 | 429);
       }
       await client.query("COMMIT");
+      await upsertCachedChatMessage(result.message);
       await publishChatNudge({
         circleId,
         messageId: result.message.id,
@@ -318,6 +323,7 @@ export function createCircleChatRoutes() {
       if ("error" in result) {
         return c.json({ error: result.error }, result.status as 400 | 403 | 404);
       }
+      await upsertCachedChatMessage(result.message);
       return c.json(result.message);
     } finally {
       client.release();
@@ -342,6 +348,10 @@ export function createCircleChatRoutes() {
         return c.json({ error: result.error }, result.status as 400 | 403 | 404);
       }
       await client.query("COMMIT");
+      await invalidateChatMessagePages({
+        circleIds: [circleId],
+        threadIds: [result.threadId],
+      });
       if (result.storageKeys.length > 0) {
         try {
           await deleteStoredMedia(result.storageKeys);
@@ -483,6 +493,11 @@ export function createCircleChatRoutes() {
         return c.json({ error: result.error }, result.status as 400 | 403 | 404);
       }
       await client.query("COMMIT");
+      await patchCachedLinearSideThread({
+        circleId,
+        messageId,
+        threadId: result.threadId,
+      });
       return c.json(result, result.created ? 201 : 200);
     } catch (error) {
       await client.query("ROLLBACK");
@@ -633,6 +648,7 @@ export function createCircleChatRoutes() {
         return c.json({ error: result.error }, result.status as 400 | 403 | 404 | 429);
       }
       await client.query("COMMIT");
+      await invalidateChatMessagePages({ circleIds: [circleId] });
       await publishChatNudge({
         circleId,
         threadId: String(result.thread.id),
@@ -813,6 +829,7 @@ export function createThreadRoutes() {
         return c.json({ error: result.error }, result.status as 400 | 403 | 404 | 429);
       }
       await client.query("COMMIT");
+      await upsertCachedChatMessage(result.message);
       await publishChatNudge({
         circleId: access.circleId,
         threadId,

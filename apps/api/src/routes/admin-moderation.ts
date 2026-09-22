@@ -1,5 +1,6 @@
 import type { Hono } from "hono";
 import { pool } from "@vaara/db";
+import { invalidateChatMessagePages } from "@vaara/redis";
 import { publishChatNudge } from "../services/chat.js";
 import {
   getModerationThread,
@@ -162,6 +163,10 @@ export function mountAdminModeration(app: Hono, requireAdminAuth: AdminAuth) {
         includeReplies: body.includeReplies === true,
       });
       await client.query("COMMIT");
+      await invalidateChatMessagePages({
+        circleIds: result.circleIds,
+        threadIds: result.nudges.map((nudge) => nudge.threadId),
+      });
       await publishNudges(result.nudges);
       return c.json({
         ok: true,
@@ -197,6 +202,10 @@ export function mountAdminModeration(app: Hono, requireAdminAuth: AdminAuth) {
         note: body.note,
       });
       await client.query("COMMIT");
+      await invalidateChatMessagePages({
+        circleIds: result.circleIds,
+        threadIds: result.nudges.map((nudge) => nudge.threadId),
+      });
       await publishNudges(result.nudges);
       return c.json({
         ok: true,

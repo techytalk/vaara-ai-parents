@@ -12,12 +12,15 @@ export {
   userInboxChannel,
 } from "./channels.js";
 export {
+  chatLinearPageKey,
+  chatThreadPageKey,
   curriculaPageKey,
   deleteCachedKeys,
   discoverPageKey,
   familyPageKey,
   feedCacheKey,
   getCachedJson,
+  invalidateChatMessagePages,
   invalidateCircleFeedCache,
   invalidateDiscoverForPins,
   invalidateFamilyPage,

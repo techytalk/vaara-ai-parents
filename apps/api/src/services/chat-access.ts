@@ -1,5 +1,4 @@
 import type { PoolClient } from "pg";
-import { isBlocked } from "../lib/author.js";
 
 export type ThreadGrantRole =
   | "guest_author"
@@ -133,11 +132,32 @@ export async function loadThreadAccess(
   userId: string
 ): Promise<(ThreadAccess & { circleId: string; status: string; authorId: string }) | null> {
   const thread = await client.query(
-    `SELECT t.id, t.circle_id, t.status, t.author_id, t.home_visibility, c.circle_type
+    `SELECT
+       t.id, t.circle_id, t.status, t.author_id, t.home_visibility, c.circle_type,
+       EXISTS (
+         SELECT 1 FROM circle_members cm
+         WHERE cm.circle_id = t.circle_id AND cm.user_id = $2
+       ) AS is_member,
+       EXISTS (
+         SELECT 1 FROM user_blocks ub
+         WHERE (ub.blocker_id = $2 AND ub.blocked_id = t.author_id)
+            OR (ub.blocker_id = t.author_id AND ub.blocked_id = $2)
+       ) AS blocked,
+       g.grant_role,
+       g.can_reply
      FROM circle_threads t
      JOIN circles c ON c.id = t.circle_id
+     LEFT JOIN LATERAL (
+       SELECT grant_role, can_reply
+       FROM circle_thread_access_grants
+       WHERE thread_id = t.id AND user_id = $2
+         AND revoked_at IS NULL
+         AND (expires_at IS NULL OR expires_at > now())
+       ORDER BY created_at DESC
+       LIMIT 1
+     ) g ON true
      WHERE t.id = $1`,
-    [threadId]
+    [threadId, userId]
   );
   if (thread.rows.length === 0) return null;
 
@@ -145,21 +165,10 @@ export async function loadThreadAccess(
   const status = String(thread.rows[0].status);
   const authorId = String(thread.rows[0].author_id);
   const homeVisibility = String(thread.rows[0].home_visibility);
-  const blocked = await isBlocked(client, userId, authorId);
-
-  const member = await isCircleMember(client, circleId, userId);
-  const grant = await client.query(
-    `SELECT grant_role, can_reply
-     FROM circle_thread_access_grants
-     WHERE thread_id = $1 AND user_id = $2
-       AND revoked_at IS NULL
-       AND (expires_at IS NULL OR expires_at > now())
-     ORDER BY created_at DESC
-     LIMIT 1`,
-    [threadId, userId]
-  );
-  const grantRole = (grant.rows[0]?.grant_role ?? null) as ThreadGrantRole | null;
-  const canReplyGrant = grant.rows[0]?.can_reply !== false;
+  const blocked = thread.rows[0].blocked === true;
+  const member = thread.rows[0].is_member === true;
+  const grantRole = (thread.rows[0].grant_role ?? null) as ThreadGrantRole | null;
+  const canReplyGrant = thread.rows[0].can_reply !== false;
 
   let discovery = false;
   if (!member && grantRole == null && status === "open" && homeVisibility === "discoverable") {

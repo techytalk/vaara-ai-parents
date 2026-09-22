@@ -181,12 +181,13 @@ export async function listCircleModerationMessages(
     values.push(params.authorId);
     filters.push(`(
       m.author_id = $${values.length}
-      OR EXISTS (
-        SELECT 1
+      OR m.id IN (
+        SELECT t.root_message_id
         FROM circle_threads t
         JOIN circle_messages r ON r.thread_id = t.id
-        WHERE t.root_message_id = m.id
+        WHERE t.circle_id = $1
           AND r.author_id = $${values.length}
+          AND t.root_message_id IS NOT NULL
       )
     )`);
   }
@@ -207,12 +208,8 @@ export async function listCircleModerationMessages(
        u.id AS author_id,
        u.anonymous_handle,
        u.email,
-       COALESCE((
-         SELECT COUNT(*)::int FROM circle_messages r WHERE r.thread_id = t.id
-       ), 0) AS reply_count,
-       COALESCE((
-         SELECT COUNT(*)::int FROM circle_message_media mm WHERE mm.message_id = m.id
-       ), 0) AS attachment_count
+       COALESCE(t.reply_count, 0) AS reply_count,
+       0 AS attachment_count
      FROM circle_messages m
      JOIN users u ON u.id = m.author_id
      LEFT JOIN circle_threads t
@@ -222,6 +219,42 @@ export async function listCircleModerationMessages(
      LIMIT $${values.length}`,
     values
   );
+  const messageIds = rows.map((row) => String(row.id));
+  if (messageIds.length > 0) {
+    const threadIds = rows
+      .map((row) => (row.side_thread_id ? String(row.side_thread_id) : null))
+      .filter((id): id is string => Boolean(id));
+    const [media, replies] = await Promise.all([
+      client.query(
+        `SELECT message_id, COUNT(*)::int AS attachment_count
+         FROM circle_message_media
+         WHERE message_id = ANY($1::uuid[])
+         GROUP BY message_id`,
+        [messageIds]
+      ),
+      threadIds.length > 0
+        ? client.query(
+            `SELECT thread_id, COUNT(*)::int AS reply_count
+             FROM circle_messages
+             WHERE thread_id = ANY($1::uuid[])
+             GROUP BY thread_id`,
+            [threadIds]
+          )
+        : Promise.resolve({ rows: [] as Array<{ thread_id: string; reply_count: number }> }),
+    ]);
+    const mediaCounts = new Map(
+      media.rows.map((row) => [String(row.message_id), Number(row.attachment_count)])
+    );
+    const replyCounts = new Map(
+      replies.rows.map((row) => [String(row.thread_id), Number(row.reply_count)])
+    );
+    for (const row of rows) {
+      row.attachment_count = mediaCounts.get(String(row.id)) ?? 0;
+      row.reply_count = row.side_thread_id
+        ? (replyCounts.get(String(row.side_thread_id)) ?? 0)
+        : 0;
+    }
+  }
   const nextCursor =
     rows.length === params.limit ? Number(rows[rows.length - 1].seq) : null;
   return { messages: rows, nextCursor };
@@ -266,9 +299,7 @@ export async function listMessageReplies(
        u.id AS author_id,
        u.anonymous_handle,
        u.email,
-       COALESCE((
-         SELECT COUNT(*)::int FROM circle_message_media mm WHERE mm.message_id = m.id
-       ), 0) AS attachment_count
+       0 AS attachment_count
      FROM circle_messages m
      JOIN users u ON u.id = m.author_id
      JOIN circle_threads t ON t.id = m.thread_id
@@ -276,6 +307,22 @@ export async function listMessageReplies(
      ORDER BY m.seq ASC`,
     [messageId]
   );
+  const replyIds = rows.map((row) => String(row.id));
+  if (replyIds.length > 0) {
+    const media = await client.query(
+      `SELECT message_id, COUNT(*)::int AS attachment_count
+       FROM circle_message_media
+       WHERE message_id = ANY($1::uuid[])
+       GROUP BY message_id`,
+      [replyIds]
+    );
+    const counts = new Map(
+      media.rows.map((row) => [String(row.message_id), Number(row.attachment_count)])
+    );
+    for (const row of rows) {
+      row.attachment_count = counts.get(String(row.id)) ?? 0;
+    }
+  }
   return { root: root.rows[0], replies: rows };
 }
 
