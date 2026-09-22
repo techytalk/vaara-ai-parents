@@ -4,6 +4,7 @@ import { normalizeCommunityKey } from "../lib/community.js";
 import { formatSchoolLabel } from "../lib/school.js";
 import {
   evaluateOnboardingComplete,
+  listUserCircles,
   syncCircleMembership,
 } from "../services/circle-sync.js";
 import { togglePostHelpful } from "../services/feed.js";
@@ -35,6 +36,13 @@ import {
   recordOnboardingGeoLocation,
   recordOnboardingGeoSchool,
 } from "../lib/onboarding-geo.js";
+import {
+  familyPageKey,
+  getCachedJson,
+  invalidateFamilyPage,
+  PAGE_CACHE_TTL,
+  setCachedJson,
+} from "@vaara/redis";
 
 const CHILD_SELECT = `
   ch.id, ch.nickname, ch.gender, ch.date_of_birth, ch.curriculum_id, ch.grade_id, ch.school_id,
@@ -122,6 +130,31 @@ async function fetchChildById(
   return rows[0] ? mapChild(rows[0]) : null;
 }
 
+function mapLocationRow(loc: Record<string, unknown>) {
+  return {
+    countryCode: (loc.country_code as string | null) ?? "IN",
+    pinCode: loc.pin_code,
+    postalCode: loc.pin_code,
+    locality: loc.locality,
+    city: loc.city,
+    state: loc.state,
+    communityName: loc.community_name,
+    communityKey: loc.community_key,
+  };
+}
+
+function mapMeStats(row?: {
+  circle_count?: number;
+  saved_post_count?: number;
+  helpful_received_count?: number;
+}) {
+  return {
+    circleCount: row?.circle_count ?? 0,
+    savedPostCount: row?.saved_post_count ?? 0,
+    helpfulReceivedCount: row?.helpful_received_count ?? 0,
+  };
+}
+
 async function fetchAuthUserById(
   client: import("pg").PoolClient,
   userId: string
@@ -149,47 +182,24 @@ async function fetchUserCircles(
   client: import("pg").PoolClient,
   userId: string
 ) {
-  const { rows } = await client.query(
-    `SELECT c.id, c.circle_type, c.key, c.display_name, c.metadata,
-            COUNT(cm_all.user_id)::int AS member_count,
-            COALESCE((
-              SELECT COUNT(*)::int
-              FROM circle_posts p
-              JOIN circle_post_targets pct
-                ON pct.post_id = p.id AND pct.circle_id = c.id
-              WHERE p.created_at > COALESCE(cm.last_read_at, cm.joined_at)
-                AND p.author_id != $1
-            ), 0) AS new_post_count
-     FROM circle_members cm
-     JOIN circles c ON c.id = cm.circle_id
-     JOIN circle_members cm_all ON cm_all.circle_id = c.id
-     WHERE cm.user_id = $1
-     GROUP BY c.id, c.circle_type, c.key, c.display_name, c.metadata,
-              cm.last_read_at, cm.joined_at
-     ORDER BY
-       CASE c.circle_type
-         WHEN 'school_class' THEN 1
-         WHEN 'school_age' THEN 1
-         WHEN 'class' THEN 2
-         WHEN 'school' THEN 3
-         WHEN 'age_locality' THEN 4
-         WHEN 'community' THEN 5
-         WHEN 'locality' THEN 6
-         WHEN 'curriculum' THEN 7
-       END,
-       c.display_name`,
-    [userId]
-  );
+  return listUserCircles(client, userId);
+}
 
-  return rows.map((row) => ({
-    id: row.id,
-    circleType: row.circle_type,
-    key: row.key,
-    displayName: row.display_name,
-    metadata: row.metadata,
-    memberCount: row.member_count,
-    newPostCount: row.new_post_count,
-  }));
+type FamilyPageCache = {
+  user: NonNullable<Awaited<ReturnType<typeof fetchAuthUserById>>> & {
+    roles: Awaited<ReturnType<typeof listUserRoles>>;
+  };
+  children: ReturnType<typeof mapChild>[];
+  location: ReturnType<typeof mapLocationRow> | null;
+  stats: ReturnType<typeof mapMeStats>;
+};
+
+async function readFamilyPage(userId: string) {
+  return getCachedJson<FamilyPageCache>(familyPageKey(userId));
+}
+
+async function writeFamilyPage(userId: string, value: FamilyPageCache) {
+  await setCachedJson(familyPageKey(userId), value, PAGE_CACHE_TTL.family);
 }
 
 export function createMeRoutes() {
@@ -214,12 +224,80 @@ export function createMeRoutes() {
     }
   });
 
+  app.get("/bootstrap", async (c) => {
+    const jwtUser = c.get("user");
+    const userId = jwtUser.sub;
+    const cached = await readFamilyPage(userId);
+    if (cached?.user && cached.children && cached.stats) {
+      return c.json(cached);
+    }
+    const client = await pool.connect();
+    try {
+      const user = await fetchAuthUserById(client, userId);
+      if (!user) {
+        return c.json({ error: "User not found" }, 404);
+      }
+
+      const [roles, childrenResult, locationResult, statsResult] =
+        await Promise.all([
+          listUserRoles(client, String(user.id)),
+          client.query(
+            `SELECT ${CHILD_SELECT}
+             FROM children ch
+             LEFT JOIN curricula cur ON cur.id = ch.curriculum_id
+             LEFT JOIN curriculum_grades g ON g.id = ch.grade_id
+             JOIN schools s ON s.id = ch.school_id
+             WHERE ch.user_id = $1
+             ORDER BY ch.created_at`,
+            [userId]
+          ),
+          client.query(
+            `SELECT country_code, pin_code, locality, city, state, community_name, community_key
+             FROM user_locations WHERE user_id = $1`,
+            [userId]
+          ),
+          client.query<{
+            circle_count: number;
+            saved_post_count: number;
+            helpful_received_count: number;
+          }>(
+            `SELECT
+               (SELECT COUNT(*)::int FROM circle_members WHERE user_id = $1) AS circle_count,
+               (SELECT COUNT(*)::int FROM saved_items
+                WHERE user_id = $1 AND item_type = 'post') AS saved_post_count,
+               (SELECT COUNT(*)::int
+                FROM post_helpful_marks phm
+                JOIN circle_posts cp ON cp.id = phm.post_id
+                WHERE cp.author_id = $1 AND phm.user_id <> $1) AS helpful_received_count`,
+            [userId]
+          ),
+        ]);
+
+      const payload = {
+        user: {
+          ...user,
+          roles,
+        },
+        children: childrenResult.rows.map(mapChild),
+        location: locationResult.rows[0]
+          ? mapLocationRow(locationResult.rows[0])
+          : null,
+        stats: mapMeStats(statsResult.rows[0]),
+      };
+      await writeFamilyPage(userId, payload);
+      return c.json(payload);
+    } finally {
+      client.release();
+    }
+  });
+
   app.delete("/", async (c) => {
     const userId = c.get("user").sub;
     const deleted = await deleteUserAccount(userId);
     if (!deleted) {
       return c.json({ error: "User not found" }, 404);
     }
+    await invalidateFamilyPage(userId);
     return c.json({ ok: true });
   });
 
@@ -244,6 +322,7 @@ export function createMeRoutes() {
       if (rows.length === 0) {
         return c.json({ error: "User not found" }, 404);
       }
+      await invalidateFamilyPage(userId);
       return c.json({
         avatarKey: resolveAvatarKey(
           rows[0].avatar_key,
@@ -257,6 +336,10 @@ export function createMeRoutes() {
 
   app.get("/children", async (c) => {
     const userId = c.get("user").sub;
+    const cached = await readFamilyPage(userId);
+    if (cached && Array.isArray(cached.children)) {
+      return c.json(cached.children);
+    }
     const client = await pool.connect();
     try {
       const { rows } = await client.query(
@@ -461,6 +544,7 @@ export function createMeRoutes() {
       }
 
       await client.query("COMMIT");
+      await invalidateFamilyPage(userId);
       return c.json(payload, 201);
     } catch (err) {
       await client.query("ROLLBACK");
@@ -688,6 +772,7 @@ export function createMeRoutes() {
       }
 
       await client.query("COMMIT");
+      await invalidateFamilyPage(userId);
 
       const child = await fetchChildById(client, childId);
       return c.json(child);
@@ -720,6 +805,7 @@ export function createMeRoutes() {
         [userId, complete]
       );
       await client.query("COMMIT");
+      await invalidateFamilyPage(userId);
       return c.json({ ok: true });
     } catch (err) {
       await client.query("ROLLBACK");
@@ -731,6 +817,10 @@ export function createMeRoutes() {
 
   app.get("/location", async (c) => {
     const userId = c.get("user").sub;
+    const cached = await readFamilyPage(userId);
+    if (cached && "location" in cached) {
+      return c.json(cached.location);
+    }
     const client = await pool.connect();
     try {
       const { rows } = await client.query(
@@ -742,16 +832,7 @@ export function createMeRoutes() {
         return c.json(null);
       }
       const loc = rows[0];
-      return c.json({
-        countryCode: loc.country_code ?? "IN",
-        pinCode: loc.pin_code,
-        postalCode: loc.pin_code,
-        locality: loc.locality,
-        city: loc.city,
-        state: loc.state,
-        communityName: loc.community_name,
-        communityKey: loc.community_key,
-      });
+      return c.json(mapLocationRow(loc));
     } finally {
       client.release();
     }
@@ -852,6 +933,7 @@ export function createMeRoutes() {
       );
 
       await client.query("COMMIT");
+      await invalidateFamilyPage(userId);
 
       return c.json({
         countryCode,
@@ -894,6 +976,10 @@ export function createMeRoutes() {
 
   app.get("/stats", async (c) => {
     const userId = c.get("user").sub;
+    const cached = await readFamilyPage(userId);
+    if (cached?.stats) {
+      return c.json(cached.stats);
+    }
     const client = await pool.connect();
     try {
       const { rows } = await client.query<{
@@ -912,11 +998,7 @@ export function createMeRoutes() {
         [userId]
       );
       const row = rows[0];
-      return c.json({
-        circleCount: row?.circle_count ?? 0,
-        savedPostCount: row?.saved_post_count ?? 0,
-        helpfulReceivedCount: row?.helpful_received_count ?? 0,
-      });
+      return c.json(mapMeStats(row));
     } finally {
       client.release();
     }

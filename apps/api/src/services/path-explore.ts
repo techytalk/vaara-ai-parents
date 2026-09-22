@@ -1,6 +1,5 @@
 import type { PoolClient } from "pg";
 import { createThread, publishChatNudge } from "./chat.js";
-import { syncCircleMembership } from "./circle-sync.js";
 
 export type ExploreNode = {
   id: string;
@@ -144,7 +143,6 @@ export async function findCurriculumCircle(
   userId: string,
   curriculumCode: string
 ): Promise<{ id: string; displayName: string } | null> {
-  await syncCircleMembership(client, userId);
   const { rows } = await client.query(
     `SELECT c.id, c.display_name
      FROM circles c

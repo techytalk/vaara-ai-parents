@@ -9,7 +9,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
-import { api, type Child, type Curriculum, type School } from "@/lib/api";
+import { api, type Curriculum, type School } from "@/lib/api";
 import { trackEvent } from "@/lib/analytics";
 import { invalidateFamilyMeta } from "@/lib/authenticated-state";
 import { getToken, saveSession } from "@/lib/session";
@@ -18,6 +18,7 @@ import { ChildFormFields } from "@/components/onboarding/ChildFormFields";
 import { sortCurricula } from "@/constants/onboarding";
 import { toIsoDateOnly } from "@/lib/dates";
 import { colors, PrimaryButton, useOnboardingContentStyle } from "@/components/onboarding/ui";
+import { useChildren, useLocation } from "@/hooks/useSessionQueries";
 
 function leaveAddChildScreen(router: ReturnType<typeof useRouter>) {
   if (router.canGoBack()) {
@@ -34,7 +35,6 @@ export default function AddChildScreen() {
   const fromPrompt = from === "prompt";
   const [token, setToken] = useState<string | null>(null);
   const [curricula, setCurricula] = useState<Curriculum[]>([]);
-  const [existingCount, setExistingCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,6 +42,9 @@ export default function AddChildScreen() {
   const [defaultPin, setDefaultPin] = useState("");
   const [defaultState, setDefaultState] = useState("");
   const contentStyle = useOnboardingContentStyle();
+  const locationQuery = useLocation();
+  const childrenQuery = useChildren();
+  const existingCount = childrenQuery.data?.length ?? 0;
 
   const [nickname, setNickname] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState<Date | null>(null);
@@ -67,33 +70,38 @@ export default function AddChildScreen() {
   }, [navigation, router]);
 
   useEffect(() => {
+    let cancelled = false;
     getToken().then(async (t) => {
       if (!t) {
         router.replace("/(auth)/login");
         return;
       }
+      if (cancelled) return;
       setToken(t);
       try {
-        const [list, loc, kids] = await Promise.all([
-          getCurriculaCached(),
-          api.getLocation(t),
-          api.getChildren(t).catch(() => [] as Child[]),
-        ]);
-        const sorted = sortCurricula(list);
-        setCurricula(sorted);
-        setExistingCount(kids.length);
-        if (loc) {
-          setDefaultCity(loc.city ?? "");
-          setDefaultPin(loc.pinCode ?? "");
-          setDefaultState(loc.state ?? "");
-        }
+        const list = await getCurriculaCached();
+        if (cancelled) return;
+        setCurricula(sortCurricula(list));
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to load");
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : "Failed to load");
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     });
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
+
+  useEffect(() => {
+    const loc = locationQuery.data;
+    if (!loc) return;
+    setDefaultCity(loc.city ?? "");
+    setDefaultPin(loc.pinCode ?? "");
+    setDefaultState(loc.state ?? "");
+  }, [locationQuery.data]);
 
   async function onSave() {
     if (!token || !curriculumId || !gradeId || !selectedSchool || !gender) return;

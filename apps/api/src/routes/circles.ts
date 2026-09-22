@@ -50,7 +50,10 @@ import {
   type PollView,
 } from "../lib/polls.js";
 import { applyDocumentReplace, applyMediaReplace, sameStringList } from "../lib/post-update.js";
-import { syncCircleMembership } from "../services/circle-sync.js";
+import {
+  listUserCircles,
+  syncCircleMembership,
+} from "../services/circle-sync.js";
 import { loadCircleFeedResolved } from "../services/feed-timeline.js";
 import { dispatchPostCreated, dispatchMessageCreated } from "../lib/async-events.js";
 import {
@@ -141,50 +144,9 @@ export function createCirclesRoutes() {
     try {
       await client.query("BEGIN");
       await syncCircleMembership(client, userId);
-      const { rows } = await client.query(
-        `SELECT c.id, c.circle_type, c.key, c.display_name, c.metadata,
-                COUNT(cm_all.user_id)::int AS member_count,
-                COALESCE((
-                  SELECT COUNT(*)::int
-                  FROM circle_posts p
-                  JOIN circle_post_targets pct
-                    ON pct.post_id = p.id AND pct.circle_id = c.id
-                  WHERE p.created_at > COALESCE(cm.last_read_at, cm.joined_at)
-                    AND p.author_id != $1
-                ), 0) AS new_post_count
-         FROM circle_members cm
-         JOIN circles c ON c.id = cm.circle_id
-         JOIN circle_members cm_all ON cm_all.circle_id = c.id
-         WHERE cm.user_id = $1
-         GROUP BY c.id, c.circle_type, c.key, c.display_name, c.metadata,
-                  cm.last_read_at, cm.joined_at
-         ORDER BY
-           CASE c.circle_type
-             WHEN 'school_class' THEN 1
-             WHEN 'school_age' THEN 1
-             WHEN 'class' THEN 2
-             WHEN 'school' THEN 3
-             WHEN 'age_locality' THEN 4
-             WHEN 'community' THEN 5
-             WHEN 'locality' THEN 6
-             WHEN 'curriculum' THEN 7
-           END,
-           c.display_name`,
-        [userId]
-      );
+      const rows = await listUserCircles(client, userId);
       await client.query("COMMIT");
-
-      return c.json(
-        rows.map((row) => ({
-          id: row.id,
-          circleType: row.circle_type,
-          key: row.key,
-          displayName: row.display_name,
-          metadata: row.metadata,
-          memberCount: row.member_count,
-          newPostCount: row.new_post_count,
-        }))
-      );
+      return c.json(rows);
     } catch (e) {
       await client.query("ROLLBACK");
       throw e;

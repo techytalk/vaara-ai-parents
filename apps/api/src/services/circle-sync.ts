@@ -366,6 +366,60 @@ export async function syncCircleMembership(
   }
 }
 
+export type UserCircleSummary = {
+  id: string;
+  circleType: string;
+  key: string;
+  displayName: string;
+  metadata: unknown;
+  memberCount: number;
+  newPostCount: number;
+};
+
+export async function listUserCircles(
+  client: PoolClient,
+  userId: string
+): Promise<UserCircleSummary[]> {
+  const { rows } = await client.query(
+    `SELECT c.id, c.circle_type, c.key, c.display_name, c.metadata,
+            (SELECT COUNT(*)::int FROM circle_members WHERE circle_id = c.id) AS member_count,
+            COALESCE((
+              SELECT COUNT(*)::int
+              FROM circle_posts p
+              JOIN circle_post_targets pct
+                ON pct.post_id = p.id AND pct.circle_id = c.id
+              WHERE p.created_at > COALESCE(cm.last_read_at, cm.joined_at)
+                AND p.author_id != $1
+            ), 0) AS new_post_count
+     FROM circle_members cm
+     JOIN circles c ON c.id = cm.circle_id
+     WHERE cm.user_id = $1
+     ORDER BY
+       CASE c.circle_type
+         WHEN 'school_class' THEN 1
+         WHEN 'school_age' THEN 1
+         WHEN 'class' THEN 2
+         WHEN 'school' THEN 3
+         WHEN 'age_locality' THEN 4
+         WHEN 'community' THEN 5
+         WHEN 'locality' THEN 6
+         WHEN 'curriculum' THEN 7
+       END,
+       c.display_name`,
+    [userId]
+  );
+
+  return rows.map((row) => ({
+    id: row.id,
+    circleType: row.circle_type,
+    key: row.key,
+    displayName: row.display_name,
+    metadata: row.metadata,
+    memberCount: row.member_count,
+    newPostCount: row.new_post_count,
+  }));
+}
+
 export async function evaluateOnboardingComplete(
   client: PoolClient,
   userId: string

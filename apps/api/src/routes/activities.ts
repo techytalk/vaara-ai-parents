@@ -2,7 +2,16 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { pool } from "@vaara/db";
 import {
+  discoverPageKey,
+  familyPageKey,
+  getCachedJson,
+  invalidateDiscoverForPins,
+  PAGE_CACHE_TTL,
+  setCachedJson,
+} from "@vaara/redis";
+import {
   loadActivityExtras,
+  loadActivityExtrasForIds,
   mapActivity,
   syncActivityTargeting,
 } from "../lib/activities.js";
@@ -18,6 +27,17 @@ const ACTIVITY_CATEGORIES = [
   "sports",
   "other",
 ] as const;
+
+async function activityPinCodes(
+  client: import("pg").PoolClient,
+  activityId: string
+) {
+  const { rows } = await client.query<{ pin_code: string }>(
+    "SELECT pin_code FROM activity_pin_codes WHERE activity_id = $1",
+    [activityId]
+  );
+  return rows.map((row) => row.pin_code);
+}
 
 async function requireProvider(
   client: import("pg").PoolClient,
@@ -178,12 +198,17 @@ export function createProviderRoutes() {
         [userId]
       );
 
-      const activities = await Promise.all(
-        rows.map(async (row) => {
-          const extras = await loadActivityExtras(client, row.id);
-          return mapActivity(row, extras.pinCodes, extras.curriculumIds);
-        })
+      const extrasById = await loadActivityExtrasForIds(
+        client,
+        rows.map((row) => String(row.id))
       );
+      const activities = rows.map((row) => {
+        const extras = extrasById.get(String(row.id)) ?? {
+          pinCodes: [],
+          curriculumIds: [],
+        };
+        return mapActivity(row, extras.pinCodes, extras.curriculumIds);
+      });
 
       return c.json(activities);
     } finally {
@@ -271,6 +296,7 @@ export function createProviderRoutes() {
       );
 
       await client.query("COMMIT");
+      await invalidateDiscoverForPins(pinCodes);
 
       const extras = await loadActivityExtras(client, activityId);
       return c.json(mapActivity(rows[0], extras.pinCodes, extras.curriculumIds), 201);
@@ -300,6 +326,7 @@ export function createProviderRoutes() {
         return c.json({ error: "Activity not found" }, 404);
       }
 
+      const previousPins = await activityPinCodes(client, activityId);
       await client.query("BEGIN");
 
       const fields: string[] = [];
@@ -401,6 +428,7 @@ export function createProviderRoutes() {
         [activityId]
       );
       const extras = await loadActivityExtras(client, activityId);
+      await invalidateDiscoverForPins([...previousPins, ...extras.pinCodes]);
       return c.json(
         mapActivity(updated.rows[0], extras.pinCodes, extras.curriculumIds)
       );
@@ -419,6 +447,7 @@ export function createProviderRoutes() {
     const client = await pool.connect();
     try {
       await requireProvider(client, userId);
+      const pins = await activityPinCodes(client, activityId);
       const result = await client.query(
         "DELETE FROM activities WHERE id = $1 AND provider_id = $2 RETURNING id",
         [activityId, userId]
@@ -426,6 +455,7 @@ export function createProviderRoutes() {
       if (result.rows.length === 0) {
         return c.json({ error: "Activity not found" }, 404);
       }
+      await invalidateDiscoverForPins(pins);
       return c.json({ ok: true });
     } finally {
       client.release();
@@ -463,9 +493,38 @@ export function createActivitiesRoutes() {
       return c.json({ error: "Invalid activity category" }, 400);
     }
 
+    const family = await getCachedJson<{
+      location?: { pinCode?: string | null } | null;
+    }>(familyPageKey(userId));
+
+    let userPin = pin?.trim();
+    if (!userPin) {
+      userPin = family?.location?.pinCode?.trim() || "";
+    }
+
+    // Default Discover filters by this parent's live children in SQL, so the
+    // Redis key must stay per-user unless an explicit board filter is passed.
+    const boards = curriculumId?.trim() || `u:${userId}`;
+
+    if (userPin) {
+      const cached = await getCachedJson(
+        discoverPageKey({
+          pin: userPin,
+          boards,
+          providerType,
+          category,
+          q: search?.trim(),
+          sort,
+          verifiedOnly,
+        })
+      );
+      if (cached) {
+        return c.json(cached);
+      }
+    }
+
     const client = await pool.connect();
     try {
-      let userPin = pin?.trim();
       if (!userPin) {
         const loc = await client.query(
           "SELECT pin_code FROM user_locations WHERE user_id = $1",
@@ -475,6 +534,20 @@ export function createActivitiesRoutes() {
       }
       if (!userPin) {
         return c.json({ error: "Pin code required — set your location first" }, 400);
+      }
+
+      const cacheKey = discoverPageKey({
+        pin: userPin,
+        boards,
+        providerType,
+        category,
+        q: search?.trim(),
+        sort,
+        verifiedOnly,
+      });
+      const cachedList = await getCachedJson(cacheKey);
+      if (cachedList) {
+        return c.json(cachedList);
       }
 
       let query = `
@@ -545,29 +618,35 @@ export function createActivitiesRoutes() {
 
       const { rows } = await client.query(query, params);
 
-      const activities = await Promise.all(
-        rows.map(async (row) => {
-          const extras = await loadActivityExtras(client, row.id);
-          return mapActivity(
-            row,
-            extras.pinCodes,
-            extras.curriculumIds,
-            {
-              orgName: row.org_name,
-              providerType: row.provider_type,
-              verified: row.verified,
-              ratingAvg:
-                row.rating_count >= 3 && row.rating_avg != null
-                  ? Number(row.rating_avg)
-                  : null,
-              ratingCount: row.rating_count ?? 0,
-              feeMin: row.fee_min != null ? Number(row.fee_min) : null,
-              feeMax: row.fee_max != null ? Number(row.fee_max) : null,
-            }
-          );
-        })
+      const extrasById = await loadActivityExtrasForIds(
+        client,
+        rows.map((row) => String(row.id))
       );
+      const activities = rows.map((row) => {
+        const extras = extrasById.get(String(row.id)) ?? {
+          pinCodes: [],
+          curriculumIds: [],
+        };
+        return mapActivity(
+          row,
+          extras.pinCodes,
+          extras.curriculumIds,
+          {
+            orgName: row.org_name,
+            providerType: row.provider_type,
+            verified: row.verified,
+            ratingAvg:
+              row.rating_count >= 3 && row.rating_avg != null
+                ? Number(row.rating_avg)
+                : null,
+            ratingCount: row.rating_count ?? 0,
+            feeMin: row.fee_min != null ? Number(row.fee_min) : null,
+            feeMax: row.fee_max != null ? Number(row.fee_max) : null,
+          }
+        );
+      });
 
+      await setCachedJson(cacheKey, activities, PAGE_CACHE_TTL.discover);
       return c.json(activities);
     } finally {
       client.release();

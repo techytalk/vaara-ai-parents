@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import {
   Pressable,
   ScrollView,
@@ -12,15 +11,14 @@ import { SignOutButton } from "@/components/SignOutButton";
 import { Avatar, ScreenLoader } from "@/components/ui";
 import { FEATURE_FLAGS } from "@/constants/features";
 import { colors, radii, spacing, typography } from "@/constants/theme";
-import {
-  api,
-  type AuthUser,
-  type Child,
-  type Location,
-  type MeStats,
-} from "@/lib/api";
+import { type Child, type Location } from "@/lib/api";
 import { trackEvent } from "@/lib/analytics";
-import { getToken } from "@/lib/session";
+import {
+  useChildren,
+  useLocation,
+  useMeStats,
+  useSessionUser,
+} from "@/hooks/useSessionQueries";
 import {
   boardFamilyFromCurriculum,
   stateCodeFromLabel,
@@ -109,40 +107,17 @@ function childsPathSubtitle(
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [children, setChildren] = useState<Child[]>([]);
-  const [location, setLocation] = useState<Location | null>(null);
-  const [stats, setStats] = useState<MeStats | null>(null);
-  const [statsFailed, setStatsFailed] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const userQuery = useSessionUser();
+  const childrenQuery = useChildren();
+  const locationQuery = useLocation();
+  const statsQuery = useMeStats();
 
-  useEffect(() => {
-    getToken().then(async (token) => {
-      if (!token) {
-        setLoading(false);
-        return;
-      }
-      try {
-        const [me, kids, meStats, loc] = await Promise.all([
-          api.me(token),
-          api.getChildren(token).catch(() => []),
-          api.getMeStats(token).catch(() => null),
-          api.getLocation(token).catch(() => null),
-        ]);
-        setUser(me);
-        setChildren(kids);
-        setLocation(loc);
-        if (meStats) {
-          setStats(meStats);
-          setStatsFailed(false);
-        } else {
-          setStatsFailed(true);
-        }
-      } finally {
-        setLoading(false);
-      }
-    });
-  }, []);
+  const user = userQuery.data ?? null;
+  const children = childrenQuery.data ?? [];
+  const location = locationQuery.data ?? null;
+  const stats = statsQuery.data ?? null;
+  const statsFailed = statsQuery.isError;
+  const loading = userQuery.isPending && !user;
 
   if (loading) {
     return <ScreenLoader label="Loading your account" />;
@@ -161,9 +136,18 @@ export default function ProfileScreen() {
     ? childsPathSubtitle(children, location)
     : null;
 
-  const circleValue = statsFailed ? "—" : (stats?.circleCount ?? 0);
-  const savedValue = statsFailed ? "—" : (stats?.savedPostCount ?? 0);
-  const helpfulValue = statsFailed ? "—" : (stats?.helpfulReceivedCount ?? 0);
+  const circleValue =
+    statsFailed || (statsQuery.isPending && !stats)
+      ? "—"
+      : (stats?.circleCount ?? 0);
+  const savedValue =
+    statsFailed || (statsQuery.isPending && !stats)
+      ? "—"
+      : (stats?.savedPostCount ?? 0);
+  const helpfulValue =
+    statsFailed || (statsQuery.isPending && !stats)
+      ? "—"
+      : (stats?.helpfulReceivedCount ?? 0);
 
   function openMore(destination: string, label: string) {
     trackEvent("more_destination_opened", { destination: label });

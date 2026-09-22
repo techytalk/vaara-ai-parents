@@ -74,4 +74,9 @@ export function invalidateFamilyMeta(options?: {
   if (options?.children !== false) {
     void queryClient.invalidateQueries({ queryKey: ["me", "children"] });
   }
+  void queryClient.invalidateQueries({ queryKey: ["me", "location"] });
+  void queryClient.invalidateQueries({ queryKey: ["me", "stats"] });
+  void queryClient.invalidateQueries({ queryKey: ["me", "bootstrap"] });
+  void queryClient.invalidateQueries({ queryKey: ["pathExplore"] });
+  void queryClient.invalidateQueries({ queryKey: ["discover"] });
 }

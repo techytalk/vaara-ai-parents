@@ -19,6 +19,12 @@ import {
   getSchoolShortlist,
   searchVerifiedSchools,
 } from "../services/school-shortlist.js";
+import {
+  curriculaPageKey,
+  getCachedJson,
+  PAGE_CACHE_TTL,
+  setCachedJson,
+} from "@vaara/redis";
 
 const STATIC_REFERENCE_CACHE =
   "public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800";
@@ -32,6 +38,11 @@ export function createReferenceRoutes() {
   const app = new Hono();
 
   app.get("/curricula", async (c) => {
+    const cached = await getCachedJson(curriculaPageKey());
+    if (cached) {
+      c.header("Cache-Control", STATIC_REFERENCE_CACHE);
+      return c.json(cached);
+    }
     const client = await pool.connect();
     try {
       const { rows: curricula } = await client.query(
@@ -51,18 +62,18 @@ export function createReferenceRoutes() {
       }
 
       c.header("Cache-Control", STATIC_REFERENCE_CACHE);
-      return c.json(
-        curricula.map((cur) => ({
-          id: cur.id,
-          code: cur.code,
-          name: cur.name,
-          grades: (gradesByCurriculum.get(cur.id) ?? []).map((g) => ({
-            id: g.id,
-            code: g.code,
-            label: g.label,
-          })),
-        }))
-      );
+      const payload = curricula.map((cur) => ({
+        id: cur.id,
+        code: cur.code,
+        name: cur.name,
+        grades: (gradesByCurriculum.get(cur.id) ?? []).map((g) => ({
+          id: g.id,
+          code: g.code,
+          label: g.label,
+        })),
+      }));
+      await setCachedJson(curriculaPageKey(), payload, PAGE_CACHE_TTL.curricula);
+      return c.json(payload);
     } finally {
       client.release();
     }

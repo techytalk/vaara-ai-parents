@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Image,
   Pressable,
@@ -23,8 +23,8 @@ import {
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import { trackEvent } from "@/lib/analytics";
 import { getCoordinationShortcuts } from "@/constants/discovery-shortcuts";
-import { api, type Activity, type ActivityCategory } from "@/lib/api";
-import { getToken } from "@/lib/session";
+import { type Activity, type ActivityCategory } from "@/lib/api";
+import { useDiscoverActivities } from "@/hooks/useSessionQueries";
 
 type FilterKey = "all" | "tutors" | "coaching" | "classes" | "arts";
 
@@ -67,30 +67,23 @@ function gradeLabel(activity: Activity) {
 export default function DiscoverScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [activities, setActivities] = useState<Activity[]>([]);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [filter, setFilter] = useState<FilterKey>("all");
-  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const requestId = useRef(0);
 
-  const load = useCallback(async (searchOverride?: string) => {
-    const currentRequest = ++requestId.current;
-    setError(null);
-    const token = await getToken();
-    if (!token) return;
-    const list = await api.discoverActivities(token, {
-      q: (searchOverride ?? debouncedSearch).trim() || undefined,
-      ...apiFilterFor(filter),
-      verifiedOnly: false,
-      sort: "rating",
-    });
-    if (currentRequest === requestId.current) {
-      setActivities(list);
-    }
-  }, [debouncedSearch, filter]);
+  const activitiesQuery = useDiscoverActivities(
+    filter,
+    debouncedSearch,
+    apiFilterFor(filter)
+  );
+  const activities = activitiesQuery.data ?? [];
+  const error =
+    activitiesQuery.error instanceof Error
+      ? activitiesQuery.error.message
+      : activitiesQuery.isError
+        ? "Failed to load"
+        : null;
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -98,14 +91,6 @@ export default function DiscoverScreen() {
     }, 300);
     return () => clearTimeout(timer);
   }, [search]);
-
-  useEffect(() => {
-    load()
-      .catch((cause) =>
-        setError(cause instanceof Error ? cause.message : "Failed to load")
-      )
-      .finally(() => setLoading(false));
-  }, [load]);
 
   const featuredTutors = useMemo(() => {
     const seen = new Set<string>();
@@ -144,7 +129,7 @@ export default function DiscoverScreen() {
 
   const coordinationShortcuts = getCoordinationShortcuts();
 
-  if (loading) {
+  if (activitiesQuery.isPending && activities.length === 0) {
     return <ScreenLoader label="Finding tutors and activities" />;
   }
 
@@ -163,7 +148,7 @@ export default function DiscoverScreen() {
             onRefresh={async () => {
               setRefreshing(true);
               try {
-                await load();
+                await activitiesQuery.refetch();
               } finally {
                 setRefreshing(false);
               }
@@ -194,9 +179,7 @@ export default function DiscoverScreen() {
           value={search}
           onChangeText={setSearch}
           onSubmitEditing={() => {
-            const query = search.trim();
-            setDebouncedSearch(query);
-            load(query);
+            setDebouncedSearch(search.trim());
           }}
           returnKeyType="search"
         />
@@ -216,7 +199,14 @@ export default function DiscoverScreen() {
           ))}
         </ScrollView>
 
-        {error ? <InlineError message={error} onRetry={load} /> : null}
+        {error ? (
+          <InlineError
+            message={error}
+            onRetry={() => {
+              void activitiesQuery.refetch();
+            }}
+          />
+        ) : null}
 
         {coordinationShortcuts.length > 0 ? (
           <View style={styles.section}>

@@ -1,6 +1,12 @@
 import { Hono } from "hono";
 import { pool } from "@vaara/db";
 import {
+  getCachedJson,
+  PAGE_CACHE_TTL,
+  pathTreeKey,
+  setCachedJson,
+} from "@vaara/redis";
+import {
   buildPathwayContext,
   buildPathwayHub,
   getPathwayItemBySlug,
@@ -194,23 +200,39 @@ export function createPathwaysRoutes() {
     }
     const client = await pool.connect();
     try {
-      const root = await matchExploreRoot(client, {
+      const treeKey = pathTreeKey({
         family: context.family,
         curriculumCode: child.curriculum_code,
         gradeCode: child.grade_code,
         stage: context.primaryStage,
         includeAfter10Fork: context.includeAfter10Fork,
+        stateCode: context.stateCode,
       });
-      if (!root) {
-        return c.json(
-          {
-            error:
-              "A path for this grade is not published yet. Exploring does not change your child’s profile.",
-          },
-          404
-        );
+      let cachedTree = await getCachedJson<{
+        root: { id: string; label: string };
+        nodes: Awaited<ReturnType<typeof loadExploreNodes>>;
+      }>(treeKey);
+      if (!cachedTree) {
+        const root = await matchExploreRoot(client, {
+          family: context.family,
+          curriculumCode: child.curriculum_code,
+          gradeCode: child.grade_code,
+          stage: context.primaryStage,
+          includeAfter10Fork: context.includeAfter10Fork,
+        });
+        if (!root) {
+          return c.json(
+            {
+              error:
+                "A path for this grade is not published yet. Exploring does not change your child’s profile.",
+            },
+            404
+          );
+        }
+        const nodes = await loadExploreNodes(client, root.id, context.stateCode);
+        cachedTree = { root, nodes };
+        await setCachedJson(treeKey, cachedTree, PAGE_CACHE_TTL.pathTree);
       }
-      const nodes = await loadExploreNodes(client, root.id, context.stateCode);
       const circle = await findCurriculumCircle(
         client,
         userId,
@@ -222,7 +244,7 @@ export function createPathwaysRoutes() {
         locationMeta: context.stageLead,
         lockLine: "Exploring does not change your child’s profile.",
         postingCircle: circle,
-        nodes,
+        nodes: cachedTree.nodes,
         children: children.map((row) => ({
           id: String(row.id),
           nickname: row.nickname,

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -12,13 +12,13 @@ import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { api, type Child } from "@/lib/api";
-import { getToken } from "@/lib/session";
+import { type Child } from "@/lib/api";
 import { GENDER_LABEL } from "@/constants/onboarding";
 import { formatChildDob } from "@/lib/dates";
 import { colors, PrimaryButton, SecondaryButton, useOnboardingContentStyle } from "@/components/onboarding/ui";
 import { radii, shadows, spacing, typography } from "@/constants/theme";
 import { trackEvent } from "@/lib/analytics";
+import { useChildren } from "@/hooks/useSessionQueries";
 
 function childBoardGrade(child: Child): string {
   if (child.track === "preschool" && child.ageYears) {
@@ -96,36 +96,25 @@ function ChildCard({
 
 export default function ChildrenListScreen() {
   const router = useRouter();
-  const [children, setChildren] = useState<Child[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const childrenQuery = useChildren();
+  const children = childrenQuery.data ?? [];
+  const loading = childrenQuery.isPending && children.length === 0;
+  const refreshing = childrenQuery.isRefetching && !childrenQuery.isPending;
+  const error =
+    childrenQuery.error instanceof Error
+      ? childrenQuery.error.message
+      : childrenQuery.isError
+        ? "Failed to load children"
+        : null;
   const contentStyle = useOnboardingContentStyle();
   const footerStyle = useOnboardingContentStyle({ includeVertical: false });
 
-  const load = useCallback(async (silent = false) => {
-    const token = await getToken();
-    if (!token) {
-      router.replace("/(auth)/login");
-      return;
-    }
-    if (!silent) setLoading(true);
-    setError(null);
-    try {
-      const kids = await api.getChildren(token);
-      setChildren(kids);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load children");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [router]);
-
   useFocusEffect(
     useCallback(() => {
-      load(true);
-    }, [load])
+      if (childrenQuery.isStale) {
+        void childrenQuery.refetch();
+      }
+    }, [childrenQuery.isStale, childrenQuery.refetch])
   );
 
   const promptedRef = useRef(false);
@@ -137,8 +126,7 @@ export default function ChildrenListScreen() {
   }, [children.length]);
 
   async function onRefresh() {
-    setRefreshing(true);
-    await load(true);
+    await childrenQuery.refetch();
   }
 
   function openAddChild() {

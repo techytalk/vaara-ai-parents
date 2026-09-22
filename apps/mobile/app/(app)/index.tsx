@@ -31,6 +31,7 @@ import {
   endAuthenticatedSession,
   isUnauthorized,
 } from "@/lib/authenticated-state";
+import { prefetchAppScreens } from "@/hooks/useSessionQueries";
 import { getToken, saveSession } from "@/lib/session";
 import {
   clearOnboardingDraft,
@@ -111,6 +112,11 @@ export default function HomeScreen() {
   const refreshHome = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["chatHome"] });
   }, [queryClient]);
+
+  useEffect(() => {
+    if (!userQuery.isSuccess) return;
+    prefetchAppScreens();
+  }, [userQuery.isSuccess]);
 
   useEffect(() => {
     const unauthorized = [

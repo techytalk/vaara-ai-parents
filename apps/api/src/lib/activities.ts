@@ -53,18 +53,43 @@ export async function loadActivityExtras(
   client: PoolClient,
   activityId: string
 ): Promise<{ pinCodes: string[]; curriculumIds: string[] }> {
-  const pins = await client.query(
-    "SELECT pin_code FROM activity_pin_codes WHERE activity_id = $1",
-    [activityId]
-  );
-  const curricula = await client.query(
-    "SELECT curriculum_id FROM activity_curricula WHERE activity_id = $1",
-    [activityId]
-  );
-  return {
-    pinCodes: pins.rows.map((r) => r.pin_code),
-    curriculumIds: curricula.rows.map((r) => r.curriculum_id),
-  };
+  const extras = await loadActivityExtrasForIds(client, [activityId]);
+  return extras.get(String(activityId)) ?? { pinCodes: [], curriculumIds: [] };
+}
+
+export async function loadActivityExtrasForIds(
+  client: PoolClient,
+  activityIds: string[]
+): Promise<Map<string, { pinCodes: string[]; curriculumIds: string[] }>> {
+  const extras = new Map<string, { pinCodes: string[]; curriculumIds: string[] }>();
+  const ids = activityIds.map((id) => String(id));
+  for (const id of ids) {
+    extras.set(id, { pinCodes: [], curriculumIds: [] });
+  }
+  if (ids.length === 0) return extras;
+
+  const [pins, curricula] = await Promise.all([
+    client.query<{ activity_id: string; pin_code: string }>(
+      `SELECT activity_id, pin_code
+       FROM activity_pin_codes
+       WHERE activity_id = ANY($1::uuid[])`,
+      [ids]
+    ),
+    client.query<{ activity_id: string; curriculum_id: string }>(
+      `SELECT activity_id, curriculum_id
+       FROM activity_curricula
+       WHERE activity_id = ANY($1::uuid[])`,
+      [ids]
+    ),
+  ]);
+
+  for (const row of pins.rows) {
+    extras.get(String(row.activity_id))?.pinCodes.push(row.pin_code);
+  }
+  for (const row of curricula.rows) {
+    extras.get(String(row.activity_id))?.curriculumIds.push(row.curriculum_id);
+  }
+  return extras;
 }
 
 export async function syncActivityTargeting(

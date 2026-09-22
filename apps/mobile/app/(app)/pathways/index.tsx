@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -11,9 +11,9 @@ import {
   api,
   type PathDiscussionLink,
   type PathExploreNode,
-  type PathExploreResponse,
 } from "@/lib/api";
 import { getToken } from "@/lib/session";
+import { usePathExplore } from "@/hooks/useSessionQueries";
 
 function stageTabLabel(node: PathExploreNode): { line1: string; line2: string } {
   const title = node.title;
@@ -50,7 +50,6 @@ function pathToNode(
 
 export default function PathwaysHubScreen() {
   const router = useRouter();
-  const [data, setData] = useState<PathExploreResponse | null>(null);
   const [childId, setChildId] = useState<string | undefined>();
   const [focusId, setFocusId] = useState<string | null>(null);
   const [activeStageId, setActiveStageId] = useState<string | null>(null);
@@ -61,56 +60,48 @@ export default function PathwaysHubScreen() {
   const [asking, setAsking] = useState(false);
   const [askDraft, setAskDraft] = useState("");
   const [askBusy, setAskBusy] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const loadSeq = useRef(0);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const appliedChildRef = useRef<string | null>(null);
 
-  const load = useCallback(async () => {
-    const token = await getToken();
-    if (!token) return;
-    const seq = ++loadSeq.current;
-    try {
-      const next = await api.getPathExplore(token, childId);
-      if (seq !== loadSeq.current) return;
-      const root = next.nodes.find((node) => node.depth === 0);
-      const direct = root
-        ? next.nodes.filter((node) => node.parentId === root.id)
-        : [];
-      const panes = direct.filter(
-        (node) =>
-          node.kind === "section" ||
-          /this year|next year|explore ahead|after grade|after class|options after/i.test(
-            node.title
-          )
-      );
-      const stages = panes.length >= 2 ? panes : [];
-      const firstFocus = stages[0] ?? root;
-      setData(next);
-      setError(null);
-      setExpanded(new Set());
-      setDiscussions({});
-      setAsking(false);
-      setActiveStageId(stages[0]?.id ?? null);
-      setFocusId(firstFocus?.id ?? null);
-      if (!childId && next.context.childId) setChildId(next.context.childId);
-      trackEvent("child_path_opened", { family: next.locationTitle });
-    } catch (e) {
-      if (seq !== loadSeq.current) return;
-      setData(null);
-      setError(e instanceof Error ? e.message : "Could not load Child's Path.");
-    }
-  }, [childId]);
+  const pathQuery = usePathExplore(childId);
+  const data = pathQuery.data ?? null;
+  const loading = pathQuery.isPending && !data;
+  const error =
+    actionError ??
+    (pathQuery.error instanceof Error
+      ? pathQuery.error.message
+      : pathQuery.isError
+        ? "Could not load Child's Path."
+        : null);
 
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    load().finally(() => {
-      if (!cancelled) setLoading(false);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [load]);
+    const next = pathQuery.data;
+    if (!next) return;
+    const nextChildId = next.context.childId;
+    if (appliedChildRef.current === nextChildId) return;
+    appliedChildRef.current = nextChildId;
+    const root = next.nodes.find((node) => node.depth === 0);
+    const direct = root
+      ? next.nodes.filter((node) => node.parentId === root.id)
+      : [];
+    const panes = direct.filter(
+      (node) =>
+        node.kind === "section" ||
+        /this year|next year|explore ahead|after grade|after class|options after/i.test(
+          node.title
+        )
+    );
+    const stages = panes.length >= 2 ? panes : [];
+    const firstFocus = stages[0] ?? root;
+    setExpanded(new Set());
+    setDiscussions({});
+    setAsking(false);
+    setActionError(null);
+    setActiveStageId(stages[0]?.id ?? null);
+    setFocusId(firstFocus?.id ?? null);
+    if (!childId && nextChildId) setChildId(nextChildId);
+    trackEvent("child_path_opened", { family: next.locationTitle });
+  }, [pathQuery.data, childId]);
 
   const selectedId = childId ?? data?.context.childId ?? null;
 
@@ -262,13 +253,16 @@ export default function PathwaysHubScreen() {
         params: { threadId: result.threadId },
       } as never);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not post the question.");
+      setActionError(e instanceof Error ? e.message : "Could not post the question.");
     } finally {
       setAskBusy(false);
     }
   }
 
-  if (loading && (!data || (childId && data.context.childId !== childId))) {
+  const waitingForChild = Boolean(
+    childId && data?.context.childId && data.context.childId !== childId
+  );
+  if ((loading && !data) || (waitingForChild && pathQuery.isFetching)) {
     return (
       <View style={styles.screen}>
         <ScreenLoader label="Loading Child's Path" />
@@ -276,7 +270,7 @@ export default function PathwaysHubScreen() {
     );
   }
 
-  if (error && !data) {
+  if ((error && !data) || (waitingForChild && pathQuery.isError)) {
     return (
       <View style={styles.screen}>
         <EmptyState icon="map-outline" title="Child's Path unavailable" message={error} />

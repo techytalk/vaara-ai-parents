@@ -714,6 +714,13 @@ export type MeStats = {
   helpfulReceivedCount: number;
 };
 
+export type MeBootstrap = {
+  user: AuthUser;
+  children: Child[];
+  location: Location | null;
+  stats: MeStats;
+};
+
 export type PathwayDetailRow = {
   label: string;
   value: string;
@@ -1061,6 +1068,9 @@ export const api = {
     }),
 
   me: (token: string) => request<AuthUser>("/v1/me", {}, token),
+
+  getBootstrap: (token: string) =>
+    request<MeBootstrap>("/v1/me/bootstrap", {}, token),
 
   deleteAccount: (token: string) =>
     request<{ ok: boolean }>("/v1/me", { method: "DELETE" }, token),

@@ -12,10 +12,18 @@ export {
   userInboxChannel,
 } from "./channels.js";
 export {
+  curriculaPageKey,
+  deleteCachedKeys,
+  discoverPageKey,
+  familyPageKey,
   feedCacheKey,
   getCachedJson,
   invalidateCircleFeedCache,
+  invalidateDiscoverForPins,
+  invalidateFamilyPage,
   invalidateTopicFeedCache,
+  PAGE_CACHE_TTL,
+  pathTreeKey,
   setCachedJson,
   topicFeedCacheKey,
 } from "./cache.js";
