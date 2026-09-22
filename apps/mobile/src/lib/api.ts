@@ -748,6 +748,7 @@ export type PathExploreNode = {
   title: string;
   kicker: string | null;
   summary: string | null;
+  lead: string | null;
   depth: number;
   hasChildren: boolean;
   allowAsk: boolean;

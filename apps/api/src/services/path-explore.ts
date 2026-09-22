@@ -10,6 +10,7 @@ export type ExploreNode = {
   title: string;
   kicker: string | null;
   summary: string | null;
+  lead: string | null;
   depth: number;
   hasChildren: boolean;
   allowAsk: boolean;
@@ -26,6 +27,7 @@ type NodeRow = {
   title: string;
   kicker: string | null;
   summary: string | null;
+  lead: string | null;
   depth: number;
   allow_ask: boolean;
   allow_discussions: boolean;
@@ -88,14 +90,14 @@ export async function loadExploreNodes(
 ): Promise<ExploreNode[]> {
   const { rows } = await client.query<NodeRow>(
     `WITH RECURSIVE tree AS (
-       SELECT n.id, n.slug, n.parent_id, n.kind, n.title, n.kicker, n.summary,
+       SELECT n.id, n.slug, n.parent_id, n.kind, n.title, n.kicker, n.summary, n.lead,
               n.allow_ask, n.allow_discussions, n.pathway_item_slug,
               n.ask_prompt_default, n.sort_order, n.state_codes,
               n.board_families, 0 AS depth, ARRAY[n.sort_order] AS ord
        FROM path_nodes n
        WHERE n.id = $1 AND n.status = 'published'
        UNION ALL
-       SELECT c.id, c.slug, c.parent_id, c.kind, c.title, c.kicker, c.summary,
+       SELECT c.id, c.slug, c.parent_id, c.kind, c.title, c.kicker, c.summary, c.lead,
               c.allow_ask, c.allow_discussions, c.pathway_item_slug,
               c.ask_prompt_default, c.sort_order, c.state_codes,
               c.board_families, t.depth + 1, t.ord || c.sort_order
@@ -107,7 +109,7 @@ export async function loadExploreNodes(
            OR ($2::text IS NOT NULL AND $2 = ANY(c.state_codes))
          )
      )
-     SELECT id, slug, parent_id, kind, title, kicker, summary,
+     SELECT id, slug, parent_id, kind, title, kicker, summary, lead,
             allow_ask, allow_discussions, pathway_item_slug,
             ask_prompt_default, depth
      FROM tree
@@ -127,6 +129,7 @@ export async function loadExploreNodes(
     title: row.title,
     kicker: row.kicker,
     summary: row.summary,
+    lead: row.lead,
     depth: row.depth,
     hasChildren: (childCounts.get(row.id) ?? 0) > 0,
     allowAsk: row.allow_ask,

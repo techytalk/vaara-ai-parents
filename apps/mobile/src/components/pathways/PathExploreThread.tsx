@@ -8,13 +8,23 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { pathTheme as t } from "@/constants/path-theme";
-import { radii, spacing, typography } from "@/constants/theme";
+import { colors, radii, spacing, typography } from "@/constants/theme";
 import type {
   PathDiscussionLink,
   PathExploreNode,
   PathwayHubChild,
 } from "@/lib/api";
 import { childSwitcherTabLabel } from "@/lib/child-switcher-label";
+
+const LINE_COLORS = [
+  colors.teal,
+  colors.navy,
+  colors.amber,
+  colors.coral,
+  colors.lavender,
+] as const;
+
+const RAIL = 18;
 
 type Props = {
   locationTitle: string;
@@ -41,6 +51,16 @@ type Props = {
   onSendAsk: () => void;
   onCancelAsk: () => void;
 };
+
+function lineColor(depth: number) {
+  return LINE_COLORS[Math.max(depth, 0) % LINE_COLORS.length];
+}
+
+function showsActions(node: PathExploreNode, open: boolean) {
+  if (node.kind === "root" || node.kind === "section") return false;
+  if (!node.allowAsk && !node.allowDiscussions) return false;
+  return open || !node.hasChildren;
+}
 
 export function PathExploreThread({
   locationTitle,
@@ -70,11 +90,9 @@ export function PathExploreThread({
   const visible = nodes.filter(
     (node) => node.depth === 0 || (node.parentId && expandedIds.has(node.parentId))
   );
-  const breadcrumb = nodes
-    .filter((node) => node.depth > 0 && expandedIds.has(node.id))
-    .sort((a, b) => a.depth - b.depth)
-    .map((node) => node.title)
-    .join("  /  ");
+  const crumb = nodes
+    .filter((node) => expandedIds.has(node.id))
+    .sort((a, b) => a.depth - b.depth);
 
   return (
     <View style={styles.page}>
@@ -114,103 +132,173 @@ export function PathExploreThread({
         <Text style={styles.meta}>{locationMeta}</Text>
       </View>
 
-      {breadcrumb ? <Text style={styles.crumb}>{breadcrumb}</Text> : null}
+      {crumb.length > 1 ? (
+        <View style={styles.crumbRow}>
+          {crumb.map((node, index) => (
+            <View key={node.id} style={styles.crumbItem}>
+              {index > 0 ? (
+                <Ionicons name="chevron-forward" size={12} color={t.kicker} />
+              ) : null}
+              <Text style={[styles.crumbText, { color: lineColor(node.depth) }]} numberOfLines={1}>
+                {node.title}
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
 
-      {visible.map((node) => {
-        const open = expandedIds.has(node.id);
-        const discussionState = discussions[node.id];
-        return (
-          <View key={node.id} style={{ marginLeft: Math.min(node.depth, 4) * 14 }}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ expanded: open }}
-              onPress={() => (node.hasChildren ? onToggle(node.id) : undefined)}
-              style={styles.row}
-            >
-              <Ionicons
-                name={node.hasChildren ? (open ? "chevron-down" : "chevron-forward") : "ellipse"}
-                size={node.hasChildren ? 16 : 8}
-                color={t.kicker}
-              />
-              <View style={styles.rowBody}>
-                {node.kicker ? <Text style={styles.rowKicker}>{node.kicker}</Text> : null}
-                <Text style={styles.rowTitle}>{node.title}</Text>
-                {node.summary ? <Text style={styles.rowSummary}>{node.summary}</Text> : null}
-              </View>
-            </Pressable>
-
-            {node.pathwayItemSlug ? (
-              <Pressable onPress={() => onOpenDetail(node.pathwayItemSlug!, node.title)}>
-                <Text style={styles.link}>Official details</Text>
-              </Pressable>
-            ) : null}
-
-            {(open || !node.hasChildren) && (node.allowAsk || node.allowDiscussions) ? (
-              <View style={styles.actions}>
-                {node.allowDiscussions ? (
-                  <Pressable onPress={() => onRead(node.id)}>
-                    <Text style={styles.link}>Read parent discussions</Text>
-                  </Pressable>
-                ) : null}
-                {node.allowAsk ? (
-                  <Pressable onPress={() => onStartAsk(node)} disabled={!postingCircleName}>
-                    <Text style={[styles.link, !postingCircleName && styles.dim]}>
-                      Ask parents anonymously
-                    </Text>
-                  </Pressable>
-                ) : null}
-                {postingCircleName && (open || !node.hasChildren) ? (
-                  <Text style={styles.where}>Where will this be posted? {postingCircleName}</Text>
-                ) : null}
-              </View>
-            ) : null}
-
-            {askingId === node.id ? (
-              <View style={styles.composer}>
-                <TextInput
-                  value={askDraft}
-                  onChangeText={onChangeAsk}
-                  multiline
-                  style={styles.input}
-                  placeholder="Your question"
-                  placeholderTextColor={t.dimmed}
-                />
-                <View style={styles.composerRow}>
-                  <Pressable onPress={onCancelAsk}><Text style={styles.link}>Cancel</Text></Pressable>
-                  <Pressable onPress={onSendAsk} disabled={askBusy || !askDraft.trim()} style={styles.send}>
-                    {askBusy ? (
-                      <ActivityIndicator color={t.ctaText} />
-                    ) : (
-                      <Text style={styles.sendText}>Post</Text>
-                    )}
-                  </Pressable>
+      <View style={styles.tree}>
+        {visible.map((node) => {
+          const open = expandedIds.has(node.id);
+          const discussionState = discussions[node.id];
+          const color = lineColor(Math.max(node.depth - 1, 0));
+          const body = open ? node.lead || node.summary : node.summary;
+          const actions = showsActions(node, open);
+          return (
+            <View key={node.id} style={styles.threadItem}>
+              {node.depth > 0 ? (
+                <View style={[styles.rails, { width: node.depth * RAIL }]} pointerEvents="none">
+                  {Array.from({ length: node.depth }, (_, level) => (
+                    <View key={level} style={styles.railTrack}>
+                      <View
+                        style={[
+                          styles.rail,
+                          { backgroundColor: lineColor(level) },
+                        ]}
+                      />
+                    </View>
+                  ))}
+                  <View
+                    style={[
+                      styles.branch,
+                      {
+                        backgroundColor: color,
+                        left: (node.depth - 1) * RAIL + RAIL / 2,
+                      },
+                    ]}
+                  />
                 </View>
-              </View>
-            ) : null}
+              ) : null}
 
-            {discussionState === "loading" ? (
-              <ActivityIndicator color={t.navWordmark} />
-            ) : null}
-            {discussionState === "error" ? (
-              <Text style={styles.meta}>Could not load discussions. Tap Read to retry.</Text>
-            ) : null}
-            {Array.isArray(discussionState) && discussionState.length === 0 ? (
-              <Text style={styles.meta}>No discussions on this branch yet.</Text>
-            ) : null}
-            {Array.isArray(discussionState)
-              ? discussionState.map((link) => (
-                  <Pressable key={link.messageId} onPress={() => onOpenDiscussion(link)} style={styles.discussion}>
-                    <Text style={styles.rowTitle} numberOfLines={2}>{link.preview || "Question"}</Text>
-                    <Text style={styles.meta}>
-                      {link.circleName}
-                      {link.openAs === "thread" ? ` · ${link.replyCount} replies` : " · message"}
-                    </Text>
+              <View style={[styles.threadBody, { marginLeft: node.depth * RAIL }]}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: open }}
+                  onPress={() => (node.hasChildren ? onToggle(node.id) : undefined)}
+                  style={styles.row}
+                >
+                  <Ionicons
+                    name={
+                      node.hasChildren
+                        ? open
+                          ? "chevron-down"
+                          : "chevron-forward"
+                        : "ellipse"
+                    }
+                    size={node.hasChildren ? 16 : 8}
+                    color={node.depth === 0 ? lineColor(0) : color}
+                  />
+                  <View style={styles.rowBody}>
+                    {node.kicker ? <Text style={styles.rowKicker}>{node.kicker}</Text> : null}
+                    <Text style={styles.rowTitle}>{node.title}</Text>
+                    {body && !open ? <Text style={styles.rowSummary}>{body}</Text> : null}
+                  </View>
+                </Pressable>
+
+                {open && (node.lead || node.summary) ? (
+                  <View style={[styles.copy, { borderLeftColor: node.depth === 0 ? lineColor(0) : color }]}>
+                    <Text style={styles.copyText}>{node.lead || node.summary}</Text>
+                  </View>
+                ) : null}
+
+                {node.pathwayItemSlug && (open || !node.hasChildren) ? (
+                  <Pressable
+                    onPress={() => onOpenDetail(node.pathwayItemSlug!, node.title)}
+                    style={styles.iconBtn}
+                  >
+                    <Ionicons name="open-outline" size={16} color={t.textLink} />
+                    <Text style={styles.link}>Official details</Text>
                   </Pressable>
-                ))
-              : null}
-          </View>
-        );
-      })}
+                ) : null}
+
+                {actions ? (
+                  <View style={styles.actions}>
+                    {node.allowDiscussions ? (
+                      <Pressable onPress={() => onRead(node.id)} style={styles.actionBtn}>
+                        <Ionicons name="chatbubbles-outline" size={16} color={t.textLink} />
+                        <Text style={styles.link}>Read discussions</Text>
+                      </Pressable>
+                    ) : null}
+                    {node.allowAsk ? (
+                      <Pressable
+                        onPress={() => onStartAsk(node)}
+                        disabled={!postingCircleName}
+                        style={styles.actionBtn}
+                      >
+                        <Ionicons
+                          name="create-outline"
+                          size={16}
+                          color={postingCircleName ? t.textLink : t.dimmed}
+                        />
+                        <Text style={[styles.link, !postingCircleName && styles.dim]}>
+                          Ask parents
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                ) : null}
+
+                {askingId === node.id ? (
+                  <View style={styles.composer}>
+                    {postingCircleName ? (
+                      <Text style={styles.where}>Posts in {postingCircleName}</Text>
+                    ) : null}
+                    <TextInput
+                      value={askDraft}
+                      onChangeText={onChangeAsk}
+                      multiline
+                      style={styles.input}
+                      placeholder={node.askPrompt || "Your question"}
+                      placeholderTextColor={t.dimmed}
+                    />
+                    <View style={styles.composerRow}>
+                      <Pressable onPress={onCancelAsk}><Text style={styles.link}>Cancel</Text></Pressable>
+                      <Pressable onPress={onSendAsk} disabled={askBusy || !askDraft.trim()} style={styles.send}>
+                        {askBusy ? (
+                          <ActivityIndicator color={t.ctaText} />
+                        ) : (
+                          <Text style={styles.sendText}>Post</Text>
+                        )}
+                      </Pressable>
+                    </View>
+                  </View>
+                ) : null}
+
+                {discussionState === "loading" ? (
+                  <ActivityIndicator color={t.navWordmark} />
+                ) : null}
+                {discussionState === "error" ? (
+                  <Text style={styles.meta}>Could not load discussions. Tap Read to retry.</Text>
+                ) : null}
+                {Array.isArray(discussionState) && discussionState.length === 0 ? (
+                  <Text style={styles.meta}>No discussions on this branch yet.</Text>
+                ) : null}
+                {Array.isArray(discussionState)
+                  ? discussionState.map((link) => (
+                      <Pressable key={link.messageId} onPress={() => onOpenDiscussion(link)} style={styles.discussion}>
+                        <Text style={styles.rowTitle} numberOfLines={2}>{link.preview || "Question"}</Text>
+                        <Text style={styles.meta}>
+                          {link.circleName}
+                          {link.openAs === "thread" ? ` · ${link.replyCount} replies` : " · message"}
+                        </Text>
+                      </Pressable>
+                    ))
+                  : null}
+              </View>
+            </View>
+          );
+        })}
+      </View>
 
       <View style={styles.lockRow}>
         <Ionicons name="lock-closed-outline" size={14} color={t.lock} />
@@ -254,17 +342,55 @@ const styles = StyleSheet.create({
   kicker: { ...typography.caption, color: t.kicker, letterSpacing: 0.6, fontFamily: typography.bold },
   locationTitle: { ...typography.sectionTitle, color: t.nodeTitle, fontFamily: typography.bold },
   meta: { ...typography.supporting, color: t.nodeMeta },
-  crumb: { ...typography.caption, color: t.kicker },
-  row: { flexDirection: "row", gap: spacing.sm, alignItems: "flex-start", minHeight: 44, paddingVertical: 6 },
+  crumbRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 4 },
+  crumbItem: { flexDirection: "row", alignItems: "center", gap: 4, maxWidth: "100%" },
+  crumbText: { ...typography.caption, fontFamily: typography.semibold },
+  tree: { marginTop: spacing.xs },
+  threadItem: { position: "relative", minHeight: 36 },
+  rails: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    flexDirection: "row",
+  },
+  railTrack: { width: RAIL, alignItems: "center" },
+  rail: { width: 2, flex: 1, borderRadius: 1 },
+  branch: {
+    position: "absolute",
+    top: 18,
+    width: RAIL / 2,
+    height: 2,
+    borderRadius: 1,
+  },
+  threadBody: { paddingBottom: spacing.sm },
+  row: { flexDirection: "row", gap: spacing.xs, alignItems: "flex-start", minHeight: 36, paddingTop: 8 },
   rowBody: { flex: 1, gap: 2 },
   rowKicker: { ...typography.caption, color: t.kicker, fontFamily: typography.semibold },
   rowTitle: { ...typography.body, color: t.title, fontFamily: typography.semibold },
   rowSummary: { ...typography.supporting, color: t.deck },
-  actions: { gap: 4, marginLeft: 24, marginBottom: spacing.xs },
-  link: { ...typography.supporting, color: t.textLink, fontFamily: typography.semibold, paddingVertical: 4 },
-  dim: { opacity: 0.4 },
+  copy: {
+    marginLeft: 22,
+    marginTop: 4,
+    marginBottom: 6,
+    paddingLeft: spacing.sm,
+    borderLeftWidth: 2,
+  },
+  copyText: { ...typography.supporting, color: t.title, lineHeight: 20 },
+  actions: { marginLeft: 22, gap: 2 },
+  actionBtn: { flexDirection: "row", alignItems: "center", gap: 6, minHeight: 32 },
+  iconBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    minHeight: 32,
+    paddingVertical: 2,
+    marginLeft: 22,
+  },
+  link: { ...typography.supporting, color: t.textLink, fontFamily: typography.semibold },
+  dim: { color: t.dimmed },
   where: { ...typography.caption, color: t.lock },
-  composer: { marginLeft: 24, gap: spacing.xs },
+  composer: { marginLeft: 22, gap: spacing.xs, marginTop: 4 },
   input: {
     minHeight: 88,
     borderWidth: 1,
@@ -279,7 +405,7 @@ const styles = StyleSheet.create({
   send: { backgroundColor: t.ctaFill, borderRadius: radii.pill, paddingHorizontal: spacing.md, minHeight: 36, justifyContent: "center" },
   sendText: { color: t.ctaText, fontFamily: typography.semibold },
   discussion: {
-    marginLeft: 24,
+    marginLeft: 22,
     padding: spacing.sm,
     borderWidth: 1,
     borderColor: t.panelBorder,

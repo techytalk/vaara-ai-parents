@@ -118,6 +118,10 @@ const MIGRATIONS = [
     version: "058_path_exploration_tree",
     file: "058_path_exploration_tree.sql",
   },
+  {
+    version: "059_path_node_orientation_copy",
+    file: "059_path_node_orientation_copy.sql",
+  },
 ];
 
 async function isMigrationApplied(
