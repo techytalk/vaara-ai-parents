@@ -30,11 +30,12 @@ export type CircleFeedCache = {
 export function postThreadQueryKey(
   circleId: string,
   postId: string,
-  shareId?: string
+  shareId?: string,
+  suggested?: boolean
 ) {
-  return shareId
-    ? (["postThread", circleId, postId, shareId] as const)
-    : (["postThread", circleId, postId] as const);
+  if (shareId) return ["postThread", circleId, postId, shareId] as const;
+  if (suggested) return ["postThread", circleId, postId, "suggested"] as const;
+  return ["postThread", circleId, postId] as const;
 }
 
 export function findCachedCirclePost(

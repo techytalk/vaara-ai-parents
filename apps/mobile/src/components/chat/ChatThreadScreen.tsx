@@ -742,7 +742,9 @@ export function ChatThreadScreen({
               {threadQuery.data.circleName}
               {threadQuery.data.access.grantRole === "guest_author"
                 ? " · Guest question"
-                : ""}
+                : threadQuery.data.access.discovery
+                  ? " · Read only"
+                  : ""}
             </Text>
             <Pressable onPress={() => void toggleMute()}>
               <Text style={styles.messageAuthor}>
@@ -750,7 +752,8 @@ export function ChatThreadScreen({
               </Text>
             </Pressable>
           </View>
-          {threadQuery.data.access.canMessageAuthor ? (
+          {threadQuery.data.access.canMessageAuthor &&
+          !threadQuery.data.access.discovery ? (
             <Pressable onPress={() => void messageAuthor()}>
               <Text style={styles.messageAuthor}>Message author</Text>
             </Pressable>
@@ -779,6 +782,9 @@ export function ChatThreadScreen({
             message={item}
             mine={item.author.userId === myId}
             highlight={item.id === editingId}
+            allowWrite={
+              mode === "group" || threadQuery.data?.access.discovery !== true
+            }
             onLike={() => void react(item, "👍")}
             onOpenReact={() => openSheet(item, "react")}
             onOpenMore={() => openSheet(item, "more")}
@@ -1106,6 +1112,7 @@ function Bubble({
   message,
   mine,
   highlight,
+  allowWrite = true,
   onLike,
   onOpenReact,
   onOpenMore,
@@ -1117,6 +1124,7 @@ function Bubble({
   message: ChatMessage;
   mine: boolean;
   highlight: boolean;
+  allowWrite?: boolean;
   onLike: () => void;
   onOpenReact: () => void;
   onOpenMore: () => void;
@@ -1131,7 +1139,7 @@ function Bubble({
     (item) => item.reaction === "👍" && item.mine
   );
   const ageMs = Date.now() - new Date(message.createdAt).getTime();
-  const canManage = mine && ageMs <= 24 * 60 * 60 * 1000;
+  const canManage = allowWrite && mine && ageMs <= 24 * 60 * 60 * 1000;
   const canReport = !mine && visible;
   const hasVisualMedia = Boolean(
     visible &&
@@ -1173,7 +1181,7 @@ function Bubble({
           </Text>
         ) : null}
         <Pressable
-          onLongPress={onOpenReact}
+          onLongPress={allowWrite ? onOpenReact : undefined}
           delayLongPress={320}
           style={[
             styles.bubble,
@@ -1266,28 +1274,38 @@ function Bubble({
                 </Pressable>
               </>
             ) : null}
-            <Pressable
-              onPress={onLike}
-              style={styles.actionBtn}
-              accessibilityLabel="Like"
-            >
-              <Ionicons
-                name={liked ? "thumbs-up" : "thumbs-up-outline"}
-                size={15}
-                color={liked ? colors.primaryDark : colors.textMuted}
-              />
-              <Text style={[styles.actionLabel, liked && styles.actionLabelOn]}>
-                Like
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={onOpenReact}
-              style={styles.actionBtn}
-              accessibilityLabel="React"
-            >
-              <Ionicons name="happy-outline" size={16} color={colors.textMuted} />
-              <Text style={styles.actionLabel}>React</Text>
-            </Pressable>
+            {allowWrite ? (
+              <>
+                <Pressable
+                  onPress={onLike}
+                  style={styles.actionBtn}
+                  accessibilityLabel="Like"
+                >
+                  <Ionicons
+                    name={liked ? "thumbs-up" : "thumbs-up-outline"}
+                    size={15}
+                    color={liked ? colors.primaryDark : colors.textMuted}
+                  />
+                  <Text
+                    style={[styles.actionLabel, liked && styles.actionLabelOn]}
+                  >
+                    Like
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={onOpenReact}
+                  style={styles.actionBtn}
+                  accessibilityLabel="React"
+                >
+                  <Ionicons
+                    name="happy-outline"
+                    size={16}
+                    color={colors.textMuted}
+                  />
+                  <Text style={styles.actionLabel}>React</Text>
+                </Pressable>
+              </>
+            ) : null}
             {canManage || canReport ? (
               <Pressable
                 onPress={onOpenMore}

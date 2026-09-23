@@ -31,12 +31,48 @@ test("a proposition is blocked", () => {
   assert.equal(action, "block");
 });
 
-test("an unsure score is logged as review and not blocked", () => {
+test("a directed insult at filthy 0.60 is blocked", () => {
+  const action = decideAction({
+    isEnglish: false,
+    language: "Telugu",
+    english: "Damn you",
+    filthy: 0.6,
+    sexualOrRomantic: 0,
+    harassing: 0.5,
+  });
+  assert.equal(action, "block");
+});
+
+test("harassing at 0.50 is blocked", () => {
+  const action = decideAction({
+    isEnglish: true,
+    language: "",
+    english: "",
+    filthy: 0.2,
+    sexualOrRomantic: 0.1,
+    harassing: 0.5,
+  });
+  assert.equal(action, "block");
+});
+
+test("sexualOrRomantic at 0.65 is blocked", () => {
+  const action = decideAction({
+    isEnglish: true,
+    language: "",
+    english: "",
+    filthy: 0.1,
+    sexualOrRomantic: 0.65,
+    harassing: 0.1,
+  });
+  assert.equal(action, "block");
+});
+
+test("an elevated but below-block score is logged as review", () => {
   const action = decideAction({
     isEnglish: false,
     language: "Telugu",
     english: "The driver was rude.",
-    filthy: 0.62,
+    filthy: 0.4,
     sexualOrRomantic: 0.05,
     harassing: 0.2,
   });

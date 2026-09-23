@@ -145,6 +145,13 @@ export function ChatHomeScreen() {
               });
               return;
             }
+            if (item.kind === "thread" && item.access === "discovery") {
+              router.push({
+                pathname: "/(app)/messages/threads/[threadId]",
+                params: { threadId: item.id },
+              });
+              return;
+            }
             if (item.circleId) {
               router.push({
                 pathname: "/(app)/messages/groups/[circleId]",

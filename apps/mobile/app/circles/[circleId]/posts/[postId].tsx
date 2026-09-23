@@ -74,11 +74,13 @@ function CommentCard({ comment }: { comment: PostComment }) {
 }
 
 export default function PostThreadScreen() {
-  const { circleId, postId, shareId } = useLocalSearchParams<{
+  const { circleId, postId, shareId, suggested } = useLocalSearchParams<{
     circleId: string;
     postId: string;
     shareId?: string;
+    suggested?: string;
   }>();
+  const suggestedView = suggested === "1";
   const router = useRouter();
   const navigation = useNavigation();
   const queryClient = useQueryClient();
@@ -106,14 +108,25 @@ export default function PostThreadScreen() {
     postId,
     shareId
   );
-  const threadKey = postThreadQueryKey(circleId, postId, shareId);
+  const threadKey = postThreadQueryKey(
+    circleId,
+    postId,
+    shareId,
+    suggestedView
+  );
 
   const threadQuery = useQuery({
     queryKey: threadKey,
     queryFn: async (): Promise<PostThreadData> => {
       const token = await getToken();
       if (!token) throw new Error("Not signed in");
-      const data = await api.getPost(token, circleId, postId, shareId);
+      const data = await api.getPost(
+        token,
+        circleId,
+        postId,
+        shareId,
+        suggestedView
+      );
       return {
         post: data.post,
         replies: data.replies,
@@ -450,6 +463,8 @@ export default function PostThreadScreen() {
     authoritative &&
     (capabilities?.canReply ?? !readOnly) &&
     queryClient.getQueryData<AuthUser>(["sessionUser"])?.suspended !== true;
+  const canViewReplies =
+    authoritative && (capabilities?.canViewReplies ?? !readOnly);
   const suspended =
     queryClient.getQueryData<AuthUser>(["sessionUser"])?.suspended === true;
   const canVote = authoritative && (capabilities?.canVote ?? !readOnly);
@@ -604,7 +619,9 @@ export default function PostThreadScreen() {
               <View style={styles.postInner}>
                 {authoritative && readOnly ? (
                   <Text style={styles.discoveryBanner}>
-                    You’re not part of this circle.
+                    {canViewReplies
+                      ? "You can read this conversation. You’re not part of this circle."
+                      : "You’re not part of this circle."}
                   </Text>
                 ) : authoritative && capabilities && !capabilities.canOpenCircle ? (
                   <Text style={styles.discoveryBanner}>
@@ -755,9 +772,11 @@ export default function PostThreadScreen() {
                 <Text style={styles.commentsHint}>Loading comments</Text>
               ) : comments.length === 0 ? (
                 <Text style={styles.commentsHint}>
-                  {readOnly
+                  {readOnly && !canViewReplies
                     ? "Join this circle to see comments and join the conversation."
-                    : "Be the first to respond to this post"}
+                    : readOnly
+                      ? "No comments yet"
+                      : "Be the first to respond to this post"}
                 </Text>
               ) : null}
               {threadQuery.isError && !authoritative ? (
@@ -852,8 +871,9 @@ export default function PostThreadScreen() {
           ]}
         >
           <Text style={styles.readOnlyNote}>
-            You’re not part of this circle. You can view this shared post, but
-            you cannot comment or open the rest of the circle.
+            {canViewReplies
+              ? "You can read this conversation. You can’t reply."
+              : "You’re not part of this circle. You can view this shared post, but you cannot comment or open the rest of the circle."}
           </Text>
         </View>
       ) : null}

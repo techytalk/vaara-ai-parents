@@ -6,13 +6,30 @@ export const FOUL_LANGUAGE_MESSAGE =
 export const CHECK_UNAVAILABLE_MESSAGE =
   "We couldn’t check this message. Try again in a moment.";
 
-export const BLOCK_THRESHOLD = 0.85;
-const REVIEW_THRESHOLD = 0.5;
+/** Per-signal block lines. Judge meaning, not word presence. */
+export const BLOCK_THRESHOLDS = {
+  filthy: 0.6,
+  sexualOrRomantic: 0.65,
+  harassing: 0.5,
+} as const;
+
+/** Below block, elevated scores are allowed and logged for review. */
+const REVIEW_THRESHOLDS = {
+  filthy: 0.35,
+  sexualOrRomantic: 0.4,
+  harassing: 0.3,
+} as const;
+
 const MODEL = "gemini-flash-latest";
 
 const SYSTEM_PROMPT = `You review one message from a parent community before it is published.
-Parents write about school, class, buses, homework, and daily life.
-That is fine. Foul language, sex, romancing, and harassment are not.
+Judge the full meaning and intent. Do not score high only because a sensitive
+word appears. Parents write about school, class, buses, homework, health,
+safety, puberty, pregnancy, and child sex education. That is fine when the
+message is a genuine parenting discussion.
+
+Foul language, insults, scolding, threats, sexualizing someone, and unwanted
+romantic or sexual approaches aimed at another parent are not fine.
 
 Return JSON only, with this shape:
 {
@@ -36,13 +53,16 @@ Keep insults, slurs, sexual remarks, and threats.
 Do not soften them into polite wording.
 The three scores describe that English meaning, from 0 to 1.
 
-filthy: foul language, insults, or slurs.
-sexualOrRomantic: sex, pornography, or romancing, including a proposition.
+filthy: foul language, insults, or slurs used as abuse.
+sexualOrRomantic: sex, pornography, or romancing aimed at someone,
+including a proposition. Legitimate health, puberty, pregnancy, safety,
+or educational discussion must score low even when those topics are named.
 harassing: scolding, threats, or sexual harassment aimed at someone.
 
-A message about a class, a bus, homework, or anything else parents
-discuss here scores low on all three.
-Do not score a message higher because it is off-topic.`;
+Score high only when the meaning is abusive, insulting, scolding,
+threatening, sexualizing, or making an unwanted romantic or sexual approach
+toward someone. Score low for a class, bus, homework, or other parenting
+question. Do not score a message higher because it is off-topic.`;
 
 export type ContentVerdict = {
   isEnglish: boolean;
@@ -110,9 +130,20 @@ export function parseVerdict(raw: unknown): ContentVerdict | null {
 }
 
 export function decideAction(verdict: ContentVerdict): ContentAction {
-  const scores = [verdict.filthy, verdict.sexualOrRomantic, verdict.harassing];
-  if (scores.some((score) => score >= BLOCK_THRESHOLD)) return "block";
-  if (scores.some((score) => score >= REVIEW_THRESHOLD)) return "review";
+  if (
+    verdict.filthy >= BLOCK_THRESHOLDS.filthy ||
+    verdict.sexualOrRomantic >= BLOCK_THRESHOLDS.sexualOrRomantic ||
+    verdict.harassing >= BLOCK_THRESHOLDS.harassing
+  ) {
+    return "block";
+  }
+  if (
+    verdict.filthy >= REVIEW_THRESHOLDS.filthy ||
+    verdict.sexualOrRomantic >= REVIEW_THRESHOLDS.sexualOrRomantic ||
+    verdict.harassing >= REVIEW_THRESHOLDS.harassing
+  ) {
+    return "review";
+  }
   return "allow";
 }
 

@@ -158,6 +158,8 @@ export async function resolveThreadAccess(
     circleId: string;
     postId: string;
     shareId?: string | null;
+    /** Home marked this post "Suggested from another circle". */
+    suggested?: boolean;
   }
 ): Promise<ThreadAccess> {
   const denied: ThreadAccess = {
@@ -255,13 +257,16 @@ export async function resolveThreadAccess(
     params.postId
   );
   if (discoveryReadable) {
+    const capabilities = capabilitiesFor(
+      "discovery_preview",
+      params.userId,
+      postAuthorId
+    );
     return {
       state: "discovery_preview",
-      capabilities: capabilitiesFor(
-        "discovery_preview",
-        params.userId,
-        postAuthorId
-      ),
+      capabilities: params.suggested
+        ? { ...capabilities, canViewReplies: true }
+        : capabilities,
       circle,
       postAuthorId,
     };

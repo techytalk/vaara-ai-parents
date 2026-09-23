@@ -1588,16 +1588,20 @@ export const api = {
     token: string,
     circleId: string,
     postId: string,
-    shareId?: string
+    shareId?: string,
+    suggested?: boolean
   ) => {
-    const qs = shareId ? `?shareId=${encodeURIComponent(shareId)}` : "";
+    const qs = new URLSearchParams();
+    if (shareId) qs.set("shareId", shareId);
+    if (suggested && !shareId) qs.set("suggested", "1");
+    const query = qs.toString();
     return request<{
       post: CirclePost & { readOnly?: boolean; discovery?: boolean };
       replies: PostComment[];
       readOnly?: boolean;
       accessState?: ThreadAccessState;
       capabilities?: ThreadCapabilities;
-    }>(`/v1/circles/${circleId}/posts/${postId}${qs}`, {}, token);
+    }>(`/v1/circles/${circleId}/posts/${postId}${query ? `?${query}` : ""}`, {}, token);
   },
 
   createPostShare: (token: string, circleId: string, postId: string) =>

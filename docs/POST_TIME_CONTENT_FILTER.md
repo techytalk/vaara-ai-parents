@@ -133,8 +133,13 @@ draft.
 
 ```text
 You review one message from a parent community before it is published.
-Parents write about school, class, buses, homework, and daily life.
-That is fine. Foul language, sex, romancing, and harassment are not.
+Judge the full meaning and intent. Do not score high only because a sensitive
+word appears. Parents write about school, class, buses, homework, health,
+safety, puberty, pregnancy, and child sex education. That is fine when the
+message is a genuine parenting discussion.
+
+Foul language, insults, scolding, threats, sexualizing someone, and unwanted
+romantic or sexual approaches aimed at another parent are not fine.
 
 Return JSON only, with this shape:
 {
@@ -158,13 +163,16 @@ Keep insults, slurs, sexual remarks, and threats.
 Do not soften them into polite wording.
 The three scores describe that English meaning, from 0 to 1.
 
-filthy: foul language, insults, or slurs.
-sexualOrRomantic: sex, pornography, or romancing, including a proposition.
+filthy: foul language, insults, or slurs used as abuse.
+sexualOrRomantic: sex, pornography, or romancing aimed at someone,
+including a proposition. Legitimate health, puberty, pregnancy, safety,
+or educational discussion must score low even when those topics are named.
 harassing: scolding, threats, or sexual harassment aimed at someone.
 
-A message about a class, a bus, homework, or anything else parents
-discuss here scores low on all three.
-Do not score a message higher because it is off-topic.
+Score high only when the meaning is abusive, insulting, scolding,
+threatening, sexualizing, or making an unwanted romantic or sexual approach
+toward someone. Score low for a class, bus, homework, or other parenting
+question. Do not score a message higher because it is off-topic.
 ```
 
 A reply adds context under the message. A new post sends the message alone.
@@ -181,19 +189,27 @@ Replying to: <short snippet, only for a reply>
 
 ## Decision rules
 
-Block when any of these is confident.
+Judge the full meaning and intent. Do not block only because a sensitive word
+appears. A genuine parenting, health, safety, puberty, pregnancy, or
+educational discussion must score low. Score high only when the meaning is
+abusive, insulting, scolding, threatening, sexualizing, or making an unwanted
+romantic or sexual approach toward someone.
+
+Block when any signal reaches its line:
 
 | Signal | Block when |
 | --- | --- |
-| `filthy` | ≥ 0.85 |
-| `sexual_or_romantic` | ≥ 0.85 |
-| `harassing` | ≥ 0.85 |
+| `filthy` | ≥ 0.60 |
+| `sexual_or_romantic` | ≥ 0.65 |
+| `harassing` | ≥ 0.50 |
 
-Anything in between is allowed and logged for review. A clear pass on all three is allowed and not stored a second time.
+Elevated scores below those lines are allowed and logged for review. A clear
+pass on all three is allowed and not stored a second time.
 
-The line is a starting point for shadow mode. Move it only after reading real Vaara messages.
-
-“Will you marry me?” fails `sexual_or_romantic`. A Telugu insult is translated first, then fails `filthy` or `harassing`. “The bus is late”, a class question, and a homework note pass in any language.
+“Will you marry me?” fails `sexual_or_romantic`. A Telugu insult such as
+“Nee bonda ra” is translated first, then fails `filthy` or `harassing`.
+“How do I explain puberty?” and “Can pregnant parents join the trip?” pass.
+“The bus is late”, a class question, and a homework note pass in any language.
 
 ### What the sender sees
 

@@ -645,6 +645,7 @@ export function createCirclesRoutes() {
     const circleId = c.req.param("circleId");
     const postId = c.req.param("postId");
     const shareId = c.req.query("shareId")?.trim() || null;
+    const suggested = c.req.query("suggested") === "1";
     if (!circleId || !postId) {
       return c.json({ error: "Post not found" }, 404);
     }
@@ -656,6 +657,7 @@ export function createCirclesRoutes() {
         circleId,
         postId,
         shareId,
+        suggested: suggested && !shareId,
       });
       if (!access.capabilities.canViewPost || !access.circle) {
         return c.json({ error: "Post not found" }, 404);
@@ -668,7 +670,9 @@ export function createCirclesRoutes() {
       }
 
       const resolvedCircle = access.circle;
-      const previewOnly = !access.capabilities.canViewReplies;
+      const readOnly =
+        access.state === "discovery_preview" || access.state === "share_preview";
+      const includeReplies = access.capabilities.canViewReplies;
 
       const postResult = await client.query(
         `SELECT p.id, p.body, p.tag, p.reply_count, p.created_at, p.edited_at, p.author_id,
@@ -713,9 +717,8 @@ export function createCirclesRoutes() {
         postRow.avatar_key
       );
 
-      const repliesResult = previewOnly
-        ? { rows: [] }
-        : await client.query(
+      const repliesResult = includeReplies
+        ? await client.query(
         `SELECT r.id, r.body, r.created_at, r.author_id, u.anonymous_handle, u.avatar_key
          FROM circle_post_replies r
          JOIN users u ON u.id = r.author_id
@@ -727,11 +730,11 @@ export function createCirclesRoutes() {
            )
          ORDER BY r.created_at ASC`,
         [postId, userId]
-      );
+      )
+        : { rows: [] };
 
-      const replies = previewOnly
-        ? []
-        : await Promise.all(
+      const replies = includeReplies
+        ? await Promise.all(
         repliesResult.rows.map(async (row) => {
           const author = await buildAuthorViewForCircleAccess(
             client,
@@ -753,7 +756,8 @@ export function createCirclesRoutes() {
             },
           };
         })
-      );
+      )
+        : [];
 
       const helpfulResult = await client.query(
         `SELECT
@@ -763,8 +767,6 @@ export function createCirclesRoutes() {
          WHERE post_id = $1`,
         [postId, userId]
       );
-
-      const readOnly = previewOnly;
 
       return c.json({
         post: {
