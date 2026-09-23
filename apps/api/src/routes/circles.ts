@@ -293,7 +293,7 @@ export function createCirclesRoutes() {
         circleId,
         text: postText,
       });
-      if (!screened.ok) {
+      if (screened.ok === false) {
         return c.json({ error: screened.error, code: screened.code }, 400);
       }
     }
@@ -865,7 +865,7 @@ export function createCirclesRoutes() {
         circleId,
         text: editText,
       });
-      if (!screened.ok) {
+      if (screened.ok === false) {
         return c.json({ error: screened.error, code: screened.code }, 400);
       }
     }
@@ -1459,7 +1459,7 @@ export function createCirclesRoutes() {
       circleId,
       text,
     });
-    if (!screenedReply.ok) {
+    if (screenedReply.ok === false) {
       return c.json({ error: screenedReply.error, code: screenedReply.code }, 400);
     }
 
@@ -2404,7 +2404,7 @@ export function createConversationsRoutes() {
         surface: "dm",
         text,
       });
-      if (!screenedDm.ok) {
+      if (screenedDm.ok === false) {
         return c.json({ error: screenedDm.error, code: screenedDm.code }, 400);
       }
 

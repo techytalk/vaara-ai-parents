@@ -84,7 +84,7 @@ export function createCrossPostRoutes() {
         surface: "post",
         text: postText,
       });
-      if (!screened.ok) {
+      if (screened.ok === false) {
         return c.json({ error: screened.error, code: screened.code }, 400);
       }
     }

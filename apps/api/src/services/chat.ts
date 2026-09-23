@@ -127,7 +127,7 @@ async function screenChatText(input: {
   replyTo?: string | null;
 }): Promise<{ englishBody: string | null } | { error: string; status: number; code: "content_rejected" }> {
   const screened = await screenParentText(input);
-  if (!screened.ok) {
+  if (screened.ok === false) {
     return { error: screened.error, status: 400, code: screened.code };
   }
   return { englishBody: screened.englishBody };
