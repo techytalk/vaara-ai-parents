@@ -39,8 +39,9 @@ export default function RootLayout() {
   });
 
   useEffect(() => {
+    if (!fontsLoaded && !fontError) return;
     void initAnalytics();
-  }, []);
+  }, [fontError, fontsLoaded]);
 
   useEffect(() => {
     function handleUrl(url: string) {

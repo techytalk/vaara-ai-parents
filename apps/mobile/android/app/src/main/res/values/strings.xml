@@ -1,5 +1,8 @@
 <resources>
   <string name="app_name">Vaara Parents</string>
+  <string name="facebook_app_id">1096547259629323</string>
+  <string name="facebook_client_token">311b4f5ede268d069c59d5cb14f991f1</string>
+  <string name="fb_login_protocol_scheme">fb1096547259629323</string>
   <string name="expo_splash_screen_resize_mode" translatable="false">contain</string>
   <string name="expo_splash_screen_status_bar_translucent" translatable="false">false</string>
   <string name="expo_runtime_version">1.0.3</string>

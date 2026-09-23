@@ -120,7 +120,20 @@
           "iosUrlScheme": "com.googleusercontent.apps.375946640576-bcoc1nonnurepmvq6ebnm0smfhnao0ol"
         }
       ],
-      "@react-native-firebase/app"
+      "@react-native-firebase/app",
+      [
+        "react-native-fbsdk-next",
+        {
+          "appID": "1096547259629323",
+          "clientToken": "311b4f5ede268d069c59d5cb14f991f1",
+          "displayName": "Vaara Parents",
+          "scheme": "fb1096547259629323",
+          "advertiserIDCollectionEnabled": false,
+          "autoLogAppEventsEnabled": true,
+          "isAutoInitEnabled": true,
+          "iosUserTrackingPermission": "Vaara uses this to measure which ads led you to the app."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

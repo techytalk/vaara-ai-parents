@@ -1,9 +1,11 @@
 /**
- * Google Analytics (GA4) via Firebase Analytics.
- * Google Ads app conversions are imported from these GA4 events after the
- * Firebase project is linked to Google Ads (console-only; no Ads SDK in-app).
+ * Google Analytics (GA4) via Firebase Analytics, plus Meta App Events for
+ * Facebook and Instagram app campaigns.
+ * Google Ads conversions are imported from the GA4 events after Firebase is
+ * linked to Google Ads. Meta receives only sign_up, tutorial_complete, and share.
  * Never include child data, message contents, emails, or access tokens.
  */
+import { Platform } from "react-native";
 
 export type AnalyticsEvent =
   | "home_circle_opened"
@@ -155,6 +157,39 @@ const CONVERSION_EVENTS = new Set<AnalyticsEvent>([
   "share",
 ]);
 
+const META_EVENTS = new Set<AnalyticsEvent>([
+  "sign_up",
+  "tutorial_complete",
+  "share",
+]);
+
+async function metaLog(
+  name: AnalyticsEvent,
+  properties?: AnalyticsProperties
+): Promise<void> {
+  try {
+    const { AppEventsLogger } = await import("react-native-fbsdk-next");
+    if (name === "sign_up") {
+      const method = String(properties?.method ?? "password");
+      AppEventsLogger.logEvent(AppEventsLogger.AppEvents.CompletedRegistration, {
+        [AppEventsLogger.AppEventParams.RegistrationMethod]: method,
+      });
+      return;
+    }
+    if (name === "tutorial_complete") {
+      AppEventsLogger.logEvent(AppEventsLogger.AppEvents.CompletedTutorial);
+      return;
+    }
+    if (name === "share") {
+      AppEventsLogger.logEvent("share", {
+        content_type: String(properties?.content_type ?? "post"),
+      });
+    }
+  } catch {
+    // Native module is unavailable in Expo Go and on web.
+  }
+}
+
 async function nativeLog(
   name: string,
   properties?: AnalyticsProperties
@@ -194,6 +229,7 @@ export function trackEvent(
     console.log(`[analytics] ${name}`, properties ?? {});
   }
   void nativeLog(name, properties);
+  if (META_EVENTS.has(name)) void metaLog(name, properties);
 }
 
 export function trackAuthConversion(
@@ -272,6 +308,25 @@ export async function initAnalytics(): Promise<void> {
   try {
     const analytics = (await import("@react-native-firebase/analytics")).default;
     await analytics().setAnalyticsCollectionEnabled(true);
+  } catch {
+    // Native module is unavailable in Expo Go and on web.
+  }
+
+  try {
+    const { Settings } = await import("react-native-fbsdk-next");
+    Settings.initializeSDK();
+    Settings.setAutoLogAppEventsEnabled(true);
+    if (Platform.OS === "ios") {
+      const { requestTrackingPermissionsAsync } = await import(
+        "expo-tracking-transparency"
+      );
+      const { status } = await requestTrackingPermissionsAsync();
+      const allowed = status === "granted";
+      Settings.setAdvertiserIDCollectionEnabled(allowed);
+      await Settings.setAdvertiserTrackingEnabled(allowed);
+      return;
+    }
+    Settings.setAdvertiserIDCollectionEnabled(true);
   } catch {
     // Native module is unavailable in Expo Go and on web.
   }
