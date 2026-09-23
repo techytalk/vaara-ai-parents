@@ -77,6 +77,11 @@ async function authed<T>(fn: (token: string) => Promise<T>): Promise<T> {
   return fn(token);
 }
 
+function queryErrorText(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim()) return error.message.trim();
+  return fallback;
+}
+
 function formatTime(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
@@ -696,7 +701,10 @@ export function ChatThreadScreen({
       <EmptyState
         icon="alert-circle-outline"
         title="Could not open this group"
-        message="Check your connection and try again."
+        message={queryErrorText(
+          listQuery.error,
+          "Check your connection and try again."
+        )}
       />
     );
   }
