@@ -219,10 +219,6 @@ export default function ChatScreen() {
       setText("");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Failed to send");
-      Alert.alert(
-        "Could not send",
-        cause instanceof Error ? cause.message : "Failed to send"
-      );
     } finally {
       setSending(false);
     }

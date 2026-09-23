@@ -803,7 +803,7 @@ export function ChatThreadScreen({
       />
       {canReply ? (
         <View style={[styles.composer, dockStyle]}>
-          {sending ? (
+          {sending && draft.trim() ? (
             <Text style={styles.validatingHint}>
               Checking community guidelines…
             </Text>
@@ -821,9 +821,11 @@ export function ChatThreadScreen({
               </View>
               <Pressable
                 onPress={() => {
+                  if (sending) return;
                   setEditingId(null);
                   setDraft("");
                 }}
+                disabled={sending}
                 hitSlop={10}
                 accessibilityLabel="Cancel edit"
               >
@@ -846,7 +848,11 @@ export function ChatThreadScreen({
                 </Text>
               </View>
               <Pressable
-                onPress={() => setQuoteTarget(null)}
+                onPress={() => {
+                  if (sending) return;
+                  setQuoteTarget(null);
+                }}
+                disabled={sending}
                 hitSlop={10}
                 accessibilityLabel="Cancel channel reply"
               >
@@ -858,8 +864,9 @@ export function ChatThreadScreen({
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              style={styles.attachTray}
+              style={[styles.attachTray, sending && styles.sendDisabled]}
               contentContainerStyle={styles.attachTrayContent}
+              pointerEvents={sending ? "none" : "auto"}
             >
               {pendingMedia.map((item) => (
                 <View key={item.localId} style={styles.attachThumbWrap}>
@@ -974,8 +981,9 @@ export function ChatThreadScreen({
           <View style={styles.inputRow}>
             {!editingId ? (
               <Pressable
-                style={styles.attachBtn}
+                style={[styles.attachBtn, sending && styles.sendDisabled]}
                 onPress={() => setAttachSheetOpen(true)}
+                disabled={sending}
                 accessibilityLabel="Add attachment"
               >
                 <Ionicons name="add" size={26} color={colors.primaryDark} />
@@ -996,6 +1004,7 @@ export function ChatThreadScreen({
                 if (actionError) setActionError(null);
                 setDraft(value);
               }}
+              editable={!sending}
               multiline
             />
             <Pressable
@@ -1003,11 +1012,13 @@ export function ChatThreadScreen({
               onPress={() => void send()}
               disabled={!canSend}
               accessibilityLabel={
-                sending
+                sending && draft.trim()
                   ? "Checking community guidelines"
-                  : editingId
-                    ? "Save message"
-                    : "Send message"
+                  : sending
+                    ? "Sending message"
+                    : editingId
+                      ? "Save message"
+                      : "Send message"
               }
             >
               {sending ? (

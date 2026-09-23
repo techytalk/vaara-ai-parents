@@ -319,9 +319,7 @@ export default function PostThreadScreen() {
     try {
       const token = await getToken();
       if (!token) {
-        const message = "Your session expired. Please sign in again.";
-        setError(message);
-        Alert.alert("Could not comment", message);
+        setError("Your session expired. Please sign in again.");
         return;
       }
       const comment = await api.addReply(token, circleId, postId, text);
@@ -336,10 +334,9 @@ export default function PostThreadScreen() {
         }
         return;
       }
-      const message =
-        cause instanceof Error ? cause.message : "Failed to comment";
-      setError(message);
-      Alert.alert("Could not comment", message);
+      setError(
+        cause instanceof Error ? cause.message : "Failed to comment"
+      );
     } finally {
       setSubmitting(false);
     }
