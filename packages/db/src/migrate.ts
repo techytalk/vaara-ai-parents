@@ -138,6 +138,14 @@ const MIGRATIONS = [
     version: "063_content_filter",
     file: "063_content_filter.sql",
   },
+  {
+    version: "064_myp_g9_subjects_practical",
+    file: "064_myp_g9_subjects_practical.sql",
+  },
+  {
+    version: "065_myp_g9_next_year",
+    file: "065_myp_g9_next_year.sql",
+  },
 ];
 
 async function isMigrationApplied(
