@@ -25,6 +25,7 @@ import {
   ChatMessageAttachments,
   attachmentQuoteLabel,
 } from "@/components/chat/ChatMessageAttachments";
+import { EnglishTranslation } from "@/components/chat/EnglishTranslation";
 import {
   colors,
   radii,
@@ -1191,6 +1192,9 @@ function Bubble({
             >
               {message.body}
             </Text>
+          ) : null}
+          {visible && message.englishBody ? (
+            <EnglishTranslation text={message.englishBody} mine={mine} />
           ) : null}
           {message.status === "moderated" ? (
             <Text style={[styles.body, styles.bodyDeleted]}>

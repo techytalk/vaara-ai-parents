@@ -8,7 +8,7 @@ import {
   verifyUploadedMedia,
 } from "../lib/media-storage.js";
 import { validatePollInput } from "../lib/polls.js";
-import { rejectObjectionableText } from "../lib/content-guard.js";
+import { screenParentText } from "../lib/content-filter.js";
 import { syncCircleMembership } from "../services/circle-sync.js";
 import {
   createCrossPosts,
@@ -75,13 +75,18 @@ export function createCrossPostRoutes() {
       );
     }
 
-    const objectionable = rejectObjectionableText(
-      text,
-      body.poll?.question,
-      ...(body.poll?.options ?? [])
-    );
-    if (objectionable) {
-      return c.json({ error: objectionable.error }, 400);
+    const postText = [text, body.poll?.question, ...(body.poll?.options ?? [])]
+      .filter((part) => part && part.trim())
+      .join("\n");
+    if (postText) {
+      const screened = await screenParentText({
+        userId,
+        surface: "post",
+        text: postText,
+      });
+      if (!screened.ok) {
+        return c.json({ error: screened.error, code: screened.code }, 400);
+      }
     }
 
     if (body.poll) {

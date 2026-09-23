@@ -281,7 +281,10 @@ export function createCircleChatRoutes() {
       });
       if ("error" in result) {
         await client.query("ROLLBACK");
-        return c.json({ error: result.error }, result.status as 400 | 403 | 404 | 429);
+        return c.json(
+          { error: result.error, ...(result.code ? { code: result.code } : {}) },
+          result.status as 400 | 403 | 404 | 429
+        );
       }
       await client.query("COMMIT");
       await upsertCachedChatMessage(result.message);
@@ -321,7 +324,10 @@ export function createCircleChatRoutes() {
         body: body.body ?? "",
       });
       if ("error" in result) {
-        return c.json({ error: result.error }, result.status as 400 | 403 | 404);
+        return c.json(
+          { error: result.error, ...(result.code ? { code: result.code } : {}) },
+          result.status as 400 | 403 | 404
+        );
       }
       await upsertCachedChatMessage(result.message);
       return c.json(result.message);
@@ -645,7 +651,10 @@ export function createCircleChatRoutes() {
       });
       if ("error" in result) {
         await client.query("ROLLBACK");
-        return c.json({ error: result.error }, result.status as 400 | 403 | 404 | 429);
+        return c.json(
+          { error: result.error, ...(result.code ? { code: result.code } : {}) },
+          result.status as 400 | 403 | 404 | 429
+        );
       }
       await client.query("COMMIT");
       await invalidateChatMessagePages({ circleIds: [circleId] });
@@ -686,7 +695,10 @@ export function createCircleChatRoutes() {
       });
       if ("error" in result) {
         await client.query("ROLLBACK");
-        return c.json({ error: result.error }, result.status as 400 | 403 | 404 | 429);
+        return c.json(
+          { error: result.error, ...(result.code ? { code: result.code } : {}) },
+          result.status as 400 | 403 | 404 | 429
+        );
       }
       await client.query("COMMIT");
       return c.json(result.thread, 201);
@@ -826,7 +838,10 @@ export function createThreadRoutes() {
       });
       if ("error" in result) {
         await client.query("ROLLBACK");
-        return c.json({ error: result.error }, result.status as 400 | 403 | 404 | 429);
+        return c.json(
+          { error: result.error, ...(result.code ? { code: result.code } : {}) },
+          result.status as 400 | 403 | 404 | 429
+        );
       }
       await client.query("COMMIT");
       await upsertCachedChatMessage(result.message);

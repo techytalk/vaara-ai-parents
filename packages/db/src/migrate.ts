@@ -134,6 +134,10 @@ const MIGRATIONS = [
     version: "062_content_blocked",
     file: "062_content_blocked.sql",
   },
+  {
+    version: "063_content_filter",
+    file: "063_content_filter.sql",
+  },
 ];
 
 async function isMigrationApplied(

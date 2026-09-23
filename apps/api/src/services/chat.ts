@@ -16,10 +16,8 @@ import {
   writeCachedLinearMessages,
   writeCachedThreadMessages,
 } from "../lib/chat-page-cache.js";
-import {
-  detectMedicalAdvice,
-  rejectObjectionableText,
-} from "../lib/content-guard.js";
+import { detectMedicalAdvice } from "../lib/content-guard.js";
+import { screenParentText } from "../lib/content-filter.js";
 import {
   encodeChatHomeCursor,
   isAfterChatHomeCursor,
@@ -66,6 +64,7 @@ export type ChatMessageView = {
   replyCount: number;
   lastReplyPreview: string | null;
   body: string | null;
+  englishBody: string | null;
   status: string;
   isLegacy: boolean;
   replyToMessageId: string | null;
@@ -115,7 +114,23 @@ function parentThreadPreview(
 function guardText(text: string): { error: string } | null {
   const medical = detectMedicalAdvice(text);
   if (medical.blocked) return { error: medical.reason ?? "Not allowed" };
-  return rejectObjectionableText(text);
+  return null;
+}
+
+async function screenChatText(input: {
+  userId: string;
+  surface: string;
+  text: string;
+  circleId?: string | null;
+  threadId?: string | null;
+  threadTitle?: string | null;
+  replyTo?: string | null;
+}): Promise<{ englishBody: string | null } | { error: string; status: number; code: "content_rejected" }> {
+  const screened = await screenParentText(input);
+  if (!screened.ok) {
+    return { error: screened.error, status: 400, code: screened.code };
+  }
+  return { englishBody: screened.englishBody };
 }
 
 async function followThread(
@@ -339,6 +354,10 @@ export function mapMessageRow(
       ? String(row.last_reply_preview)
       : null,
     body: row.status === "visible" ? (row.body as string | null) : null,
+    englishBody:
+      row.status === "visible" && row.english_body
+        ? String(row.english_body)
+        : null,
     status: String(row.status),
     isLegacy: row.is_legacy === true,
     replyToMessageId: row.reply_to_message_id
@@ -409,7 +428,9 @@ export async function editCircleMessage(params: {
   circleId: string;
   messageId: string;
   body: string;
-}): Promise<{ message: ChatMessageView } | { error: string; status: number }> {
+}): Promise<
+  { message: ChatMessageView } | { error: string; status: number; code?: "content_rejected" }
+> {
   const body = params.body.trim();
   if (!body) return { error: "Message is required", status: 400 };
   if (body.length > 4000) return { error: "Message is too long", status: 400 };
@@ -432,10 +453,18 @@ export async function editCircleMessage(params: {
   if (Date.now() - new Date(row.created_at).getTime() > 15 * 60 * 1000) {
     return { error: "Edit window has closed", status: 400 };
   }
+  const screened = await screenChatText({
+    userId: params.userId,
+    surface: "edit",
+    text: body,
+    circleId: params.circleId,
+    threadId: row.thread_id ? String(row.thread_id) : null,
+  });
+  if ("error" in screened) return screened;
   const updated = await params.client.query(
-    `UPDATE circle_messages SET body = $2, edited_at = now()
+    `UPDATE circle_messages SET body = $2, english_body = $3, edited_at = now()
      WHERE id = $1 RETURNING *`,
-    [params.messageId, body]
+    [params.messageId, body, screened.englishBody]
   );
   await params.client.query(
     `UPDATE circle_threads
@@ -642,7 +671,9 @@ export async function createThread(params: {
   homeVisibility?: string;
   serviceRepliesAllowed?: boolean;
   guest?: boolean;
-}): Promise<{ thread: Record<string, unknown> } | { error: string; status: number }> {
+}): Promise<
+  { thread: Record<string, unknown> } | { error: string; status: number; code?: "content_rejected" }
+> {
   const client = params.client;
   const isParent = await userHasRole(client, params.userId, "parent");
   if (!isParent) return { error: "Parent role required", status: 403 };
@@ -682,6 +713,17 @@ export async function createThread(params: {
   if (body.length > 4000) return { error: "Message is too long", status: 400 };
   const blocked = guardText(`${title ?? ""}\n${body}`);
   if (blocked) return { error: blocked.error, status: 400 };
+  const published = (body || title || "").trim();
+  const screenedThread = published
+    ? await screenChatText({
+        userId: params.userId,
+        surface: "thread",
+        text: [title, body].filter((part) => part && part.trim()).join("\n"),
+        circleId: params.circleId,
+        threadTitle: title && body && title.trim() !== body.trim() ? title : null,
+      })
+    : { englishBody: null as string | null };
+  if ("error" in screenedThread) return screenedThread;
 
   const kind = params.kind ?? "general";
   const allowedKinds = [
@@ -721,9 +763,9 @@ export async function createThread(params: {
   const root = await client.query(
     `INSERT INTO circle_messages (
        seq, circle_id, thread_id, author_id, author_role, body,
-       client_message_id, status, author_was_guest
+       client_message_id, status, author_was_guest, english_body
      )
-     VALUES ($1, $2, NULL, $3, 'parent', $4, $5, 'visible', $6)
+     VALUES ($1, $2, NULL, $3, 'parent', $4, $5, 'visible', $6, $7)
      RETURNING id, seq`,
     [
       rootSeq,
@@ -732,6 +774,7 @@ export async function createThread(params: {
       rootBody,
       randomUUID(),
       Boolean(params.guest),
+      screenedThread.englishBody,
     ]
   );
   await client.query(
@@ -773,7 +816,8 @@ export async function createCircleMessage(params: {
   authorRole?: "parent" | "provider";
   attachments?: ChatAttachmentInput[];
 }): Promise<
-  { message: ChatMessageView } | { error: string; status: number }
+  | { message: ChatMessageView }
+  | { error: string; status: number; code?: "content_rejected" }
 > {
   const client = params.client;
   const authorRole = params.authorRole ?? "parent";
@@ -918,6 +962,37 @@ export async function createCircleMessage(params: {
     }
   }
 
+  let englishBody: string | null = null;
+  if (body) {
+    let threadTitle: string | null = null;
+    let replyTo: string | null = null;
+    if (params.threadId) {
+      const thread = await client.query(
+        `SELECT title FROM circle_threads WHERE id = $1`,
+        [params.threadId]
+      );
+      threadTitle = thread.rows[0]?.title ? String(thread.rows[0].title) : null;
+    }
+    if (params.replyToMessageId) {
+      const quoted = await client.query(
+        `SELECT body FROM circle_messages WHERE id = $1`,
+        [params.replyToMessageId]
+      );
+      replyTo = quoted.rows[0]?.body ? String(quoted.rows[0].body) : null;
+    }
+    const screened = await screenChatText({
+      userId: params.userId,
+      surface: "message",
+      text: body,
+      circleId: params.circleId,
+      threadId: params.threadId,
+      threadTitle,
+      replyTo,
+    });
+    if ("error" in screened) return screened;
+    englishBody = screened.englishBody;
+  }
+
   const seq = await nextCircleSeq(client, params.circleId);
   const isGuestAuthor = params.threadId
     ? !(await isCircleMember(client, params.circleId, params.userId))
@@ -926,9 +1001,9 @@ export async function createCircleMessage(params: {
     `INSERT INTO circle_messages (
        seq, circle_id, thread_id, author_id, author_role, body,
        reply_to_message_id, parent_message_id, client_message_id, status,
-       author_was_guest
+       author_was_guest, english_body
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'visible', $10)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'visible', $10, $11)
      RETURNING *`,
     [
       seq,
@@ -943,6 +1018,7 @@ export async function createCircleMessage(params: {
       parentMessageId,
       params.clientMessageId,
       isGuestAuthor,
+      englishBody,
     ]
   );
   const row = inserted.rows[0];

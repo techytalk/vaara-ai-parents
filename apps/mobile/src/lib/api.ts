@@ -570,6 +570,7 @@ export type ChatMessage = {
   replyCount?: number;
   lastReplyPreview?: string | null;
   body: string | null;
+  englishBody?: string | null;
   status: string;
   isLegacy: boolean;
   replyToMessageId: string | null;
@@ -617,6 +618,7 @@ export type ParentConnectionRequest = {
 export type DirectMessage = {
   id: string;
   body: string;
+  englishBody?: string | null;
   createdAt: string;
   isMine: boolean;
   senderHandle: string;

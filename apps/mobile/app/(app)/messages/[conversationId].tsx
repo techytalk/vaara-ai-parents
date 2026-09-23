@@ -15,6 +15,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useNavigation } from "@react-navigation/native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
+import { EnglishTranslation } from "@/components/chat/EnglishTranslation";
 import { DisclosurePrompt } from "@/components/DisclosurePrompt";
 import { InlineError, ScreenLoader } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
@@ -301,6 +302,9 @@ export default function ChatScreen() {
             >
               {item.body}
             </Text>
+            {item.englishBody ? (
+              <EnglishTranslation text={item.englishBody} mine={item.isMine} />
+            ) : null}
           </View>
         )}
       />

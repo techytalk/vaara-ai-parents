@@ -62,7 +62,7 @@ import {
 } from "../services/timeline-outbox.js";
 import { toIsoTimestamp } from "../lib/feed-cursor.js";
 import { parseReportReason } from "../lib/report-reasons.js";
-import { rejectObjectionableText } from "../lib/content-guard.js";
+import { screenParentText } from "../lib/content-filter.js";
 import { rateLimitMiddleware } from "../middleware/rate-limit.js";
 import { authMiddleware, type AuthVariables } from "../middleware/auth.js";
 import { resolveThreadAccess } from "../lib/thread-access.js";
@@ -283,13 +283,19 @@ export function createCirclesRoutes() {
       return c.json({ error: "A message, poll, or attachment is required" }, 400);
     }
 
-    const objectionable = rejectObjectionableText(
-      text,
-      body.poll?.question,
-      ...(body.poll?.options ?? [])
-    );
-    if (objectionable) {
-      return c.json({ error: objectionable.error }, 400);
+    const postText = [text, body.poll?.question, ...(body.poll?.options ?? [])]
+      .filter((part) => part && part.trim())
+      .join("\n");
+    if (postText) {
+      const screened = await screenParentText({
+        userId,
+        surface: "post",
+        circleId,
+        text: postText,
+      });
+      if (!screened.ok) {
+        return c.json({ error: screened.error, code: screened.code }, 400);
+      }
     }
 
     if (body.poll) {
@@ -845,13 +851,23 @@ export function createCirclesRoutes() {
       return c.json({ error: "No changes provided" }, 400);
     }
 
-    const objectionableEdit = rejectObjectionableText(
+    const editText = [
       hasBody ? body.body : undefined,
       hasPoll ? body.poll?.question : undefined,
-      ...(hasPoll ? body.poll?.options ?? [] : [])
-    );
-    if (objectionableEdit) {
-      return c.json({ error: objectionableEdit.error }, 400);
+      ...(hasPoll ? body.poll?.options ?? [] : []),
+    ]
+      .filter((part) => part && part.trim())
+      .join("\n");
+    if (editText) {
+      const screened = await screenParentText({
+        userId,
+        surface: "post",
+        circleId,
+        text: editText,
+      });
+      if (!screened.ok) {
+        return c.json({ error: screened.error, code: screened.code }, 400);
+      }
     }
 
     if (hasTag) {
@@ -1437,9 +1453,14 @@ export function createCirclesRoutes() {
       return c.json({ error: "body is required" }, 400);
     }
 
-    const objectionableReply = rejectObjectionableText(text);
-    if (objectionableReply) {
-      return c.json({ error: objectionableReply.error }, 400);
+    const screenedReply = await screenParentText({
+      userId,
+      surface: "post",
+      circleId,
+      text,
+    });
+    if (!screenedReply.ok) {
+      return c.json({ error: screenedReply.error, code: screenedReply.code }, 400);
     }
 
     const client = await pool.connect();
@@ -2304,7 +2325,7 @@ export function createConversationsRoutes() {
       }
 
       let query = `
-        SELECT m.id, m.body, m.created_at, m.sender_id, u.anonymous_handle
+        SELECT m.id, m.body, m.english_body, m.created_at, m.sender_id, u.anonymous_handle
         FROM direct_messages m
         JOIN users u ON u.id = m.sender_id
         WHERE m.conversation_id = $1`;
@@ -2333,6 +2354,7 @@ export function createConversationsRoutes() {
         messages: rows.map((row) => ({
           id: row.id,
           body: row.body,
+          englishBody: row.english_body,
           createdAt: row.created_at,
           isMine: row.sender_id === userId,
           senderHandle: row.anonymous_handle,
@@ -2377,11 +2399,20 @@ export function createConversationsRoutes() {
       const posting = await assertCanPost(client, userId);
       if (posting) return c.json({ error: posting.error }, posting.status as 403);
 
+      const screenedDm = await screenParentText({
+        userId,
+        surface: "dm",
+        text,
+      });
+      if (!screenedDm.ok) {
+        return c.json({ error: screenedDm.error, code: screenedDm.code }, 400);
+      }
+
       const { rows } = await client.query(
-        `INSERT INTO direct_messages (conversation_id, sender_id, body)
-         VALUES ($1, $2, $3)
-         RETURNING id, body, created_at`,
-        [conversationId, userId, text]
+        `INSERT INTO direct_messages (conversation_id, sender_id, body, english_body)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id, body, english_body, created_at`,
+        [conversationId, userId, text, screenedDm.englishBody]
       );
 
       await client.query(
@@ -2406,6 +2437,7 @@ export function createConversationsRoutes() {
       return c.json({
         id: rows[0].id,
         body: rows[0].body,
+        englishBody: rows[0].english_body,
         createdAt: rows[0].created_at,
         isMine: true,
         senderHandle: handleRow.rows[0].anonymous_handle,
