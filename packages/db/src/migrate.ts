@@ -146,6 +146,10 @@ const MIGRATIONS = [
     version: "065_myp_g9_next_year",
     file: "065_myp_g9_next_year.sql",
   },
+  {
+    version: "066_myp_g9_plain_answers",
+    file: "066_myp_g9_plain_answers.sql",
+  },
 ];
 
 async function isMigrationApplied(

@@ -1,6 +1,8 @@
+import { useEffect, useRef } from "react";
 import {
   ActivityIndicator,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -8,7 +10,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { pathTheme as t } from "@/constants/path-theme";
-import { colors, radii, spacing, typography } from "@/constants/theme";
+import { colors, radii, shadows, spacing, typography } from "@/constants/theme";
 import type {
   PathDiscussionLink,
   PathExploreNode,
@@ -67,10 +69,6 @@ function stageEyebrow(focus: PathExploreNode, isStageRoot: boolean) {
   return "EXPLORING AHEAD";
 }
 
-function aboutLabel(title: string) {
-  return `About ${title.toLowerCase()}`;
-}
-
 export function PathExploreThread({
   locationTitle,
   stateLabel,
@@ -110,9 +108,27 @@ export function PathExploreThread({
   const visibleCards = cards.filter((node) => node.id !== unsure?.id);
   const canAsk = focus.allowAsk;
   const canRead = focus.allowDiscussions;
+  const isLeaf = visibleCards.length === 0 && !isStageRoot;
+  const leafAnswer = isLeaf ? focus.lead || focus.summary : null;
+  const scrollRef = useRef<ScrollView>(null);
+  const discussionsBefore = useRef(discussions);
+
+  useEffect(() => {
+    const before = discussionsBefore.current;
+    discussionsBefore.current = discussions;
+    if (before == null && (discussions === "loading" || Array.isArray(discussions))) {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    }
+  }, [discussions]);
 
   return (
     <View style={styles.page}>
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={[styles.scroll, asking && styles.scrollAsking]}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
       <View style={styles.nav}>
         <Text style={styles.wordmark}>vaara</Text>
         <Text style={styles.navTitle}>Child's Path</Text>
@@ -181,15 +197,21 @@ export function PathExploreThread({
         </View>
       ) : null}
 
-      <View style={styles.pane}>
+      <View style={[styles.pane, isLeaf && styles.paneLeaf]}>
         {eyebrow ? <Text style={styles.paneEyebrow}>{eyebrow}</Text> : null}
         <Text style={styles.paneTitle}>{focus.title}</Text>
-        {focus.summary || focus.lead ? (
-          <Text style={styles.paneDeck}>{focus.summary || focus.lead}</Text>
-        ) : null}
-        {focus.lead && focus.summary && focus.lead !== focus.summary && !isStageRoot ? (
-          <Text style={styles.paneLead}>{focus.lead}</Text>
-        ) : null}
+        {isLeaf && leafAnswer ? (
+          <Text style={styles.paneAnswer}>{leafAnswer}</Text>
+        ) : (
+          <>
+            {focus.summary || focus.lead ? (
+              <Text style={styles.paneDeck}>{focus.summary || focus.lead}</Text>
+            ) : null}
+            {focus.lead && focus.summary && focus.lead !== focus.summary && !isStageRoot ? (
+              <Text style={styles.paneLead}>{focus.lead}</Text>
+            ) : null}
+          </>
+        )}
       </View>
 
       {visibleCards.length > 0 ? (
@@ -265,58 +287,6 @@ export function PathExploreThread({
       ) : null}
 
       <View style={styles.footer}>
-        <Text style={styles.about}>{aboutLabel(focus.title)}</Text>
-        <View style={styles.ctaRow}>
-          {canRead ? (
-            <Pressable onPress={onRead} style={styles.ctaSecondary}>
-              <Ionicons name="chatbubbles-outline" size={16} color={t.textLink} />
-              <Text style={styles.ctaSecondaryText}>Read discussions</Text>
-            </Pressable>
-          ) : null}
-          {canAsk ? (
-            <Pressable
-              onPress={onStartAsk}
-              disabled={!postingCircleName}
-              style={[styles.ctaPrimary, !postingCircleName && styles.ctaDisabled]}
-            >
-              <Ionicons name="create-outline" size={16} color={t.ctaText} />
-              <Text style={styles.ctaPrimaryText}>Ask parents</Text>
-            </Pressable>
-          ) : null}
-        </View>
-
-        {asking ? (
-          <View style={styles.composer}>
-            {postingCircleName ? (
-              <Text style={styles.where}>Posts in {postingCircleName}</Text>
-            ) : null}
-            <TextInput
-              value={askDraft}
-              onChangeText={onChangeAsk}
-              multiline
-              style={styles.input}
-              placeholder={focus.askPrompt || "Your question"}
-              placeholderTextColor={t.dimmed}
-            />
-            <View style={styles.composerRow}>
-              <Pressable onPress={onCancelAsk}>
-                <Text style={styles.link}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                onPress={onSendAsk}
-                disabled={askBusy || !askDraft.trim()}
-                style={styles.send}
-              >
-                {askBusy ? (
-                  <ActivityIndicator color={t.ctaText} />
-                ) : (
-                  <Text style={styles.sendText}>Post</Text>
-                )}
-              </Pressable>
-            </View>
-          </View>
-        ) : null}
-
         {discussions === "loading" ? <ActivityIndicator color={t.navWordmark} /> : null}
         {discussions === "error" ? (
           <Text style={styles.meta}>Could not load discussions. Tap Read to retry.</Text>
@@ -347,12 +317,73 @@ export function PathExploreThread({
           <Text style={styles.lock}>{lockLine}</Text>
         </View>
       </View>
+      </ScrollView>
+
+      {canRead || canAsk ? (
+        <View style={styles.dock}>
+          {asking ? (
+            <View style={styles.composer}>
+              {postingCircleName ? (
+                <Text style={styles.where}>Posts in {postingCircleName}</Text>
+              ) : null}
+              <TextInput
+                value={askDraft}
+                onChangeText={onChangeAsk}
+                multiline
+                style={styles.input}
+                placeholder={focus.askPrompt || "Your question"}
+                placeholderTextColor={t.dimmed}
+              />
+              <View style={styles.composerRow}>
+                <Pressable onPress={onCancelAsk}>
+                  <Text style={styles.link}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  onPress={onSendAsk}
+                  disabled={askBusy || !askDraft.trim()}
+                  style={styles.send}
+                >
+                  {askBusy ? (
+                    <ActivityIndicator color={t.ctaText} />
+                  ) : (
+                    <Text style={styles.sendText}>Post</Text>
+                  )}
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
+          <View style={styles.ctaRow}>
+            {canRead ? (
+              <Pressable onPress={onRead} style={styles.ctaSecondary}>
+                <Ionicons name="chatbubbles-outline" size={18} color={t.textLink} />
+                <Text style={styles.ctaSecondaryText}>Read discussions</Text>
+              </Pressable>
+            ) : null}
+            {canAsk ? (
+              <Pressable
+                onPress={onStartAsk}
+                disabled={!postingCircleName}
+                style={[styles.ctaPrimary, !postingCircleName && styles.ctaDisabled]}
+              >
+                <Ionicons name="create-outline" size={18} color={t.ctaText} />
+                <Text style={styles.ctaPrimaryText}>Ask parents</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { gap: spacing.sm, paddingBottom: spacing.xxl },
+  page: { flex: 1 },
+  scroll: {
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: 128,
+  },
+  scrollAsking: { paddingBottom: 280 },
   nav: {
     flexDirection: "row",
     alignItems: "center",
@@ -416,7 +447,8 @@ const styles = StyleSheet.create({
   crumbBlock: { gap: 4, marginTop: 2 },
   crumbPath: { ...typography.caption, color: t.textLink, fontFamily: typography.semibold },
   levelUp: { ...typography.supporting, color: t.textLink, fontFamily: typography.semibold },
-  pane: { gap: 4, marginTop: 4 },
+  pane: { gap: 8, marginTop: 8 },
+  paneLeaf: { gap: 14, marginTop: 12 },
   paneEyebrow: {
     ...typography.caption,
     color: t.kicker,
@@ -424,8 +456,9 @@ const styles = StyleSheet.create({
     fontFamily: typography.bold,
   },
   paneTitle: { ...typography.screenTitle, color: t.title, fontFamily: typography.bold },
-  paneDeck: { ...typography.supporting, color: t.deck },
-  paneLead: { ...typography.supporting, color: t.title, lineHeight: 20, marginTop: 4 },
+  paneDeck: { ...typography.body, color: t.deck, lineHeight: 24 },
+  paneLead: { ...typography.body, color: t.title, fontSize: 17, lineHeight: 26, marginTop: 8 },
+  paneAnswer: { color: t.title, fontSize: 17, lineHeight: 27, fontFamily: typography.regular },
   thread: { position: "relative", marginTop: spacing.xs, paddingLeft: RAIL },
   threadRail: {
     position: "absolute",
@@ -501,17 +534,27 @@ const styles = StyleSheet.create({
   },
   link: { ...typography.supporting, color: t.textLink, fontFamily: typography.semibold },
   footer: {
-    marginTop: spacing.md,
+    marginTop: spacing.lg,
     paddingTop: spacing.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: t.panelBorder,
     gap: spacing.sm,
   },
-  about: { ...typography.caption, color: t.kicker },
+  dock: {
+    position: "absolute",
+    left: spacing.lg,
+    right: spacing.lg,
+    bottom: spacing.sm,
+    gap: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: radii.xl,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: t.panelBorder,
+    ...shadows.floating,
+  },
   ctaRow: { flexDirection: "row", gap: spacing.sm },
   ctaSecondary: {
     flex: 1,
-    minHeight: 44,
+    minHeight: 48,
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.primary,
@@ -523,13 +566,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
   },
   ctaSecondaryText: {
-    ...typography.supporting,
+    ...typography.body,
     color: t.textLink,
     fontFamily: typography.semibold,
   },
   ctaPrimary: {
     flex: 1,
-    minHeight: 44,
+    minHeight: 48,
     borderRadius: radii.lg,
     backgroundColor: t.ctaFill,
     flexDirection: "row",
@@ -540,7 +583,7 @@ const styles = StyleSheet.create({
   },
   ctaDisabled: { opacity: 0.45 },
   ctaPrimaryText: {
-    ...typography.supporting,
+    ...typography.body,
     color: t.ctaText,
     fontFamily: typography.semibold,
   },

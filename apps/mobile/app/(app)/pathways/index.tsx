@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { PathExploreThread } from "@/components/pathways/PathExploreThread";
 import { EmptyState, ScreenLoader } from "@/components/ui";
 import { pathTheme } from "@/constants/path-theme";
-import { spacing } from "@/constants/theme";
 import { trackEvent } from "@/lib/analytics";
 import {
   api,
@@ -282,7 +281,6 @@ export default function PathwaysHubScreen() {
 
   return (
     <SafeAreaView style={styles.screen} edges={["top"]}>
-      <ScrollView contentContainerStyle={styles.content}>
         <PathExploreThread
           locationTitle={data.locationTitle}
           stateLabel={data.context.stateLabel ?? "India (national)"}
@@ -329,12 +327,10 @@ export default function PathwaysHubScreen() {
         {error ? (
           <EmptyState icon="alert-circle-outline" title="Could not post" message={error} />
         ) : null}
-      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: pathTheme.bg },
-  content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxxl },
 });
