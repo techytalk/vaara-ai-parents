@@ -12,6 +12,7 @@ export default function GroupScreen() {
       : undefined;
   return (
     <ChatThreadScreen
+      key={String(circleId)}
       mode="group"
       circleId={String(circleId)}
       title={title}

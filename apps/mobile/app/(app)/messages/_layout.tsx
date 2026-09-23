@@ -9,6 +9,7 @@ export default function MessagesLayout() {
       <Stack.Screen
         name="groups/[circleId]/index"
         options={{ title: "Group chat" }}
+        dangerouslySingular={() => "group-chat"}
       />
       <Stack.Screen name="threads/[threadId]" options={{ title: "Thread" }} />
       <Stack.Screen name="channels/[providerId]" options={{ title: "Tutor" }} />

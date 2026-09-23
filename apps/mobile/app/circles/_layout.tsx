@@ -24,6 +24,7 @@ export default function CirclesLayout() {
       <Stack.Screen
         name="[circleId]/posts/[postId]"
         options={{ title: "Discussion" }}
+        dangerouslySingular={() => "circle-post"}
       />
     </Stack>
   );

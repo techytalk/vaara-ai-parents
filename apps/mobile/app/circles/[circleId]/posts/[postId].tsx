@@ -95,6 +95,11 @@ export default function PostThreadScreen() {
     () => queryClient.getQueryData<AuthUser>(["sessionUser"])?.id ?? null
   );
 
+  useEffect(() => {
+    setCommentText("");
+    setError(null);
+  }, [circleId, postId]);
+
   const cachedPost = findCachedCirclePost(
     queryClient,
     circleId,
