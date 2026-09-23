@@ -212,10 +212,21 @@ async function callGemini(userPrompt: string): Promise<ContentVerdict | null> {
   return parseVerdict(JSON.parse(text));
 }
 
+function isDeadlineError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error.name === "TimeoutError" || error.name === "AbortError")
+  );
+}
+
 async function judgeOnce(userPrompt: string): Promise<ContentVerdict | null> {
   try {
     return await callGemini(userPrompt);
   } catch (error) {
+    if (isDeadlineError(error)) {
+      console.error("[content-filter] timed out", error);
+      return null;
+    }
     console.error("[content-filter] retrying", error);
     try {
       return await callGemini(userPrompt);

@@ -915,6 +915,8 @@ export type NotificationMute = {
 };
 
 const REQUEST_TIMEOUT_MS = 10_000;
+/** Message and post sends wait on the guidelines check, which can take longer than a normal request. */
+const SCREEN_REQUEST_TIMEOUT_MS = 28_000;
 
 const TIMEOUT_MESSAGE = "Request timed out. Check your connection and try again.";
 
@@ -949,7 +951,8 @@ function isRetryableNetworkError(error: unknown): boolean {
 async function requestOnce<T>(
   path: string,
   options: RequestInit,
-  token?: string | null
+  token?: string | null,
+  timeoutMs = REQUEST_TIMEOUT_MS
 ): Promise<T> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -964,7 +967,7 @@ async function requestOnce<T>(
   const timeoutId = setTimeout(() => {
     timedOut = true;
     controller.abort();
-  }, REQUEST_TIMEOUT_MS);
+  }, timeoutMs);
   if (options.signal) {
     if (options.signal.aborted) {
       controller.abort();
@@ -1008,7 +1011,8 @@ async function requestOnce<T>(
 async function request<T>(
   path: string,
   options: RequestInit = {},
-  token?: string | null
+  token?: string | null,
+  timeoutMs = REQUEST_TIMEOUT_MS
 ): Promise<T> {
   const canRetry = isIdempotentGet(options);
   let attempt = 0;
@@ -1016,7 +1020,7 @@ async function request<T>(
   while (true) {
     attempt += 1;
     try {
-      return await requestOnce<T>(path, options, token);
+      return await requestOnce<T>(path, options, token, timeoutMs);
     } catch (error) {
       const status =
         error instanceof Error && "status" in error
@@ -1374,7 +1378,7 @@ export const api = {
     request<CrossPostResult>("/v1/cross-posts", {
       method: "POST",
       body: JSON.stringify(body),
-    }, token),
+    }, token, SCREEN_REQUEST_TIMEOUT_MS),
 
   markCircleRead: (token: string, circleId: string) =>
     request<{ ok: boolean }>(
@@ -1461,7 +1465,7 @@ export const api = {
     request<CirclePost>(`/v1/circles/${circleId}/posts`, {
       method: "POST",
       body: JSON.stringify(body),
-    }, token),
+    }, token, SCREEN_REQUEST_TIMEOUT_MS),
 
   updatePost: (
     token: string,
@@ -1495,7 +1499,7 @@ export const api = {
     request<CirclePost>(`/v1/circles/${circleId}/posts/${postId}`, {
       method: "PATCH",
       body: JSON.stringify(body),
-    }, token),
+    }, token, SCREEN_REQUEST_TIMEOUT_MS),
 
   votePoll: (
     token: string,
@@ -1627,7 +1631,7 @@ export const api = {
     request<PostComment>(`/v1/circles/${circleId}/posts/${postId}/replies`, {
       method: "POST",
       body: JSON.stringify({ body }),
-    }, token),
+    }, token, SCREEN_REQUEST_TIMEOUT_MS),
 
   deletePost: (token: string, circleId: string, postId: string) =>
     request<{ ok: boolean }>(
@@ -1794,7 +1798,8 @@ export const api = {
     request<DirectMessage>(
       `/v1/conversations/${conversationId}/messages`,
       { method: "POST", body: JSON.stringify({ body }) },
-      token
+      token,
+      SCREEN_REQUEST_TIMEOUT_MS
     ),
 
   reportConversation: (
@@ -2481,7 +2486,8 @@ export const api = {
     request<ChatMessage>(
       `/v1/circles/${circleId}/messages`,
       { method: "POST", body: JSON.stringify(body) },
-      token
+      token,
+      SCREEN_REQUEST_TIMEOUT_MS
     ),
 
   ensureMessageThread: (token: string, circleId: string, messageId: string) =>
@@ -2584,7 +2590,8 @@ export const api = {
     request<ChatMessage>(
       `/v1/threads/${threadId}/messages`,
       { method: "POST", body: JSON.stringify(body) },
-      token
+      token,
+      SCREEN_REQUEST_TIMEOUT_MS
     ),
 
   markThreadRead: (token: string, threadId: string, lastReadSeq?: number) =>
@@ -2617,7 +2624,8 @@ export const api = {
     request<ChatMessage>(
       `/v1/circles/${circleId}/messages/${messageId}`,
       { method: "PATCH", body: JSON.stringify({ body }) },
-      token
+      token,
+      SCREEN_REQUEST_TIMEOUT_MS
     ),
 
   deleteCircleMessage: (
