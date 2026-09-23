@@ -645,7 +645,6 @@ export function createCirclesRoutes() {
     const circleId = c.req.param("circleId");
     const postId = c.req.param("postId");
     const shareId = c.req.query("shareId")?.trim() || null;
-    const suggested = c.req.query("suggested") === "1";
     if (!circleId || !postId) {
       return c.json({ error: "Post not found" }, 404);
     }
@@ -657,7 +656,6 @@ export function createCirclesRoutes() {
         circleId,
         postId,
         shareId,
-        suggested: suggested && !shareId,
       });
       if (!access.capabilities.canViewPost || !access.circle) {
         return c.json({ error: "Post not found" }, 404);

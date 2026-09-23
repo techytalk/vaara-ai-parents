@@ -901,6 +901,9 @@ export function createThreadRoutes() {
       if (!access || !access.canRead) {
         return c.json({ error: "Thread not found" }, 404);
       }
+      if (access.discovery) {
+        return c.json({ error: "You can read this thread, not mute it" }, 403);
+      }
       await client.query(
         `INSERT INTO circle_thread_reads (thread_id, user_id, muted_until, last_read_at)
          VALUES ($1, $2, now() + interval '10 years', now())

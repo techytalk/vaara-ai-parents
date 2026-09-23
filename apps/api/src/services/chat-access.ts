@@ -208,9 +208,13 @@ export async function loadThreadAccess(
     canRead,
     canReply,
     canOpenGroup: member,
-    // Guest askers stay in-thread; members/discovery may still Message author.
+    // Guest askers stay in-thread. Discovery viewers are read-only: no DM.
     canMessageAuthor:
-      canRead && authorId !== userId && !blocked && !isThreadGuest,
+      canRead &&
+      authorId !== userId &&
+      !blocked &&
+      !isThreadGuest &&
+      !discovery,
     discovery,
   };
 }

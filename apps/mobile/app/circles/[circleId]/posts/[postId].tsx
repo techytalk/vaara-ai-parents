@@ -74,13 +74,11 @@ function CommentCard({ comment }: { comment: PostComment }) {
 }
 
 export default function PostThreadScreen() {
-  const { circleId, postId, shareId, suggested } = useLocalSearchParams<{
+  const { circleId, postId, shareId } = useLocalSearchParams<{
     circleId: string;
     postId: string;
     shareId?: string;
-    suggested?: string;
   }>();
-  const suggestedView = suggested === "1";
   const router = useRouter();
   const navigation = useNavigation();
   const queryClient = useQueryClient();
@@ -108,25 +106,14 @@ export default function PostThreadScreen() {
     postId,
     shareId
   );
-  const threadKey = postThreadQueryKey(
-    circleId,
-    postId,
-    shareId,
-    suggestedView
-  );
+  const threadKey = postThreadQueryKey(circleId, postId, shareId);
 
   const threadQuery = useQuery({
     queryKey: threadKey,
     queryFn: async (): Promise<PostThreadData> => {
       const token = await getToken();
       if (!token) throw new Error("Not signed in");
-      const data = await api.getPost(
-        token,
-        circleId,
-        postId,
-        shareId,
-        suggestedView
-      );
+      const data = await api.getPost(token, circleId, postId, shareId);
       return {
         post: data.post,
         replies: data.replies,

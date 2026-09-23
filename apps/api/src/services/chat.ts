@@ -557,6 +557,9 @@ export async function setMessageReaction(params: {
       params.userId
     );
     if (!access || !access.canRead) return { error: "Message not found", status: 404 };
+    if (access.discovery) {
+      return { error: "You can read this thread, not react", status: 403 };
+    }
   } else if (!(await isCircleMember(params.client, params.circleId, params.userId))) {
     return { error: "Not a member of this group", status: 403 };
   }
@@ -1790,6 +1793,14 @@ export async function listHome(
        AND NOT EXISTS (
          SELECT 1 FROM circle_members cm
          WHERE cm.circle_id = t.circle_id AND cm.user_id = $1
+       )
+       AND t.author_id <> $1
+       AND NOT EXISTS (
+         SELECT 1 FROM circle_thread_access_grants g
+         WHERE g.thread_id = t.id
+           AND g.user_id = $1
+           AND g.revoked_at IS NULL
+           AND (g.expires_at IS NULL OR g.expires_at > now())
        )
        AND (hi.dismissed_at IS NULL)
        AND ${DISCOVERY_MATCH_SQL}

@@ -221,7 +221,7 @@ function HomeRow({
         </View>
         {circleLabel ? (
           <Text style={styles.circleName} numberOfLines={2}>
-            {item.access === "discovery" ? "Guest · " : ""}
+            {item.access === "discovery" ? "Suggested · " : ""}
             {circleLabel}
           </Text>
         ) : null}

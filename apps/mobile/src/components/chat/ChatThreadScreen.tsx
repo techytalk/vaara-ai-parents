@@ -468,6 +468,7 @@ export function ChatThreadScreen({
     if ((!body && !canSendAttachments) || sending) return;
     if (hasFailedAttachment || mediaBusy || docsBusy) return;
     setSending(true);
+    setActionError(null);
     try {
       if (editingId) {
         const target = messages.find((item) => item.id === editingId);
@@ -746,14 +747,15 @@ export function ChatThreadScreen({
                   ? " · Read only"
                   : ""}
             </Text>
-            <Pressable onPress={() => void toggleMute()}>
-              <Text style={styles.messageAuthor}>
-                {threadQuery.data.muted ? "Unmute" : "Mute"}
-              </Text>
-            </Pressable>
+            {!threadQuery.data.access.discovery ? (
+              <Pressable onPress={() => void toggleMute()}>
+                <Text style={styles.messageAuthor}>
+                  {threadQuery.data.muted ? "Unmute" : "Mute"}
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
-          {threadQuery.data.access.canMessageAuthor &&
-          !threadQuery.data.access.discovery ? (
+          {threadQuery.data.access.canMessageAuthor ? (
             <Pressable onPress={() => void messageAuthor()}>
               <Text style={styles.messageAuthor}>Message author</Text>
             </Pressable>
@@ -986,7 +988,10 @@ export function ChatThreadScreen({
               }
               placeholderTextColor={colors.textSubtle}
               value={draft}
-              onChangeText={setDraft}
+              onChangeText={(value) => {
+                if (actionError) setActionError(null);
+                setDraft(value);
+              }}
               multiline
             />
             <Pressable
