@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -35,7 +35,10 @@ import {
   typography,
 } from "@/constants/theme";
 import { useBottomChromeInset } from "@/hooks/useBottomChromeInset";
-import { useAndroidImeDockOffset } from "@/hooks/useKeyboardHeight";
+import {
+  useAndroidImeDockOffset,
+  useKeyboardHeight,
+} from "@/hooks/useKeyboardHeight";
 import { useRealtimeChannel } from "@/hooks/useRealtimeChannel";
 import { api, type ChatMessage } from "@/lib/api";
 import {
@@ -91,6 +94,60 @@ function formatTime(iso: string): string {
   });
 }
 
+function dayLabel(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const start = (value: Date) =>
+    new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
+  const diff = start(new Date()) - start(date);
+  if (diff === 0) return "Today";
+  if (diff === 86_400_000) return "Yesterday";
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+type MessageRow =
+  | { kind: "day"; id: string; label: string }
+  | { kind: "replies"; id: string; label: string }
+  | { kind: "message"; id: string; message: ChatMessage };
+
+function rowsWithDays(
+  messages: ChatMessage[],
+  thread?: { rootId: string | null; replyLabel: string }
+): MessageRow[] {
+  const rows: MessageRow[] = [];
+  let previous = "";
+  let markedReplies = false;
+  const rootInList =
+    Boolean(thread?.rootId) &&
+    messages.some((message) => message.id === thread?.rootId);
+  if (thread?.replyLabel && !rootInList) {
+    rows.push({ kind: "replies", id: "replies", label: thread.replyLabel });
+    markedReplies = true;
+  }
+  for (const message of messages) {
+    const label = dayLabel(message.createdAt);
+    if (label && label !== previous) {
+      rows.push({ kind: "day", id: `day-${message.id}`, label });
+      previous = label;
+    }
+    rows.push({ kind: "message", id: message.id, message });
+    if (
+      thread &&
+      thread.replyLabel &&
+      rootInList &&
+      message.id === thread.rootId &&
+      !markedReplies
+    ) {
+      rows.push({ kind: "replies", id: "replies", label: thread.replyLabel });
+      markedReplies = true;
+    }
+  }
+  return rows;
+}
+
 export function ChatThreadScreen({
   mode,
   circleId,
@@ -108,6 +165,7 @@ export function ChatThreadScreen({
   const navigation = useNavigation();
   const headerHeight = useHeaderHeight();
   const bottomChrome = useBottomChromeInset();
+  const keyboardHeight = useKeyboardHeight();
   const androidDockOffset = useAndroidImeDockOffset(bottomChrome);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -204,6 +262,26 @@ export function ChatThreadScreen({
   }, [circleId, mode, navigation, threadQuery.data?.circleName, title]);
 
   const messages = listQuery.data?.messages ?? [];
+  const rootMessageId = threadQuery.data?.rootMessageId ?? null;
+  const threadReplyCount =
+    threadQuery.data?.replyCount ??
+    Math.max(messages.filter((message) => message.id !== rootMessageId).length, 0);
+  const threadReplyLabel =
+    threadReplyCount <= 0
+      ? ""
+      : threadReplyCount === 1
+        ? "1 reply"
+        : `${threadReplyCount} replies`;
+  const messageRows = useMemo(
+    () =>
+      rowsWithDays(
+        messages,
+        mode === "thread"
+          ? { rootId: rootMessageId, replyLabel: threadReplyLabel }
+          : undefined
+      ),
+    [messages, mode, rootMessageId, threadReplyLabel]
+  );
   const maxSeq = messages.reduce((max, item) => Math.max(max, item.seq), 0);
   lastSeqRef.current = maxSeq;
   const myId = meQuery.data?.id;
@@ -517,6 +595,7 @@ export function ChatThreadScreen({
           ? api.sendThreadMessage(token, threadId, {
               body,
               clientMessageId: randomUUID(),
+              replyToMessageId: quoteTarget?.id,
               attachments: attachments.length > 0 ? attachments : undefined,
             })
           : api.sendGroupMessage(token, circleId!, {
@@ -710,10 +789,12 @@ export function ChatThreadScreen({
     );
   }
 
-  const dockStyle =
-    androidDockOffset > 0
-      ? { marginBottom: androidDockOffset }
-      : { paddingBottom: spacing.sm + bottomChrome };
+  const keyboardOpen = keyboardHeight > 0;
+  const dockStyle = !keyboardOpen
+    ? { marginBottom: 0, paddingBottom: spacing.sm + bottomChrome }
+    : Platform.OS === "android" && androidDockOffset > 0
+      ? { marginBottom: androidDockOffset, paddingBottom: spacing.xs }
+      : { marginBottom: 0, paddingBottom: spacing.xs };
   const canSend =
     !sending &&
     canReply &&
@@ -732,12 +813,16 @@ export function ChatThreadScreen({
     >
       {mode === "thread" && threadQuery.data ? (
         <View style={styles.topic}>
-          <Text style={styles.topicTitle}>
-            {threadQuery.data.title || threadQuery.data.body || "Thread"}
-          </Text>
-          {threadQuery.data.body && threadQuery.data.title ? (
-            <Text style={styles.topicBody}>{threadQuery.data.body}</Text>
-          ) : null}
+          {messages.some((message) => message.id === rootMessageId) ? null : (
+            <>
+              <Text style={styles.topicTitle}>
+                {threadQuery.data.title || threadQuery.data.body || "Thread"}
+              </Text>
+              {threadQuery.data.body && threadQuery.data.title ? (
+                <Text style={styles.topicBody}>{threadQuery.data.body}</Text>
+              ) : null}
+            </>
+          )}
           <View style={styles.topicActions}>
             <Text style={styles.meta}>
               {threadQuery.data.circleName}
@@ -764,7 +849,7 @@ export function ChatThreadScreen({
       ) : null}
       <FlatList
         style={styles.listFlex}
-        data={messages}
+        data={messageRows}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         keyboardShouldPersistTaps="handled"
@@ -779,27 +864,38 @@ export function ChatThreadScreen({
             }
           />
         }
-        renderItem={({ item }) => (
-          <Bubble
-            message={item}
-            mine={item.author.userId === myId}
-            highlight={item.id === editingId}
-            allowWrite={
-              mode === "group" || threadQuery.data?.access.discovery !== true
-            }
-            onLike={() => void react(item, "👍")}
-            onOpenReact={() => openSheet(item, "react")}
-            onOpenMore={() => openSheet(item, "more")}
-            onReact={(reaction) => void react(item, reaction)}
-            showThreadActions={mode === "group"}
-            onThread={() => void openThread(item)}
-            onQuote={() => {
-              if (item.status !== "visible") return;
-              setQuoteTarget(item);
-              setEditingId(null);
-            }}
-          />
-        )}
+        renderItem={({ item }) =>
+          item.kind === "day" ? (
+            <Text style={styles.dayLabel}>{item.label}</Text>
+          ) : item.kind === "replies" ? (
+            <Text style={styles.repliesLabel}>{item.label}</Text>
+          ) : (
+            <Bubble
+              message={item.message}
+              mine={item.message.author.userId === myId}
+              highlight={item.message.id === editingId}
+              allowWrite={
+                mode === "group" || threadQuery.data?.access.discovery !== true
+              }
+              onLike={() => void react(item.message, "👍")}
+              onOpenReact={() => openSheet(item.message, "react")}
+              onOpenMore={() => openSheet(item.message, "more")}
+              onReact={(reaction) => void react(item.message, reaction)}
+              showThreadActions={mode === "group"}
+              showQuote={
+                mode === "group" ||
+                (mode === "thread" &&
+                  threadQuery.data?.access.discovery !== true)
+              }
+              onThread={() => void openThread(item.message)}
+              onQuote={() => {
+                if (item.message.status !== "visible") return;
+                setQuoteTarget(item.message);
+                setEditingId(null);
+              }}
+            />
+          )
+        }
       />
       {canReply ? (
         <View style={[styles.composer, dockStyle]}>
@@ -1148,6 +1244,7 @@ function Bubble({
   onOpenMore,
   onReact,
   showThreadActions,
+  showQuote,
   onThread,
   onQuote,
 }: {
@@ -1160,14 +1257,25 @@ function Bubble({
   onOpenMore: () => void;
   onReact: (reaction: string) => void;
   showThreadActions: boolean;
+  showQuote: boolean;
   onThread: () => void;
   onQuote: () => void;
 }) {
   const reactions = message.reactions?.filter((item) => item.count > 0) ?? [];
+  const likeCount =
+    reactions.find((item) => item.reaction === "👍")?.count ?? 0;
+  const otherReactions = reactions.filter((item) => item.reaction !== "👍");
   const visible = message.status === "visible";
   const liked = message.reactions?.some(
     (item) => item.reaction === "👍" && item.mine
   );
+  const replyCount = message.replyCount ?? 0;
+  const replyLabel =
+    replyCount === 0
+      ? "Be first to reply"
+      : replyCount === 1
+        ? "1 reply"
+        : `${replyCount} replies`;
   const ageMs = Date.now() - new Date(message.createdAt).getTime();
   const canManage = allowWrite && mine && ageMs <= 24 * 60 * 60 * 1000;
   const canReport = !mine && visible;
@@ -1184,17 +1292,14 @@ function Bubble({
         ? "Guest"
         : null;
 
+  const authorName = message.author.suspended
+    ? "Profile suspended"
+    : mine
+      ? "You"
+      : message.author.displayName;
+
   return (
     <View style={[styles.row, mine && styles.rowMine]}>
-      {!mine ? (
-        <Avatar
-          handle={message.author.displayName}
-          avatarKey={message.author.avatarKey}
-          size={32}
-        />
-      ) : (
-        <View style={styles.avatarSpacer} />
-      )}
       <View
         style={[
           styles.stack,
@@ -1202,14 +1307,19 @@ function Bubble({
           mine && styles.stackMine,
         ]}
       >
-        {!mine ? (
-          <Text style={styles.author} numberOfLines={1}>
-            {message.author.suspended
-              ? "Profile suspended"
-              : message.author.displayName}
-            {role && !message.author.suspended ? ` · ${role}` : ""}
+        <View style={[styles.authorRow, mine && styles.authorRowMine]}>
+          {!mine ? (
+            <Avatar
+              handle={message.author.displayName}
+              avatarKey={message.author.avatarKey}
+              size={22}
+            />
+          ) : null}
+          <Text style={[styles.author, mine && styles.authorMine]} numberOfLines={1}>
+            {authorName}
+            {role && !message.author.suspended && !mine ? ` · ${role}` : ""}
           </Text>
-        ) : null}
+        </View>
         <Pressable
           onLongPress={allowWrite ? onOpenReact : undefined}
           delayLongPress={320}
@@ -1254,47 +1364,86 @@ function Bubble({
           {visible && !message.body && !(message.attachments?.length) ? (
             <Text style={[styles.body, mine && styles.bodyMine]}> </Text>
           ) : null}
-          <Text style={[styles.time, mine && visible && styles.timeMine]}>
-            {message.editedAt && visible ? "edited · " : ""}
-            {formatTime(message.createdAt)}
-          </Text>
+          <View style={styles.timeRow}>
+            <Text style={[styles.time, mine && visible && styles.timeMine]}>
+              {message.editedAt && visible ? "edited · " : ""}
+              {formatTime(message.createdAt)}
+            </Text>
+            {mine && visible ? (
+              <Ionicons
+                name="checkmark"
+                size={13}
+                color="rgba(255,255,255,0.85)"
+              />
+            ) : null}
+          </View>
         </Pressable>
         {visible ? (
-          <View style={[styles.quickActions, mine && styles.quickActionsMine]}>
+          <View style={styles.quickActions}>
             {showThreadActions ? (
-              <>
-                <Pressable
-                  onPress={onThread}
-                  style={styles.actionBtn}
-                  accessibilityLabel={
-                    (message.replyCount ?? 0) > 0
-                      ? `${message.replyCount} replies`
-                      : "Reply in thread"
-                  }
-                >
-                  <Ionicons
-                    name={
-                      (message.replyCount ?? 0) > 0
-                        ? "chatbubbles"
-                        : "chatbubbles-outline"
+              <Pressable
+                onPress={onThread}
+                style={styles.actionBtn}
+                accessibilityLabel={
+                  replyCount > 0 ? replyLabel : "Reply in thread"
+                }
+              >
+                <Ionicons
+                  name="chatbubble-outline"
+                  size={16}
+                  color={colors.primary}
+                />
+                <Text style={styles.replyLabel}>{replyLabel}</Text>
+              </Pressable>
+            ) : (
+              <View />
+            )}
+            <View style={styles.actionCluster}>
+              {allowWrite ? (
+                <>
+                  <Pressable
+                    onPress={onLike}
+                    style={styles.actionBtn}
+                    accessibilityLabel={
+                      likeCount > 0 ? `Like, ${likeCount}` : "Like"
                     }
-                    size={16}
-                    color={
-                      (message.replyCount ?? 0) > 0
-                        ? colors.primaryDark
-                        : colors.textMuted
-                    }
-                  />
-                  {(message.replyCount ?? 0) > 0 ? (
-                    <Text style={[styles.actionLabel, styles.actionLabelOn]}>
-                      {message.replyCount}
-                    </Text>
-                  ) : null}
-                </Pressable>
+                  >
+                    <Ionicons
+                      name={liked ? "thumbs-up" : "thumbs-up-outline"}
+                      size={16}
+                      color={liked ? colors.primaryDark : colors.textMuted}
+                    />
+                    {likeCount > 0 ? (
+                      <Text
+                        style={[
+                          styles.actionLabel,
+                          liked && styles.actionLabelOn,
+                        ]}
+                      >
+                        {likeCount}
+                      </Text>
+                    ) : null}
+                  </Pressable>
+                  <Pressable
+                    onPress={onOpenReact}
+                    style={styles.actionBtn}
+                    accessibilityLabel="React"
+                  >
+                    <Ionicons
+                      name="happy-outline"
+                      size={16}
+                      color={colors.textMuted}
+                    />
+                  </Pressable>
+                </>
+              ) : null}
+              {showQuote ? (
                 <Pressable
                   onPress={onQuote}
                   style={styles.actionBtn}
-                  accessibilityLabel="Reply in channel"
+                  accessibilityLabel={
+                    showThreadActions ? "Reply in channel" : "Reply to message"
+                  }
                 >
                   <Ionicons
                     name="arrow-undo-outline"
@@ -1302,75 +1451,26 @@ function Bubble({
                     color={colors.textMuted}
                   />
                 </Pressable>
-              </>
-            ) : null}
-            {allowWrite ? (
-              <>
+              ) : null}
+              {canManage || canReport ? (
                 <Pressable
-                  onPress={onLike}
+                  onPress={onOpenMore}
                   style={styles.actionBtn}
-                  accessibilityLabel="Like"
+                  accessibilityLabel="More"
                 >
                   <Ionicons
-                    name={liked ? "thumbs-up" : "thumbs-up-outline"}
-                    size={15}
-                    color={liked ? colors.primaryDark : colors.textMuted}
-                  />
-                  <Text
-                    style={[styles.actionLabel, liked && styles.actionLabelOn]}
-                  >
-                    Like
-                  </Text>
-                </Pressable>
-                <Pressable
-                  onPress={onOpenReact}
-                  style={styles.actionBtn}
-                  accessibilityLabel="React"
-                >
-                  <Ionicons
-                    name="happy-outline"
+                    name="ellipsis-horizontal"
                     size={16}
                     color={colors.textMuted}
                   />
-                  <Text style={styles.actionLabel}>React</Text>
                 </Pressable>
-              </>
-            ) : null}
-            {canManage || canReport ? (
-              <Pressable
-                onPress={onOpenMore}
-                style={styles.actionBtn}
-                accessibilityLabel="More"
-              >
-                <Ionicons
-                  name="ellipsis-horizontal"
-                  size={16}
-                  color={colors.textMuted}
-                />
-                <Text style={styles.actionLabel}>More</Text>
-              </Pressable>
-            ) : null}
+              ) : null}
+            </View>
           </View>
         ) : null}
-        {showThreadActions &&
-        visible &&
-        (message.replyCount ?? 0) > 0 &&
-        message.lastReplyPreview ? (
-          <Pressable
-            onPress={onThread}
-            accessibilityLabel={`${message.replyCount} replies`}
-          >
-            <Text
-              style={[styles.threadPreview, mine && styles.threadPreviewMine]}
-              numberOfLines={1}
-            >
-              {message.lastReplyPreview}
-            </Text>
-          </Pressable>
-        ) : null}
-        {reactions.length > 0 ? (
+        {otherReactions.length > 0 ? (
           <View style={[styles.reactRow, mine && styles.reactRowMine]}>
-            {reactions.map((item) => (
+            {otherReactions.map((item) => (
               <Pressable
                 key={item.reaction}
                 onPress={() => onReact(item.reaction)}
@@ -1384,13 +1484,6 @@ function Bubble({
           </View>
         ) : null}
       </View>
-      {mine ? (
-        <Avatar
-          handle={message.author.displayName}
-          avatarKey={message.author.avatarKey}
-          size={32}
-        />
-      ) : null}
     </View>
   );
 }
@@ -1537,31 +1630,52 @@ const styles = StyleSheet.create({
     fontFamily: typography.semibold,
     color: colors.primaryDark,
   },
-  list: { paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: 20 },
-  row: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: 8,
-    marginBottom: 12,
+  list: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: 20 },
+  dayLabel: {
+    alignSelf: "center",
+    marginTop: spacing.sm,
+    marginBottom: spacing.md,
+    fontFamily: typography.medium,
+    fontSize: 12,
+    color: colors.textSubtle,
   },
-  rowMine: { justifyContent: "flex-end" },
-  avatarSpacer: { width: 32 },
-  stack: { maxWidth: "74%", alignItems: "flex-start" },
-  stackWithMedia: { maxWidth: "82%" },
+  repliesLabel: {
+    marginTop: spacing.xs,
+    marginBottom: spacing.md,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    fontFamily: typography.medium,
+    fontSize: 13,
+    color: colors.textMuted,
+  },
+  row: {
+    marginBottom: 16,
+  },
+  rowMine: { alignItems: "flex-end" },
+  stack: { maxWidth: "88%", alignItems: "flex-start" },
+  stackWithMedia: { maxWidth: "92%" },
   stackMine: { alignItems: "flex-end" },
+  authorRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 6,
+    marginLeft: 2,
+  },
+  authorRowMine: { marginLeft: 0, marginRight: 2 },
   author: {
     fontFamily: typography.semibold,
-    color: colors.textMuted,
-    fontSize: 12,
-    marginBottom: 4,
-    marginLeft: 4,
+    color: colors.text,
+    fontSize: 13,
   },
+  authorMine: { color: colors.textMuted },
   bubble: {
     maxWidth: "100%",
     borderRadius: 18,
     paddingHorizontal: 14,
-    paddingTop: 8,
-    paddingBottom: 6,
+    paddingTop: 10,
+    paddingBottom: 8,
     overflow: "hidden",
   },
   bubbleHasMedia: {
@@ -1573,12 +1687,13 @@ const styles = StyleSheet.create({
   },
   bubbleTheir: {
     backgroundColor: colors.card,
-    borderTopLeftRadius: 6,
-    ...shadows.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderTopLeftRadius: 8,
   },
   bubbleMine: {
     backgroundColor: colors.primary,
-    borderBottomRightRadius: 6,
+    borderBottomRightRadius: 8,
   },
   bubbleEditing: {
     borderWidth: 1.5,
@@ -1605,15 +1720,19 @@ const styles = StyleSheet.create({
     color: colors.textSubtle,
     fontStyle: "italic",
   },
-  time: {
-    marginTop: 4,
-    marginHorizontal: 8,
+  timeRow: {
+    marginTop: 6,
+    flexDirection: "row",
+    alignItems: "center",
     alignSelf: "flex-end",
+    gap: 3,
+  },
+  time: {
     fontFamily: typography.regular,
     color: colors.textSubtle,
-    fontSize: 10,
+    fontSize: 11,
   },
-  timeMine: { color: "rgba(255,255,255,0.78)" },
+  timeMine: { color: "rgba(255,255,255,0.82)" },
   reactRow: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -1639,16 +1758,26 @@ const styles = StyleSheet.create({
   quickActions: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
     gap: 12,
-    marginTop: 6,
-    marginLeft: 4,
+    marginTop: 8,
+    alignSelf: "stretch",
   },
-  quickActionsMine: { marginLeft: 0, marginRight: 4 },
+  actionCluster: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
   actionBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
     paddingVertical: 2,
+  },
+  replyLabel: {
+    fontFamily: typography.semibold,
+    fontSize: 13,
+    color: colors.primary,
   },
   actionLabel: {
     fontFamily: typography.semibold,

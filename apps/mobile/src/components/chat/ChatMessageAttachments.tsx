@@ -171,7 +171,7 @@ export function ChatMessageAttachments({
               <Ionicons
                 name={iconForMime(doc.mimeType)}
                 size={18}
-                color={mine ? colors.textInverse : colors.primaryDark}
+                color={colors.primaryDark}
               />
             </View>
             <View style={styles.docMeta}>
@@ -188,7 +188,7 @@ export function ChatMessageAttachments({
             {busy ? (
               <ActivityIndicator size="small" color={colors.primary} />
             ) : (
-              <Text style={[styles.docOpen, mine && styles.docOpenMine]}>Open</Text>
+              <Ionicons name="chevron-forward" size={16} color={colors.textSubtle} />
             )}
           </Pressable>
         );
@@ -342,18 +342,15 @@ function MediaTile({
             size={isVideo ? 36 : 28}
             color={colors.textInverse}
           />
-          {isVideo && item.durationMs ? (
-            <Text style={styles.duration}>{formatDuration(item.durationMs)}</Text>
-          ) : null}
         </View>
       )}
       {isVideo && item.url ? (
         <View style={styles.playOverlay}>
-          <Ionicons name="play" size={18} color={colors.textInverse} />
-          {item.durationMs ? (
-            <Text style={styles.duration}>{formatDuration(item.durationMs)}</Text>
-          ) : null}
+          <Ionicons name="play-circle" size={28} color={colors.textInverse} />
         </View>
+      ) : null}
+      {isVideo && item.durationMs ? (
+        <Text style={styles.duration}>{formatDuration(item.durationMs)}</Text>
       ) : null}
     </Pressable>
   );
@@ -419,15 +416,16 @@ function GalleryModal({
 const styles = StyleSheet.create({
   wrap: { gap: 4, marginBottom: 2 },
   mediaGroup: { borderRadius: 12, overflow: "hidden" },
-  two: { flexDirection: "row", gap: MEDIA_GAP },
+  two: { flexDirection: "row", gap: 8 },
   three: { flexDirection: "row", gap: MEDIA_GAP },
   threeSide: { gap: MEDIA_GAP },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: MEDIA_GAP },
   tile: {
     overflow: "hidden",
-    backgroundColor: "#1a1a1a",
+    borderRadius: 12,
+    backgroundColor: colors.surfaceMuted,
   },
-  tileRounded: { borderRadius: 12 },
+  tileRounded: { borderRadius: 14 },
   tileMine: { backgroundColor: "rgba(0,0,0,0.25)" },
   tileImage: { width: "100%", height: "100%" },
   tileFallback: {
@@ -447,31 +445,31 @@ const styles = StyleSheet.create({
   },
   duration: {
     position: "absolute",
-    right: 6,
-    bottom: 6,
+    right: 8,
+    bottom: 8,
     color: colors.textInverse,
     fontFamily: typography.semibold,
     fontSize: 11,
-    backgroundColor: "rgba(0,0,0,0.45)",
+    backgroundColor: "rgba(13,27,42,0.72)",
     paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: 4,
+    borderRadius: 6,
     overflow: "hidden",
   },
   docRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    marginHorizontal: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: radii.md,
-    backgroundColor: colors.bg,
+    gap: 10,
+    marginTop: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: colors.surfaceMuted,
     borderWidth: 1,
     borderColor: colors.border,
   },
   docRowMine: {
-    backgroundColor: "rgba(255,255,255,0.14)",
+    backgroundColor: colors.card,
     borderColor: "transparent",
   },
   docIcon: {
@@ -488,20 +486,14 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 13,
   },
-  docNameMine: { color: colors.textInverse },
+  docNameMine: { color: colors.text },
   docSub: {
     fontFamily: typography.regular,
     color: colors.textMuted,
     fontSize: 11,
     marginTop: 1,
   },
-  docSubMine: { color: "rgba(255,255,255,0.75)" },
-  docOpen: {
-    fontFamily: typography.semibold,
-    color: colors.primaryDark,
-    fontSize: 12,
-  },
-  docOpenMine: { color: colors.textInverse },
+  docSubMine: { color: colors.textMuted },
   gallery: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.94)",

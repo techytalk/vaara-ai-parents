@@ -2532,6 +2532,7 @@ export const api = {
       kind: string;
       status: string;
       replyCount: number;
+      rootMessageId?: string | null;
       lastMessageAt: string;
       lastActivitySeq?: number;
       serviceRepliesAllowed: boolean;
@@ -2567,6 +2568,7 @@ export const api = {
     body: {
       body: string;
       clientMessageId?: string;
+      replyToMessageId?: string;
       asProvider?: boolean;
       attachments?: Array<{
         storageKey: string;

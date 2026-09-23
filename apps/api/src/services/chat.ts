@@ -960,7 +960,11 @@ export async function createCircleMessage(params: {
     const parentThread = parent.rows[0].thread_id
       ? String(parent.rows[0].thread_id)
       : null;
-    if ((params.threadId ?? null) !== parentThread) {
+    const quotingThreadRoot =
+      Boolean(params.threadId) &&
+      Boolean(parentMessageId) &&
+      params.replyToMessageId === parentMessageId;
+    if ((params.threadId ?? null) !== parentThread && !quotingThreadRoot) {
       return { error: "Reply must stay in the same thread", status: 400 };
     }
   }
@@ -1334,6 +1338,32 @@ export async function listLinearMessages(params: {
   return { messages: toClientChatMessages(messages), nextCursor };
 }
 
+async function prependThreadRoot(
+  client: PoolClient,
+  threadId: string,
+  userId: string,
+  messages: CachedChatMessage[]
+): Promise<CachedChatMessage[]> {
+  const root = await client.query(
+    `SELECT root_message_id FROM circle_threads WHERE id = $1`,
+    [threadId]
+  );
+  const rootId = root.rows[0]?.root_message_id
+    ? String(root.rows[0].root_message_id)
+    : null;
+  if (!rootId || messages.some((item) => item.id === rootId)) return messages;
+  const { rows } = await client.query(
+    `SELECT m.* FROM circle_messages m WHERE m.id = $1`,
+    [rootId]
+  );
+  if (rows.length === 0) return messages;
+  const authors = await loadAuthorsForRows(client, rows);
+  const mapped = mapCachedMessageRows(rows, authors);
+  await attachReactions(client, mapped, userId);
+  await attachAttachments(client, mapped);
+  return [...mapped, ...messages];
+}
+
 export async function listThreadMessages(params: {
   client: PoolClient;
   userId: string;
@@ -1361,18 +1391,35 @@ export async function listThreadMessages(params: {
       const maxSeq = cached.reduce((max, item) => Math.max(max, item.seq), 0);
       const staleCatchUp =
         params.afterSeq != null && params.afterSeq >= maxSeq;
-      if (!staleCatchUp) {
+      const root = await params.client.query(
+        `SELECT root_message_id FROM circle_threads WHERE id = $1`,
+        [params.threadId]
+      );
+      const rootId = root.rows[0]?.root_message_id
+        ? String(root.rows[0].root_message_id)
+        : null;
+      const cacheHasRoot =
+        !rootId || cached.some((item) => item.id === rootId);
+      if (!staleCatchUp && cacheHasRoot) {
         const blocked = await blockedCounterpartIds(
           params.client,
           params.userId
         );
-        const messages = applyChatPageFilters(cached, {
+        let messages = applyChatPageFilters(cached, {
           blocked,
           afterSeq: params.afterSeq,
           limit: params.limit,
         });
         await attachReactions(params.client, messages, params.userId);
         await attachAttachments(params.client, messages);
+        if (params.afterSeq == null) {
+          messages = await prependThreadRoot(
+            params.client,
+            params.threadId,
+            params.userId,
+            messages
+          );
+        }
         console.log("[chat.path=redis]", { surface: "thread" });
         const nextCursor =
           params.afterSeq == null && messages.length === params.limit
@@ -1385,7 +1432,9 @@ export async function listThreadMessages(params: {
 
   const fillCache =
     params.beforeSeq == null && params.afterSeq == null;
-  const filters = [`m.thread_id = $1`];
+  const filters = [
+    `(m.thread_id = $1 OR m.id = (SELECT root_message_id FROM circle_threads WHERE id = $1))`,
+  ];
   const values: unknown[] = [params.threadId];
   let userParam = 0;
   if (!fillCache) {
@@ -1442,6 +1491,14 @@ export async function listThreadMessages(params: {
   }
   await attachReactions(params.client, messages, params.userId);
   await attachAttachments(params.client, messages);
+  if (params.afterSeq == null) {
+    messages = await prependThreadRoot(
+      params.client,
+      params.threadId,
+      params.userId,
+      messages
+    );
+  }
   console.log("[chat.path=sql]", { surface: "thread" });
   const nextCursor =
     !params.afterSeq && messages.length === params.limit
