@@ -803,7 +803,11 @@ export function ChatThreadScreen({
       />
       {canReply ? (
         <View style={[styles.composer, dockStyle]}>
-          {actionError ? (
+          {sending ? (
+            <Text style={styles.validatingHint}>
+              Checking community guidelines…
+            </Text>
+          ) : actionError ? (
             <Text style={styles.actionError}>{actionError}</Text>
           ) : null}
           {editingId ? (
@@ -998,13 +1002,23 @@ export function ChatThreadScreen({
               style={[styles.send, !canSend && styles.sendDisabled]}
               onPress={() => void send()}
               disabled={!canSend}
-              accessibilityLabel={editingId ? "Save message" : "Send message"}
+              accessibilityLabel={
+                sending
+                  ? "Checking community guidelines"
+                  : editingId
+                    ? "Save message"
+                    : "Send message"
+              }
             >
-              <Ionicons
-                name={editingId ? "checkmark" : "send"}
-                size={18}
-                color={colors.textInverse}
-              />
+              {sending ? (
+                <ActivityIndicator size="small" color={colors.textInverse} />
+              ) : (
+                <Ionicons
+                  name={editingId ? "checkmark" : "send"}
+                  size={18}
+                  color={colors.textInverse}
+                />
+              )}
             </Pressable>
           </View>
         </View>
@@ -1820,6 +1834,13 @@ const styles = StyleSheet.create({
   actionError: {
     color: colors.error,
     fontFamily: typography.medium,
+    fontSize: 13,
+    marginBottom: 8,
+    paddingHorizontal: 4,
+  },
+  validatingHint: {
+    color: colors.textMuted,
+    fontFamily: typography.regular,
     fontSize: 13,
     marginBottom: 8,
     paddingHorizontal: 4,

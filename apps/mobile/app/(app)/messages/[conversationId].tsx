@@ -1,5 +1,6 @@
 import { useCallback, useLayoutEffect, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   FlatList,
   KeyboardAvoidingView,
@@ -309,7 +310,7 @@ export default function ChatScreen() {
         )}
       />
 
-      {error ? <InlineError message={error} /> : null}
+      {error && !sending ? <InlineError message={error} /> : null}
 
       {queryClient.getQueryData<{ suspended?: boolean }>(["sessionUser"])
         ?.suspended ? (
@@ -317,27 +318,45 @@ export default function ChatScreen() {
       ) : (
       <View
         style={[
-          styles.inputRow,
+          styles.composerWrap,
           androidDockOffset > 0
             ? { marginBottom: androidDockOffset }
             : null,
         ]}
       >
+        {sending ? (
+          <Text style={styles.validatingHint}>
+            Checking community guidelines…
+          </Text>
+        ) : null}
+        <View style={styles.inputRow}>
         <TextInput
           style={styles.input}
           placeholder="Type a message…"
           placeholderTextColor={colors.textSubtle}
           value={text}
-          onChangeText={setText}
+          onChangeText={(value) => {
+            if (error) setError(null);
+            setText(value);
+          }}
+          editable={!sending}
           testID="clarity-mask"
         />
         <Pressable
           style={[styles.sendBtn, sending && styles.sendBtnDisabled]}
           onPress={onSend}
-          disabled={sending}
+          disabled={sending || !text.trim()}
+          accessibilityLabel={
+            sending ? "Checking community guidelines" : "Send message"
+          }
         >
-          <Ionicons name="send" size={18} color="#fff" />
+          {sending ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Ionicons name="send" size={18} color="#fff" />
+          )}
         </Pressable>
+        </View>
       </View>
       )}
 
@@ -462,9 +481,20 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     paddingBottom: spacing.sm,
     gap: spacing.xs,
+    backgroundColor: colors.card,
+  },
+  composerWrap: {
     borderTopWidth: 1,
     borderTopColor: colors.border,
     backgroundColor: colors.card,
+    paddingTop: spacing.xs,
+  },
+  validatingHint: {
+    color: colors.textMuted,
+    fontFamily: typography.regular,
+    fontSize: 13,
+    paddingHorizontal: spacing.sm,
+    paddingBottom: 4,
   },
   input: {
     flex: 1,

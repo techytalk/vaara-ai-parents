@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   FlatList,
   KeyboardAvoidingView,
@@ -793,7 +794,7 @@ export default function PostThreadScreen() {
         }
       />
 
-      {error ? (
+      {error && !submitting ? (
         <View style={styles.errorBanner}>
           <Text style={styles.errorText}>{error}</Text>
         </View>
@@ -802,7 +803,7 @@ export default function PostThreadScreen() {
       {suspended ? (
         <View
           style={[
-            styles.composer,
+            styles.composerBanner,
             cardShadow(),
             androidDockOffset > 0
               ? { marginBottom: androidDockOffset }
@@ -814,21 +815,31 @@ export default function PostThreadScreen() {
       ) : canReply ? (
       <View
         style={[
-          styles.composer,
+          styles.composerWrap,
           cardShadow(),
           androidDockOffset > 0
             ? { marginBottom: androidDockOffset }
             : null,
         ]}
       >
+        {submitting ? (
+          <Text style={styles.validatingHint}>
+            Checking community guidelines…
+          </Text>
+        ) : null}
+        <View style={styles.composer}>
         <TextInput
           style={styles.composerInput}
           placeholder="Write a helpful comment…"
           placeholderTextColor={theme.textMuted}
           value={commentText}
-          onChangeText={setCommentText}
+          onChangeText={(value) => {
+            if (error) setError(null);
+            setCommentText(value);
+          }}
           multiline
           maxLength={2000}
+          editable={!submitting}
         />
         <Pressable
           style={[
@@ -838,19 +849,22 @@ export default function PostThreadScreen() {
           onPress={onComment}
           disabled={submitting || !commentText.trim()}
           accessibilityRole="button"
-          accessibilityLabel="Post comment"
+          accessibilityLabel={
+            submitting ? "Checking community guidelines" : "Post comment"
+          }
         >
           {submitting ? (
-            <Ionicons name="hourglass-outline" size={20} color="#fff" />
+            <ActivityIndicator size="small" color="#fff" />
           ) : (
             <Ionicons name="send" size={18} color="#fff" />
           )}
         </Pressable>
+        </View>
       </View>
       ) : authoritative ? (
         <View
           style={[
-            styles.composer,
+            styles.composerBanner,
             cardShadow(),
             androidDockOffset > 0
               ? { marginBottom: androidDockOffset }
@@ -1048,13 +1062,31 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     paddingVertical: 6,
   },
+  composerWrap: {
+    backgroundColor: theme.card,
+    borderTopWidth: 1,
+    borderTopColor: theme.border,
+    paddingTop: 8,
+  },
+  validatingHint: {
+    color: theme.textMuted,
+    fontSize: 13,
+    paddingHorizontal: 18,
+    paddingBottom: 6,
+  },
   composer: {
     flexDirection: "row",
     alignItems: "flex-end",
-    paddingTop: 10,
+    paddingTop: 2,
     paddingBottom: 10,
     paddingHorizontal: 14,
     gap: 10,
+    backgroundColor: theme.card,
+  },
+  composerBanner: {
+    paddingTop: 10,
+    paddingBottom: 10,
+    paddingHorizontal: 14,
     backgroundColor: theme.card,
     borderTopWidth: 1,
     borderTopColor: theme.border,

@@ -985,7 +985,7 @@ export default function NewPostScreen() {
         ) : null}
       </ScrollView>
 
-      {error ? (
+      {error && !loading ? (
         <View style={styles.errorBar}>
           <Ionicons name="alert-circle" size={16} color={theme.error} />
           <Text style={styles.errorText}>{error}</Text>
@@ -996,6 +996,13 @@ export default function NewPostScreen() {
         <View style={styles.progressBar}>
           <ActivityIndicator size="small" color={theme.primary} />
           <Text style={styles.progressText}>{uploadProgress}</Text>
+        </View>
+      ) : loading ? (
+        <View style={styles.progressBar}>
+          <ActivityIndicator size="small" color={theme.primary} />
+          <Text style={styles.progressText}>
+            Checking community guidelines…
+          </Text>
         </View>
       ) : null}
 
