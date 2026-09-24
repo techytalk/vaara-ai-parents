@@ -139,15 +139,18 @@ export function HomeTourOverlay({ visible, circles, onFinished }: Props) {
   );
 }
 
-export function useHomeTour(ready = true) {
+export function useHomeTour(ready = true, blocked = false) {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || blocked) {
+      setVisible(false);
+      return;
+    }
     hasCompletedAppTour().then((done) => {
       if (!done) setVisible(true);
     });
-  }, [ready]);
+  }, [ready, blocked]);
 
   return {
     visible,

@@ -41,6 +41,8 @@ import {
 } from "@/lib/onboarding-draft";
 import { CompletionPrompt } from "@/components/CompletionPrompt";
 import { HomeTourOverlay, useHomeTour } from "@/components/tour/HomeTourOverlay";
+import { LuckyGiftScratchCard } from "@/components/lucky-gift/ScratchCard";
+import type { LuckyGiftResponse } from "@/lib/api";
 
 function greetingForHour(hour: number) {
   if (hour < 12) return "Good morning";
@@ -65,8 +67,13 @@ export default function HomeScreen() {
   }));
   const [activePrompt, setActivePrompt] =
     useState<CompletionPromptCandidate | null>(null);
+  const [luckyGift, setLuckyGift] = useState<LuckyGiftResponse | null>(null);
+  const [luckyGiftReady, setLuckyGiftReady] = useState(false);
+  const [luckyGiftDismissed, setLuckyGiftDismissed] = useState(false);
+  const [claimSheetOpen, setClaimSheetOpen] = useState(false);
   const authExitStartedRef = useRef(false);
   const homeFirstOpenFiredRef = useRef(false);
+  const luckyGiftAttemptedRef = useRef(false);
 
   useEffect(() => {
     clearOnboardingDraft();
@@ -218,9 +225,58 @@ export default function HomeScreen() {
   const primaryCircle = useMemo(() => pickPrimaryCircle(circles), [circles]);
   const loading = userQuery.isLoading;
   const composeLocked = circlesQuery.isPending || circlesQuery.isError;
+  const showLuckyGift =
+    !luckyGiftDismissed && luckyGift?.status === "pending";
+  const needsClaimReminder =
+    luckyGift?.status === "revealed" &&
+    luckyGift.outcome === "win" &&
+    !luckyGift.phoneSubmitted &&
+    luckyGift.claimsOpen;
   const tour = useHomeTour(
-    Boolean(user) && circlesQuery.isSuccess
+    Boolean(user) && circlesQuery.isSuccess && luckyGiftReady,
+    showLuckyGift
   );
+
+  async function refreshLuckyGift() {
+    try {
+      const token = await getToken();
+      if (!token) {
+        setLuckyGift({ status: "hidden" });
+        return;
+      }
+      const res = await api.getLuckyGift(token);
+      setLuckyGift(res);
+      if (res.status !== "pending") {
+        setLuckyGiftDismissed(false);
+      }
+    } catch {
+      // Keep prior state; reminder / card can retry next visit.
+    }
+  }
+
+  useEffect(() => {
+    if (!user || !circlesQuery.isSuccess || luckyGiftAttemptedRef.current) return;
+    luckyGiftAttemptedRef.current = true;
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getToken();
+        if (!token) {
+          if (!cancelled) setLuckyGiftReady(true);
+          return;
+        }
+        const res = await api.getLuckyGift(token);
+        if (!cancelled) setLuckyGift(res);
+      } catch {
+        // Don't block the tour forever on API failure.
+      } finally {
+        if (!cancelled) setLuckyGiftReady(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, circlesQuery.isSuccess]);
 
   useEffect(() => {
     if (homeFirstOpenFiredRef.current) return;
@@ -278,6 +334,26 @@ export default function HomeScreen() {
         />
       ) : null}
 
+      {needsClaimReminder && !tour.visible && !showLuckyGift ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Claim your gift voucher"
+          onPress={() => setClaimSheetOpen(true)}
+          style={styles.claimBanner}
+        >
+          <Ionicons name="gift-outline" size={20} color={colors.primary} />
+          <View style={styles.claimBannerCopy}>
+            <Text style={styles.claimBannerTitle}>
+              Claim your {luckyGift.status === "revealed" ? luckyGift.prizeLabel : "₹500 gift voucher"}
+            </Text>
+            <Text style={styles.claimBannerLead}>
+              Add your phone so we can send the voucher details.
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+        </Pressable>
+      ) : null}
+
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Start a thread"
@@ -321,6 +397,38 @@ export default function HomeScreen() {
         circles={circles}
         onFinished={tour.dismiss}
       />
+
+      {showLuckyGift && luckyGift?.status === "pending" ? (
+        <LuckyGiftScratchCard
+          visible
+          pending={luckyGift}
+          onFinished={(next) => {
+            setLuckyGiftDismissed(true);
+            if (next) {
+              setLuckyGift(next);
+            } else {
+              void refreshLuckyGift();
+            }
+          }}
+        />
+      ) : null}
+
+      {claimSheetOpen &&
+      luckyGift?.status === "revealed" &&
+      luckyGift.outcome === "win" ? (
+        <LuckyGiftScratchCard
+          visible
+          claim={luckyGift}
+          onFinished={(next) => {
+            setClaimSheetOpen(false);
+            if (next) {
+              setLuckyGift(next);
+            } else {
+              void refreshLuckyGift();
+            }
+          }}
+        />
+      ) : null}
     </View>
   );
 }
@@ -392,6 +500,29 @@ const styles = StyleSheet.create({
     fontFamily: typography.semibold,
   },
   composeLocked: { opacity: 0.5 },
+  claimBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    backgroundColor: colors.primarySoft,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.primaryLight,
+    padding: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  claimBannerCopy: { flex: 1 },
+  claimBannerTitle: {
+    ...typography.caption,
+    color: colors.text,
+    fontFamily: typography.bold,
+    marginBottom: 2,
+  },
+  claimBannerLead: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontFamily: typography.regular,
+  },
   bellBtn: { marginRight: 8, position: "relative" },
   bellBadge: {
     position: "absolute",

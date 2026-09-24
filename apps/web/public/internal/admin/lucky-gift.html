@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow" />
+    <title>Vaara — Lucky gift campaign</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+        --teal: #0e9a8a;
+        --teal-dark: #08786d;
+        --bg: #fffcf7;
+        --card: #fff;
+        --text: #0d1b2a;
+        --muted: #5e6974;
+        --border: #e8e3db;
+        --ok: #078675;
+        --warn: #b96d00;
+        --danger: #b42318;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: var(--bg);
+        color: var(--text);
+      }
+      h1 { font-size: 1.45rem; margin: 0 0 6px; }
+      h2 { font-size: 1.05rem; margin: 22px 0 10px; }
+      .muted { color: var(--muted); font-size: 0.9rem; margin: 0 0 18px; }
+      a { color: var(--teal-dark); }
+      label { display: block; font-size: 0.85rem; margin: 0 0 4px; color: var(--muted); }
+      input, select, button, textarea {
+        font: inherit;
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+      }
+      button {
+        background: var(--teal);
+        color: #fff;
+        border: none;
+        cursor: pointer;
+        margin-right: 8px;
+        margin-top: 8px;
+      }
+      button.secondary { background: #44403c; }
+      button.danger { background: var(--danger); }
+      button:disabled { opacity: 0.55; cursor: wait; }
+      .toolbar {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        align-items: end;
+        margin-bottom: 16px;
+      }
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 10px;
+        margin-bottom: 16px;
+      }
+      .stat {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 12px 14px;
+      }
+      .stat .n { font-size: 1.6rem; font-weight: 700; }
+      .stat .l { font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
+      .panel {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 16px;
+        margin-bottom: 16px;
+      }
+      .grid2 {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 12px;
+      }
+      .row { margin-bottom: 10px; }
+      .badge {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 999px;
+        font-size: 0.78rem;
+        font-weight: 700;
+      }
+      .badge.on { background: #d8f5ef; color: var(--ok); }
+      .badge.off { background: #f3efe8; color: var(--muted); }
+      .badge.live { background: #fff1d6; color: var(--warn); }
+      .err {
+        display: none;
+        background: #fdecea;
+        color: var(--danger);
+        border-radius: 10px;
+        padding: 10px 12px;
+        margin-bottom: 12px;
+      }
+      .okmsg {
+        display: none;
+        background: #e7f8f3;
+        color: var(--ok);
+        border-radius: 10px;
+        padding: 10px 12px;
+        margin-bottom: 12px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.88rem;
+      }
+      th, td {
+        text-align: left;
+        padding: 8px 6px;
+        border-bottom: 1px solid var(--border);
+        vertical-align: top;
+      }
+      th { color: var(--muted); font-weight: 600; }
+      .check { display: flex; align-items: center; gap: 8px; margin-top: 18px; }
+      .check input { width: auto; }
+    </style>
+    <script src="./admin-auth.js"></script>
+  </head>
+  <body>
+    <div id="adminNav"></div>
+    <div class="toolbar">
+      <div>
+        <h1>Lucky gift campaign</h1>
+        <p class="muted">Suchitra ₹500 scratch card — toggle on only after dates, phone, and moments are set.</p>
+      </div>
+      <div>
+        <span id="statusBadge" class="badge off">Loading…</span>
+      </div>
+    </div>
+
+    <div id="err" class="err"></div>
+    <div id="okmsg" class="okmsg"></div>
+
+    <div class="stats" id="stats"></div>
+
+    <div class="panel">
+      <h2>Campaign controls</h2>
+      <div class="grid2">
+        <div class="row">
+          <label for="prizeLabel">Prize label</label>
+          <input id="prizeLabel" style="width:100%" />
+        </div>
+        <div class="row">
+          <label for="supportPhone">Support phone (E.164)</label>
+          <input id="supportPhone" placeholder="+9198XXXXXXXX" style="width:100%" />
+        </div>
+        <div class="row">
+          <label for="startsAt">Starts at (UTC ISO)</label>
+          <input id="startsAt" style="width:100%" />
+        </div>
+        <div class="row">
+          <label for="endsAt">Ends at (UTC ISO)</label>
+          <input id="endsAt" style="width:100%" />
+        </div>
+        <div class="row">
+          <label for="claimDeadline">Claim deadline (UTC ISO)</label>
+          <input id="claimDeadline" style="width:100%" />
+        </div>
+      </div>
+      <div class="check">
+        <input type="checkbox" id="carryForward" />
+        <label for="carryForward" style="margin:0">Carry unclaimed moments into later periods</label>
+      </div>
+      <div class="check">
+        <input type="checkbox" id="claimsOpen" />
+        <label for="claimsOpen" style="margin:0">Claims open</label>
+      </div>
+
+      <h2>Period windows (IST) — counts must sum to 20</h2>
+      <div class="grid2" id="windows"></div>
+
+      <button type="button" id="btnSave">Save settings</button>
+      <button type="button" class="secondary" id="btnGenerate">Generate 20 winning moments</button>
+      <button type="button" id="btnActivate">Turn campaign ON</button>
+      <button type="button" class="danger" id="btnDeactivate">Turn campaign OFF</button>
+    </div>
+
+    <div class="panel">
+      <h2>Winning moments</h2>
+      <div id="moments" class="muted">None yet.</div>
+    </div>
+
+    <div class="panel">
+      <h2>Winners</h2>
+      <button type="button" class="secondary" id="btnWinners">Refresh winners</button>
+      <div id="winners" style="margin-top:12px" class="muted">—</div>
+    </div>
+
+    <script>
+      (async function () {
+        const ok = await VaaraAdmin.requireAuth();
+        if (!ok) return;
+        VaaraAdmin.mountBar(document.getElementById("adminNav"));
+
+        const API_BASE = VaaraAdmin.API_BASE;
+        const $ = (id) => document.getElementById(id);
+        const PERIODS = ["morning", "afternoon", "evening"];
+
+        function escapeHtml(value) {
+          return String(value || "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;");
+        }
+
+        function showError(msg) {
+          const box = $("err");
+          box.style.display = msg ? "block" : "none";
+          box.textContent = msg || "";
+        }
+        function showOk(msg) {
+          const box = $("okmsg");
+          box.style.display = msg ? "block" : "none";
+          box.textContent = msg || "";
+        }
+
+        function renderWindows(windows) {
+          const wrap = $("windows");
+          wrap.replaceChildren();
+          for (const period of PERIODS) {
+            const w = windows[period] || { start: "", end: "", count: 0 };
+            const block = document.createElement("div");
+            block.innerHTML = `
+              <strong style="text-transform:capitalize">${period}</strong>
+              <div class="row" style="margin-top:8px">
+                <label>Start</label>
+                <input data-period="${period}" data-field="start" value="${escapeHtml(w.start)}" style="width:100%" />
+              </div>
+              <div class="row">
+                <label>End</label>
+                <input data-period="${period}" data-field="end" value="${escapeHtml(w.end)}" style="width:100%" />
+              </div>
+              <div class="row">
+                <label>Count</label>
+                <input data-period="${period}" data-field="count" type="number" min="0" max="20" value="${Number(w.count) || 0}" style="width:100%" />
+              </div>
+            `;
+            wrap.appendChild(block);
+          }
+        }
+
+        function readWindows() {
+          const out = {};
+          for (const period of PERIODS) {
+            out[period] = {
+              start: document.querySelector(`input[data-period="${period}"][data-field="start"]`).value.trim(),
+              end: document.querySelector(`input[data-period="${period}"][data-field="end"]`).value.trim(),
+              count: Number(document.querySelector(`input[data-period="${period}"][data-field="count"]`).value),
+            };
+          }
+          return out;
+        }
+
+        function fillForm(campaign) {
+          $("prizeLabel").value = campaign.prizeLabel || "";
+          $("supportPhone").value = campaign.supportPhone || "";
+          $("startsAt").value = campaign.startsAt || "";
+          $("endsAt").value = campaign.endsAt || "";
+          $("claimDeadline").value = campaign.claimDeadline || "";
+          $("carryForward").checked = !!campaign.carryUnclaimedForward;
+          $("claimsOpen").checked = !!campaign.claimsOpen;
+          renderWindows(campaign.periodWindows || {});
+        }
+
+        function renderStats(stats, live, active) {
+          const badge = $("statusBadge");
+          if (live) {
+            badge.className = "badge live";
+            badge.textContent = "LIVE now";
+          } else if (active) {
+            badge.className = "badge on";
+            badge.textContent = "ON (outside window)";
+          } else {
+            badge.className = "badge off";
+            badge.textContent = "OFF";
+          }
+          $("stats").innerHTML = [
+            ["Cards issued", stats.cardsIssued],
+            ["Scratched", stats.scratched],
+            ["Wins", stats.wins],
+            ["Losses", stats.losses],
+            ["Phones in", stats.phonesSubmitted],
+            ["Moments left", stats.unclaimedMoments],
+            ["Moments total", stats.momentCount],
+          ]
+            .map(
+              ([l, n]) =>
+                `<div class="stat"><div class="n">${n ?? 0}</div><div class="l">${l}</div></div>`
+            )
+            .join("");
+        }
+
+        function renderMoments(moments) {
+          const box = $("moments");
+          if (!moments || !moments.length) {
+            box.className = "muted";
+            box.textContent = "None yet. Generate before turning ON.";
+            return;
+          }
+          box.className = "";
+          const rows = moments
+            .map((m) => {
+              const claimed = m.claimedAt
+                ? `claimed ${new Date(m.claimedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`
+                : "open";
+              return `<tr>
+                <td>${escapeHtml(m.period)}</td>
+                <td>${new Date(m.availableAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</td>
+                <td>${m.expiresAt ? new Date(m.expiresAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : "—"}</td>
+                <td>${claimed}</td>
+              </tr>`;
+            })
+            .join("");
+          box.innerHTML = `<table>
+            <thead><tr><th>Period</th><th>Available (IST)</th><th>Expires</th><th>Status</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>`;
+        }
+
+        async function load() {
+          showError("");
+          const res = await fetch(API_BASE + "/internal/admin/lucky-gift", {
+            headers: VaaraAdmin.headers(false),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            showError(data.error || "Failed to load campaign");
+            return;
+          }
+          fillForm(data.campaign);
+          renderStats(data.stats, data.live, data.campaign.active);
+          renderMoments(data.moments);
+          if (!data.scheduleReady) {
+            const momentsBox = $("moments");
+            if (!data.moments || !data.moments.length) {
+              momentsBox.className = "muted";
+              momentsBox.textContent =
+                "Schedule not generated. Generate 20 winning moments before turning ON.";
+            }
+          }
+        }
+
+        async function save(extra) {
+          showError("");
+          showOk("");
+          const body = {
+            prizeLabel: $("prizeLabel").value.trim(),
+            supportPhone: $("supportPhone").value.trim(),
+            startsAt: $("startsAt").value.trim(),
+            endsAt: $("endsAt").value.trim(),
+            claimDeadline: $("claimDeadline").value.trim(),
+            carryUnclaimedForward: $("carryForward").checked,
+            claimsOpen: $("claimsOpen").checked,
+            periodWindows: readWindows(),
+            ...extra,
+          };
+          const res = await fetch(API_BASE + "/internal/admin/lucky-gift", {
+            method: "PATCH",
+            headers: VaaraAdmin.headers(true),
+            body: JSON.stringify(body),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            showError(data.error || "Save failed");
+            return false;
+          }
+          showOk(
+            data.scheduleInvalidated
+              ? "Saved. Schedule changed — generate 20 winning moments again before turning ON."
+              : extra && extra.active === true
+                ? "Campaign turned ON."
+                : "Saved."
+          );
+          await load();
+          return true;
+        }
+
+        $("btnSave").addEventListener("click", () => save({}));
+        $("btnActivate").addEventListener("click", () => {
+          if (!confirm("Turn the lucky gift campaign ON?")) return;
+          save({ active: true });
+        });
+        $("btnDeactivate").addEventListener("click", () => {
+          if (!confirm("Turn the campaign OFF? New parents will skip the scratch card.")) return;
+          save({ active: false });
+        });
+        $("btnGenerate").addEventListener("click", async () => {
+          showError("");
+          showOk("");
+          if (!(await save({}))) return;
+          const res = await fetch(
+            API_BASE + "/internal/admin/lucky-gift/generate-moments",
+            { method: "POST", headers: VaaraAdmin.headers(true) }
+          );
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            showError(data.error || "Generate failed");
+            return;
+          }
+          showOk(`Generated ${data.momentCount} winning moments.`);
+          await load();
+        });
+        $("btnWinners").addEventListener("click", async () => {
+          const res = await fetch(
+            API_BASE + "/internal/admin/lucky-gift/winners",
+            { headers: VaaraAdmin.headers(false) }
+          );
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            showError(data.error || "Could not load winners");
+            return;
+          }
+          const box = $("winners");
+          if (!data.winners || !data.winners.length) {
+            box.className = "muted";
+            box.textContent = "No winners yet.";
+            return;
+          }
+          box.className = "";
+          box.innerHTML = `<table>
+            <thead><tr><th>Code</th><th>Winner phone</th><th>Email</th><th>Scratched</th></tr></thead>
+            <tbody>
+              ${data.winners
+                .map(
+                  (w) => `<tr>
+                    <td>${escapeHtml(w.claimCode)}</td>
+                    <td>${escapeHtml(w.winnerPhone || "—")}</td>
+                    <td>${escapeHtml(w.email || "—")}</td>
+                    <td>${w.scratchedAt ? new Date(w.scratchedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : "—"}</td>
+                  </tr>`
+                )
+                .join("")}
+            </tbody>
+          </table>`;
+        });
+
+        await load();
+      })();
+    </script>
+  </body>
+</html>

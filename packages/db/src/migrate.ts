@@ -150,6 +150,18 @@ const MIGRATIONS = [
     version: "066_myp_g9_plain_answers",
     file: "066_myp_g9_plain_answers.sql",
   },
+  {
+    version: "067_myp_visual_answers",
+    file: "067_myp_visual_answers.sql",
+  },
+  {
+    version: "068_myp_visual_answers_rest",
+    file: "068_myp_visual_answers_rest.sql",
+  },
+  {
+    version: "069_lucky_gift_scratch_cards",
+    file: "069_lucky_gift_scratch_cards.sql",
+  },
 ];
 
 async function isMigrationApplied(

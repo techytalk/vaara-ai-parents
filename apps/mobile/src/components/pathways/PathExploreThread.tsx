@@ -19,6 +19,8 @@ import type {
 } from "@/lib/api";
 import { useAndroidImeDockOffset, useKeyboardHeight } from "@/hooks/useKeyboardHeight";
 import { childSwitcherTabLabel } from "@/lib/child-switcher-label";
+import { PathAnswerView } from "./PathAnswerView";
+import { answerOpensAsPage, parsePathAnswer } from "./path-answer";
 
 const THREAD = colors.primary;
 const RAIL = 20;
@@ -130,15 +132,25 @@ export function PathExploreThread({
   const canAsk = focus.allowAsk;
   const canRead = focus.allowDiscussions;
   const isLeaf = visibleCards.length === 0 && !isStageRoot;
-  const leafAnswer = isLeaf ? focus.lead || focus.summary : null;
+  const answerBlocks = parsePathAnswer(focus.lead);
+  const tileCards = answerBlocks?.some((block) => block.kind === "tiles")
+    ? visibleCards.filter((node) => node.kind !== "section")
+    : [];
+  const listCards =
+    tileCards.length > 0
+      ? visibleCards.filter((node) => node.kind === "section")
+      : visibleCards;
+  const leafAnswer = isLeaf && !answerBlocks ? focus.lead || focus.summary : null;
   const scrollRef = useRef<ScrollView>(null);
+  const scrollY = useRef<Record<string, number>>({});
   const discussionsBefore = useRef(discussions);
   const keyboardHeight = useKeyboardHeight();
   const androidLift = useAndroidImeDockOffset(0);
   const keyboardLift = Platform.OS === "ios" ? keyboardHeight : androidLift;
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ y: 0, animated: false });
+    const y = scrollY.current[focus.id] ?? 0;
+    scrollRef.current?.scrollTo({ y, animated: false });
   }, [focus.id]);
 
   useEffect(() => {
@@ -160,6 +172,10 @@ export function PathExploreThread({
         ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
+        scrollEventThrottle={16}
+        onScroll={(event) => {
+          scrollY.current[focus.id] = event.nativeEvent.contentOffset.y;
+        }}
       >
       <View style={styles.nav}>
         <Text style={styles.wordmark}>vaara</Text>
@@ -225,7 +241,10 @@ export function PathExploreThread({
       {showLevelUp ? (
         <View style={styles.crumbBlock}>
           <Text style={styles.crumbPath} numberOfLines={2}>
-            {breadcrumb.map((node) => node.title).join("  ›  ")}
+            {breadcrumb
+              .slice(0, -1)
+              .map((node) => node.title)
+              .join("  ›  ")}
           </Text>
           <Pressable onPress={onLevelUp} hitSlop={8}>
             <Text style={styles.levelUp}>← One level up</Text>
@@ -236,7 +255,9 @@ export function PathExploreThread({
       <View style={[styles.pane, isLeaf && styles.paneLeaf]}>
         {eyebrow ? <Text style={styles.paneEyebrow}>{eyebrow}</Text> : null}
         <Text style={styles.paneTitle}>{focus.title}</Text>
-        {isLeaf && leafAnswer ? (
+        {answerBlocks ? (
+          <PathAnswerView source={focus.lead} tiles={tileCards} onOpenTile={onOpenCard} />
+        ) : isLeaf && leafAnswer ? (
           <View style={styles.answerLines}>
             {leafAnswer.split(/\n\n+/).map((block, index) => {
               const table = parseCompareTable(block);
@@ -292,12 +313,13 @@ export function PathExploreThread({
         )}
       </View>
 
-      {visibleCards.length > 0 ? (
+      {listCards.length > 0 ? (
         <View style={styles.thread}>
           <View style={styles.threadRail} />
-          {visibleCards.map((node) => {
+          {listCards.map((node) => {
             const nested = nestedByParent[node.id] ?? [];
-            const expandable = nested.length > 0 && node.kind === "section";
+            const expandable =
+              nested.length > 0 && node.kind === "section" && !answerOpensAsPage(node.lead);
             const open = expandedIds.has(node.id);
             return (
               <View key={node.id} style={styles.threadItem}>
@@ -360,7 +382,7 @@ export function PathExploreThread({
           style={styles.official}
         >
           <Ionicons name="open-outline" size={16} color={t.textLink} />
-          <Text style={styles.link}>Official details</Text>
+          <Text style={styles.link}>Official information</Text>
         </Pressable>
       ) : null}
 
@@ -535,7 +557,7 @@ const styles = StyleSheet.create({
   paneDeck: { ...typography.body, color: t.deck, lineHeight: 24 },
   paneLead: { ...typography.body, color: t.title, fontSize: 17, lineHeight: 26, marginTop: 8 },
   answerLines: { gap: 16 },
-  paneAnswer: { color: t.title, fontSize: 17, lineHeight: 26, fontFamily: typography.regular },
+  paneAnswer: { ...typography.body, color: t.title },
   compare: {
     borderWidth: 1,
     borderColor: t.nodeBorder,

@@ -330,6 +330,20 @@ export type ContactDetails = {
   updatedAt: string;
 };
 
+export type LuckyGiftResponse =
+  | { status: "hidden" }
+  | { status: "pending"; prizeLabel: string }
+  | {
+      status: "revealed";
+      outcome: "win" | "lose";
+      prizeLabel: string;
+      claimCode: string;
+      supportPhone: string;
+      claimDeadline: string;
+      phoneSubmitted: boolean;
+      claimsOpen: boolean;
+    };
+
 export type SavedPost = {
   id: string;
   circleId?: string;
@@ -1764,6 +1778,21 @@ export const api = {
 
   getContactDetails: (token: string) =>
     request<ContactDetails | null>("/v1/me/contact-details", {}, token),
+
+  getLuckyGift: (token: string) =>
+    request<LuckyGiftResponse>("/v1/me/lucky-gift", {}, token),
+
+  scratchLuckyGift: (token: string) =>
+    request<LuckyGiftResponse>("/v1/me/lucky-gift/scratch", {
+      method: "POST",
+      body: "{}",
+    }, token),
+
+  submitLuckyGiftPhone: (token: string, phone: string) =>
+    request<LuckyGiftResponse>("/v1/me/lucky-gift/phone", {
+      method: "POST",
+      body: JSON.stringify({ phone }),
+    }, token),
 
   updateContactDetails: (
     token: string,

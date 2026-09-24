@@ -600,3 +600,25 @@ The Grade 9 tree is one text payload. Grade 10, After Grade 10, and a section ex
 1. **Open a branch immediately.** Stage tabs, card taps, and +/− use the nodes already on the phone. The list for the new branch replaces the old one and the screen returns to the top of that branch. Do not replace the whole screen with a loader for that tap.
 2. **Spinner only while the text is actually loading.** The first open, a child switch, or a refresh shows a spinner and keeps any text already on screen. A branch tap that only changes focus does not show a spinner.
 3. **Ask parents stays above the keyboard.** The floating composer moves up with the keyboard. On Android, add the keyboard height only when the window itself does not shrink. Typing must not slide under the keyboard.
+
+---
+
+## 13. Visual answers
+
+An answer explains the idea before it asks the parent to talk to the school. Plain `lead` text still renders as short lines. A lead that contains `[[...]]` blocks renders as cards.
+
+| Block | What the parent sees |
+|-------|----------------------|
+| `[[lead]]` | The answer, in the first block |
+| `[[checks]]` | A heading, then one idea per line |
+| `[[compare]]` | Two columns. A `#` row is a label, the next row is the example |
+| `[[pair]]` | Two named cards, such as Standard and Extended |
+| `[[facts]]` | `value \| unit \| caption` |
+| `[[steps]]` | `Name \| what happens` |
+| `[[example]]` | A concrete example, labelled so it is not the school's timetable |
+| `[[note]]` | A condition, such as what can vary |
+| `[[ask-school]]` | One question for the school. This does not post |
+| `[[more]]` | A closed extra explanation |
+| `[[view tiles]]` | The child topics as tiles with a one-line summary |
+
+`[[view tiles]]` on a section opens that section as a page. Other sections still expand in place. Back returns to the previous page and keeps its scroll position. An edited Ask parents draft stays with that topic until it is posted or replaced.

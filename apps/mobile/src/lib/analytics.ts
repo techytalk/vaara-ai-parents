@@ -68,6 +68,10 @@ export type AnalyticsEvent =
   | "completion_prompt_shown"
   | "completion_prompt_tapped"
   | "completion_prompt_dismissed"
+  | "lucky_gift_view"
+  | "lucky_gift_scratched"
+  | "lucky_gift_phone_submitted"
+  | "lucky_gift_support_tapped"
   | "school_suggestion_tapped"
   | "share"
   | "onboarding_geo";

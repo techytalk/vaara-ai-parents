@@ -28,6 +28,12 @@ import { publishChatNudge } from "../services/chat.js";
 import { signAdminToken, verifyAdminToken } from "../lib/jwt.js";
 import { mountAdminModeration } from "./admin-moderation.js";
 import { getAdminDashboard } from "../services/admin-dashboard.js";
+import {
+  adminGenerateWinningMoments,
+  adminGetLuckyGiftCampaign,
+  adminListWinners,
+  adminUpdateLuckyGiftCampaign,
+} from "../services/lucky-gift.js";
 
 function requireCronSecret(c: { req: { header: (n: string) => string | undefined } }) {
   const secret = c.req.header("X-Cron-Secret");
@@ -1270,6 +1276,84 @@ export function createInternalRoutes() {
       return c.json({ ok: true, ...dashboard });
     } finally {
       client.release();
+    }
+  });
+
+  app.get("/admin/lucky-gift", async (c) => {
+    if (!(await requireAdminAuth(c))) return c.json({ error: "Unauthorized" }, 401);
+    try {
+      const data = await adminGetLuckyGiftCampaign();
+      if (!data) return c.json({ error: "Campaign not found" }, 404);
+      return c.json({ ok: true, ...data });
+    } catch (error) {
+      console.error("[admin.lucky-gift.get] failed", error);
+      return c.json({ error: "Could not load campaign" }, 500);
+    }
+  });
+
+  app.get("/admin/lucky-gift/winners", async (c) => {
+    if (!(await requireAdminAuth(c))) return c.json({ error: "Unauthorized" }, 401);
+    try {
+      const data = await adminListWinners();
+      if (!data) return c.json({ error: "Campaign not found" }, 404);
+      return c.json({ ok: true, ...data });
+    } catch (error) {
+      console.error("[admin.lucky-gift.winners] failed", error);
+      return c.json({ error: "Could not load winners" }, 500);
+    }
+  });
+
+  app.patch("/admin/lucky-gift", async (c) => {
+    if (!(await requireAdminAuth(c))) return c.json({ error: "Unauthorized" }, 401);
+    let body: Record<string, unknown>;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    try {
+      const result = await adminUpdateLuckyGiftCampaign({
+        prizeLabel:
+          typeof body.prizeLabel === "string" ? body.prizeLabel : undefined,
+        supportPhone:
+          typeof body.supportPhone === "string" ? body.supportPhone : undefined,
+        carryUnclaimedForward:
+          typeof body.carryUnclaimedForward === "boolean"
+            ? body.carryUnclaimedForward
+            : undefined,
+        periodWindows:
+          body.periodWindows && typeof body.periodWindows === "object"
+            ? (body.periodWindows as never)
+            : undefined,
+        startsAt: typeof body.startsAt === "string" ? body.startsAt : undefined,
+        endsAt: typeof body.endsAt === "string" ? body.endsAt : undefined,
+        claimDeadline:
+          typeof body.claimDeadline === "string" ? body.claimDeadline : undefined,
+        claimsOpen:
+          typeof body.claimsOpen === "boolean" ? body.claimsOpen : undefined,
+        active: typeof body.active === "boolean" ? body.active : undefined,
+      });
+      if ("error" in result) {
+        return c.json({ error: result.error }, result.status as 400 | 404);
+      }
+      return c.json(result);
+    } catch (error) {
+      console.error("[admin.lucky-gift.patch] failed", error);
+      return c.json({ error: "Could not update campaign" }, 500);
+    }
+  });
+
+  app.post("/admin/lucky-gift/generate-moments", async (c) => {
+    if (!(await requireAdminAuth(c))) return c.json({ error: "Unauthorized" }, 401);
+    try {
+      const result = await adminGenerateWinningMoments();
+      if ("error" in result) {
+        return c.json({ error: result.error }, result.status as 400 | 404);
+      }
+      return c.json(result);
+    } catch (error) {
+      console.error("[admin.lucky-gift.generate] failed", error);
+      return c.json({ error: "Could not generate moments" }, 500);
     }
   });
 

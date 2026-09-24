@@ -43,6 +43,12 @@ import {
   PAGE_CACHE_TTL,
   setCachedJson,
 } from "@vaara/redis";
+import {
+  fetchAuthUserLuckyGiftContext,
+  getLuckyGiftForUser,
+  scratchLuckyGift,
+  submitLuckyGiftPhone,
+} from "../services/lucky-gift.js";
 
 const CHILD_SELECT = `
   ch.id, ch.nickname, ch.gender, ch.date_of_birth, ch.curriculum_id, ch.grade_id, ch.school_id,
@@ -1703,6 +1709,61 @@ export function createMeRoutes() {
       return c.json({ error: result.error }, status);
     }
     return c.json(result);
+  });
+
+  app.get("/lucky-gift", async (c) => {
+    const userId = c.get("user").sub;
+    const ctx = await fetchAuthUserLuckyGiftContext(userId);
+    if (!ctx) return c.json({ error: "User not found" }, 404);
+    try {
+      const result = await getLuckyGiftForUser({
+        userId,
+        role: ctx.role,
+        onboardingComplete: ctx.onboardingComplete,
+        accountCreatedAt: ctx.createdAt,
+      });
+      return c.json(result);
+    } catch (error) {
+      console.error("[lucky-gift.get] failed", error);
+      return c.json({ error: "Could not load lucky gift" }, 500);
+    }
+  });
+
+  app.post("/lucky-gift/scratch", async (c) => {
+    const userId = c.get("user").sub;
+    try {
+      const result = await scratchLuckyGift({ userId });
+      if ("error" in result) {
+        return c.json({ error: result.error }, result.status as 400 | 404);
+      }
+      return c.json(result);
+    } catch (error) {
+      console.error("[lucky-gift.scratch] failed", error);
+      return c.json({ error: "Could not scratch card" }, 500);
+    }
+  });
+
+  app.post("/lucky-gift/phone", async (c) => {
+    const userId = c.get("user").sub;
+    let body: { phone?: string };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    try {
+      const result = await submitLuckyGiftPhone({
+        userId,
+        phone: body.phone ?? "",
+      });
+      if ("error" in result) {
+        return c.json({ error: result.error }, result.status as 400 | 404);
+      }
+      return c.json(result);
+    } catch (error) {
+      console.error("[lucky-gift.phone] failed", error);
+      return c.json({ error: "Could not save phone" }, 500);
+    }
   });
 
   return app;

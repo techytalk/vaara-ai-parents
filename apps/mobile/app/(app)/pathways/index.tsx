@@ -167,6 +167,8 @@ export default function PathwaysHubScreen() {
     return map;
   }, [cards, childrenByParent]);
 
+  const askDrafts = useRef<Record<string, string>>({});
+
   function selectStage(id: string) {
     setActiveStageId(id);
     setFocusId(id);
@@ -334,9 +336,12 @@ export default function PathwaysHubScreen() {
           onOpenDiscussion={openDiscussion}
           onStartAsk={() => {
             setAsking(true);
-            setAskDraft(focus.askPrompt ?? "");
+            setAskDraft(askDrafts.current[focus.id] ?? focus.askPrompt ?? "");
           }}
-          onChangeAsk={setAskDraft}
+          onChangeAsk={(text) => {
+            askDrafts.current[focus.id] = text;
+            setAskDraft(text);
+          }}
           onSendAsk={sendAsk}
           onCancelAsk={() => setAsking(false)}
         />

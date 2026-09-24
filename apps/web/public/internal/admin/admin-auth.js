@@ -79,6 +79,7 @@
         { href: "/internal/admin/signups.html", label: "Signups" },
         { href: "/internal/admin/moderation.html", label: "Moderation" },
         { href: "/internal/admin/seeds.html", label: "Seed parents" },
+        { href: "/internal/admin/lucky-gift.html", label: "Lucky gift" },
       ],
     },
     {
