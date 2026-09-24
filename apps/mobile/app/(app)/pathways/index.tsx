@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { BackHandler, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { PathExploreThread } from "@/components/pathways/PathExploreThread";
@@ -144,26 +144,28 @@ export default function PathwaysHubScreen() {
     return full;
   }, [data, focus, root, stageNodes]);
 
-  const cards = useMemo(() => {
-    if (!data || !focus) return [];
-    return data.nodes
-      .filter((node) => node.parentId === focus.id)
-      .sort((a, b) => {
-        const ai = data.nodes.findIndex((row) => row.id === a.id);
-        const bi = data.nodes.findIndex((row) => row.id === b.id);
-        return ai - bi;
-      });
-  }, [data, focus]);
+  const childrenByParent = useMemo(() => {
+    const map = new Map<string, PathExploreNode[]>();
+    if (!data) return map;
+    for (const node of data.nodes) {
+      if (!node.parentId) continue;
+      const list = map.get(node.parentId);
+      if (list) list.push(node);
+      else map.set(node.parentId, [node]);
+    }
+    return map;
+  }, [data]);
+
+  const cards = focus ? (childrenByParent.get(focus.id) ?? []) : [];
 
   const nestedByParent = useMemo(() => {
-    if (!data) return {};
     const map: Record<string, PathExploreNode[]> = {};
     for (const card of cards) {
       if (card.kind !== "section") continue;
-      map[card.id] = data.nodes.filter((node) => node.parentId === card.id);
+      map[card.id] = childrenByParent.get(card.id) ?? [];
     }
     return map;
-  }, [cards, data]);
+  }, [cards, childrenByParent]);
 
   function selectStage(id: string) {
     setActiveStageId(id);
@@ -184,6 +186,7 @@ export default function PathwaysHubScreen() {
 
   function levelUp() {
     if (!focus?.parentId) return;
+    setAsking(false);
     const parentIsRoot = focus.parentId === root?.id;
     if (parentIsRoot) {
       setFocusId(activeStageId ?? focus.parentId);
@@ -191,6 +194,19 @@ export default function PathwaysHubScreen() {
     }
     setFocusId(focus.parentId);
   }
+
+  const levelUpRef = useRef(levelUp);
+  levelUpRef.current = levelUp;
+  const canStepUp = breadcrumb.length > 1;
+
+  useEffect(() => {
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (!canStepUp) return false;
+      levelUpRef.current();
+      return true;
+    });
+    return () => sub.remove();
+  }, [canStepUp]);
 
   function toggleExpand(id: string) {
     setExpanded((current) => {
@@ -284,7 +300,6 @@ export default function PathwaysHubScreen() {
         <PathExploreThread
           locationTitle={data.locationTitle}
           stateLabel={data.context.stateLabel ?? "India (national)"}
-          lockLine={data.lockLine}
           postingCircleName={data.postingCircle?.displayName ?? null}
           children={data.children}
           selectedChildId={selectedId}
@@ -299,6 +314,7 @@ export default function PathwaysHubScreen() {
           asking={asking}
           askDraft={askDraft}
           askBusy={askBusy}
+          contentRefreshing={pathQuery.isFetching && Boolean(data)}
           onMore={() => router.back()}
           onSelectChild={(id) => {
             if (id === selectedId) return;

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -16,6 +17,7 @@ import type {
   PathExploreNode,
   PathwayHubChild,
 } from "@/lib/api";
+import { useAndroidImeDockOffset, useKeyboardHeight } from "@/hooks/useKeyboardHeight";
 import { childSwitcherTabLabel } from "@/lib/child-switcher-label";
 
 const THREAD = colors.primary;
@@ -30,7 +32,6 @@ type StageTab = {
 type Props = {
   locationTitle: string;
   stateLabel: string;
-  lockLine: string;
   postingCircleName: string | null;
   children: PathwayHubChild[];
   selectedChildId: string | null;
@@ -45,6 +46,7 @@ type Props = {
   asking: boolean;
   askDraft: string;
   askBusy: boolean;
+  contentRefreshing?: boolean;
   onMore: () => void;
   onSelectChild: (id: string) => void;
   onSelectStage: (id: string) => void;
@@ -60,6 +62,25 @@ type Props = {
   onCancelAsk: () => void;
 };
 
+function parseCompareTable(block: string): string[][] | null {
+  const lines = block
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length < 2 || !lines.every((line) => line.startsWith("|") && line.endsWith("|"))) {
+    return null;
+  }
+  const rows = lines
+    .map((line) =>
+      line
+        .slice(1, -1)
+        .split("|")
+        .map((cell) => cell.trim())
+    )
+    .filter((cells) => !cells.every((cell) => /^:?-{3,}:?$/.test(cell)));
+  return rows.length >= 2 ? rows : null;
+}
+
 function stageEyebrow(focus: PathExploreNode, isStageRoot: boolean) {
   if (!isStageRoot) return null;
   const kick = (focus.kicker ?? "").toLowerCase();
@@ -72,7 +93,6 @@ function stageEyebrow(focus: PathExploreNode, isStageRoot: boolean) {
 export function PathExploreThread({
   locationTitle,
   stateLabel,
-  lockLine,
   postingCircleName,
   children,
   selectedChildId,
@@ -87,6 +107,7 @@ export function PathExploreThread({
   asking,
   askDraft,
   askBusy,
+  contentRefreshing = false,
   onMore,
   onSelectChild,
   onSelectStage,
@@ -112,6 +133,13 @@ export function PathExploreThread({
   const leafAnswer = isLeaf ? focus.lead || focus.summary : null;
   const scrollRef = useRef<ScrollView>(null);
   const discussionsBefore = useRef(discussions);
+  const keyboardHeight = useKeyboardHeight();
+  const androidLift = useAndroidImeDockOffset(0);
+  const keyboardLift = Platform.OS === "ios" ? keyboardHeight : androidLift;
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+  }, [focus.id]);
 
   useEffect(() => {
     const before = discussionsBefore.current;
@@ -125,7 +153,11 @@ export function PathExploreThread({
     <View style={styles.page}>
       <ScrollView
         ref={scrollRef}
-        contentContainerStyle={[styles.scroll, asking && styles.scrollAsking]}
+        contentContainerStyle={[
+          styles.scroll,
+          asking && styles.scrollAsking,
+          keyboardLift > 0 && { paddingBottom: 128 + keyboardLift },
+        ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
@@ -186,6 +218,10 @@ export function PathExploreThread({
         </View>
       ) : null}
 
+      {contentRefreshing ? (
+        <ActivityIndicator color={t.navWordmark} style={styles.refreshing} />
+      ) : null}
+
       {showLevelUp ? (
         <View style={styles.crumbBlock}>
           <Text style={styles.crumbPath} numberOfLines={2}>
@@ -201,7 +237,49 @@ export function PathExploreThread({
         {eyebrow ? <Text style={styles.paneEyebrow}>{eyebrow}</Text> : null}
         <Text style={styles.paneTitle}>{focus.title}</Text>
         {isLeaf && leafAnswer ? (
-          <Text style={styles.paneAnswer}>{leafAnswer}</Text>
+          <View style={styles.answerLines}>
+            {leafAnswer.split(/\n\n+/).map((block, index) => {
+              const table = parseCompareTable(block);
+              if (!table) {
+                return (
+                  <Text key={`${index}-text`} style={styles.paneAnswer}>
+                    {block}
+                  </Text>
+                );
+              }
+              return (
+                <View key={`${index}-table`} style={styles.compare}>
+                  {table.map((row, rowIndex) => (
+                    <View
+                      key={`${index}-row-${rowIndex}`}
+                      style={[styles.compareRow, rowIndex === 0 && styles.compareHead]}
+                    >
+                      {row.map((cell, cellIndex) => (
+                        <View
+                          key={`${index}-${rowIndex}-${cellIndex}`}
+                          style={[
+                            styles.compareCell,
+                            cellIndex === 0 ? styles.compareLabel : styles.compareValue,
+                            cellIndex === row.length - 1 && styles.compareLast,
+                          ]}
+                        >
+                          <Text
+                            style={
+                              rowIndex === 0 || cellIndex === 0
+                                ? styles.compareStrong
+                                : styles.compareText
+                            }
+                          >
+                            {cell}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  ))}
+                </View>
+              );
+            })}
+          </View>
         ) : (
           <>
             {focus.summary || focus.lead ? (
@@ -286,41 +364,38 @@ export function PathExploreThread({
         </Pressable>
       ) : null}
 
-      <View style={styles.footer}>
-        {discussions === "loading" ? <ActivityIndicator color={t.navWordmark} /> : null}
-        {discussions === "error" ? (
-          <Text style={styles.meta}>Could not load discussions. Tap Read to retry.</Text>
-        ) : null}
-        {Array.isArray(discussions) && discussions.length === 0 ? (
-          <Text style={styles.meta}>No discussions on this branch yet.</Text>
-        ) : null}
-        {Array.isArray(discussions)
-          ? discussions.map((link) => (
-              <Pressable
-                key={link.messageId}
-                onPress={() => onOpenDiscussion(link)}
-                style={styles.discussion}
-              >
-                <Text style={styles.cardTitle} numberOfLines={2}>
-                  {link.preview || "Question"}
-                </Text>
-                <Text style={styles.meta}>
-                  {link.circleName}
-                  {link.openAs === "thread" ? ` · ${link.replyCount} replies` : " · message"}
-                </Text>
-              </Pressable>
-            ))
-          : null}
-
-        <View style={styles.lockRow}>
-          <Ionicons name="lock-closed-outline" size={14} color={t.lock} />
-          <Text style={styles.lock}>{lockLine}</Text>
+      {discussions != null ? (
+        <View style={styles.footer}>
+          {discussions === "loading" ? <ActivityIndicator color={t.navWordmark} /> : null}
+          {discussions === "error" ? (
+            <Text style={styles.meta}>Could not load discussions. Tap Read to retry.</Text>
+          ) : null}
+          {Array.isArray(discussions) && discussions.length === 0 ? (
+            <Text style={styles.meta}>No discussions on this branch yet.</Text>
+          ) : null}
+          {Array.isArray(discussions)
+            ? discussions.map((link) => (
+                <Pressable
+                  key={link.messageId}
+                  onPress={() => onOpenDiscussion(link)}
+                  style={styles.discussion}
+                >
+                  <Text style={styles.cardTitle} numberOfLines={2}>
+                    {link.preview || "Question"}
+                  </Text>
+                  <Text style={styles.meta}>
+                    {link.circleName}
+                    {link.openAs === "thread" ? ` · ${link.replyCount} replies` : " · message"}
+                  </Text>
+                </Pressable>
+              ))
+            : null}
         </View>
-      </View>
+      ) : null}
       </ScrollView>
 
       {canRead || canAsk ? (
-        <View style={styles.dock}>
+        <View style={[styles.dock, keyboardLift > 0 && { bottom: spacing.sm + keyboardLift }]}>
           {asking ? (
             <View style={styles.composer}>
               {postingCircleName ? (
@@ -431,6 +506,7 @@ const styles = StyleSheet.create({
   hereTitle: { ...typography.sectionTitle, color: t.title, fontFamily: typography.bold },
   hereMeta: { ...typography.supporting, color: t.deck },
   stageRow: { flexDirection: "row", gap: 6, marginTop: 4 },
+  refreshing: { marginTop: spacing.sm },
   stageTab: {
     flex: 1,
     minHeight: 58,
@@ -458,7 +534,51 @@ const styles = StyleSheet.create({
   paneTitle: { ...typography.screenTitle, color: t.title, fontFamily: typography.bold },
   paneDeck: { ...typography.body, color: t.deck, lineHeight: 24 },
   paneLead: { ...typography.body, color: t.title, fontSize: 17, lineHeight: 26, marginTop: 8 },
-  paneAnswer: { color: t.title, fontSize: 17, lineHeight: 27, fontFamily: typography.regular },
+  answerLines: { gap: 16 },
+  paneAnswer: { color: t.title, fontSize: 17, lineHeight: 26, fontFamily: typography.regular },
+  compare: {
+    borderWidth: 1,
+    borderColor: t.nodeBorder,
+    borderRadius: radii.lg,
+    overflow: "hidden",
+    backgroundColor: t.nodeFill,
+  },
+  compareRow: {
+    flexDirection: "row",
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.nodeBorder,
+  },
+  compareHead: {
+    borderTopWidth: 0,
+    backgroundColor: colors.primarySoft,
+  },
+  compareCell: {
+    paddingHorizontal: 10,
+    paddingVertical: 12,
+    justifyContent: "center",
+  },
+  compareLabel: {
+    flex: 0.85,
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderRightColor: t.nodeBorder,
+  },
+  compareValue: {
+    flex: 1.15,
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderRightColor: t.nodeBorder,
+  },
+  compareLast: { borderRightWidth: 0 },
+  compareStrong: {
+    ...typography.supporting,
+    color: t.title,
+    fontFamily: typography.bold,
+    lineHeight: 18,
+  },
+  compareText: {
+    ...typography.supporting,
+    color: t.title,
+    lineHeight: 18,
+  },
   thread: { position: "relative", marginTop: spacing.xs, paddingLeft: RAIL },
   threadRail: {
     position: "absolute",
@@ -621,6 +741,4 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   meta: { ...typography.supporting, color: t.nodeMeta },
-  lockRow: { flexDirection: "row", gap: 6, alignItems: "center", marginTop: 4 },
-  lock: { ...typography.caption, color: t.lock, flex: 1 },
 });

@@ -84,7 +84,7 @@ export function usePathExplore(childId?: string) {
   return useQuery({
     queryKey: queryKeys.pathExplore(childId),
     queryFn: () => authed((token) => api.getPathExplore(token, childId)),
-    staleTime: 60_000,
+    staleTime: 5 * 60_000,
     placeholderData: keepPreviousData,
   });
 }

@@ -590,3 +590,13 @@ Rollout: one parent UI. Build the thread, then replace Child's Path in the app. 
 
 Update cross-links in `WHAT_NEXT_AND_OPPORTUNITIES.md` §17 implementation
 sequence when phase 1 starts.
+
+---
+
+## 12. Phone fixes — speed, spinner, keyboard
+
+The Grade 9 tree is one text payload. Grade 10, After Grade 10, and a section expand do not fetch again.
+
+1. **Open a branch immediately.** Stage tabs, card taps, and +/− use the nodes already on the phone. The list for the new branch replaces the old one and the screen returns to the top of that branch. Do not replace the whole screen with a loader for that tap.
+2. **Spinner only while the text is actually loading.** The first open, a child switch, or a refresh shows a spinner and keeps any text already on screen. A branch tap that only changes focus does not show a spinner.
+3. **Ask parents stays above the keyboard.** The floating composer moves up with the keyboard. On Android, add the keyboard height only when the window itself does not shrink. Typing must not slide under the keyboard.

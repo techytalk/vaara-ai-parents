@@ -16,39 +16,25 @@ UPDATE path_nodes SET
 WHERE slug = 'ib-myp-g9-subj-flex';
 
 UPDATE path_nodes SET
-  summary = 'An 8 is one part of the work. A 7 is the grade for the subject.',
+  summary = 'A criterion is scored 0 to 8. A 7 is the subject grade.',
   updated_at = now()
 WHERE slug = 'ib-myp-g9-subj-grades';
 
 UPDATE path_nodes SET
-  summary = '8 is the top score for one part of the work. It is not the subject grade.',
-  lead = 'Teachers mark a piece of work in parts. Each part is scored from 1 to 8. An 8 means your child did as well as possible on that one part. It does not mean the subject is graded out of 8. If the work does not meet even the lowest description, the teacher can give 0.',
+  summary = '8 is the top of one criterion. A criterion only goes from 0 to 8.',
+  lead = E'A criterion is one part the teacher marks.\nEach criterion is scored from 0 to 8.\n\n8 is the highest mark on that criterion.\n0 means the work did not meet the lowest description.\n\n7 is not a criterion score.\n7 is the grade for the whole subject.',
   updated_at = now()
 WHERE slug = 'ib-myp-g9-faq-eight';
 
 UPDATE path_nodes SET
-  summary = '7 is the best grade for the whole subject.',
-  lead = 'The school adds the part-scores, then turns them into one grade for the subject. That grade runs from 1 to 7. A 7 is the best subject grade. It is not a mark out of 100, and it is not a CBSE percentage.',
+  status = 'retired',
   updated_at = now()
-WHERE slug = 'ib-myp-g9-faq-seven';
-
-UPDATE path_nodes SET
-  summary = 'No. An 8 and a 7 measure different things.',
-  lead = 'They are not on the same scale, so an 8 is not higher than a 7. An 8 is the best score on one part of a task. A 7 is the best grade for the whole subject.',
-  updated_at = now()
-WHERE slug = 'ib-myp-g9-faq-higher';
-
-UPDATE path_nodes SET
-  summary = 'No. A 7 does not mean 70 percent.',
-  lead = 'A 7 is not 70 out of 100. IB does not use percentages for this grade, and it is not the same as a CBSE mark. A 7 means the top grade on a scale that only goes from 1 to 7.',
-  updated_at = now()
-WHERE slug = 'ib-myp-g9-faq-percent';
-
-UPDATE path_nodes SET
-  summary = 'The school adds the part-scores, then turns the total into a grade from 1 to 7.',
-  lead = 'A subject usually has four parts. Each part can score up to 8. The school adds those scores, then turns the total into one subject grade from 1 to 7. Several 8s can become a subject grade of 7. That 7 is the grade that counts for the subject.',
-  updated_at = now()
-WHERE slug = 'ib-myp-g9-faq-convert';
+WHERE slug IN (
+  'ib-myp-g9-faq-seven',
+  'ib-myp-g9-faq-higher',
+  'ib-myp-g9-faq-percent',
+  'ib-myp-g9-faq-convert'
+);
 
 UPDATE path_nodes SET
   summary = 'Eight areas. Open one to see what to ask the school.',
@@ -62,8 +48,8 @@ UPDATE path_nodes SET
 WHERE slug = 'ib-myp-g9-grp-langlit';
 
 UPDATE path_nodes SET
-  summary = 'The second language on the timetable.',
-  lead = 'This is a language class besides the main one. The school chooses which languages it offers. Ask which language your child is taking, and whether they can still change it before Grade 10.',
+  summary = 'The extra language. A change is not available at any time.',
+  lead = E'This is a language class besides the main one.\n\nIB says your child needs an extra language.\nIt does not say you can switch that language whenever you want.\n\nYour school chooses which languages it teaches.\nYour school also decides if a change is still allowed.\nSome schools lock the language before Grade 10.\n\nAsk two things.\nWhich languages does Grade 9 offer?\nCan my child still change this year?',
   updated_at = now()
 WHERE slug = 'ib-myp-g9-grp-langacq';
 
@@ -115,8 +101,8 @@ UPDATE path_nodes SET
 WHERE slug = 'ib-myp-g9-faq-exam';
 
 UPDATE path_nodes SET
-  summary = 'No. Each school chooses its own timetable.',
-  lead = 'No. IB gives every school the same menu of subject areas. Each school then chooses what to teach. Two children in IB Grade 9 can have different subjects.',
+  summary = 'No. Two IB schools can teach different subjects in Grade 9.',
+  lead = E'No.\n\nIB does not give every school the same subjects.\nYour school chooses from a menu.\n\n| | School 1 | School 2 |\n| Science | One class. Biology, chemistry, and physics together. | Three classes: biology, chemistry, and physics. |\n| Extra language | French | Spanish |\n\nBoth schools are IB.\nYour child studies only your school''s timetable.\nAsk the school for that list.',
   updated_at = now()
 WHERE slug = 'ib-myp-g9-faq-same';
 
@@ -128,7 +114,7 @@ WHERE slug = 'ib-myp-g9-faq-drop';
 
 UPDATE path_nodes SET
   summary = 'Four questions for the school.',
-  lead = 'Ask four things. Which subjects are already fixed? Which ones can still change before Grade 10? How do scores out of 8 become the 1 to 7 subject grade? Are Design, Arts, and Physical education separate classes at this school?',
+  lead = E'Ask four things.\nWhich subjects are already fixed?\nWhich ones can still change before Grade 10?\nHow do criterion scores from 0 to 8 become the subject grade from 1 to 7?\nAre Design, Arts, and Physical education separate classes at this school?',
   updated_at = now()
 WHERE slug = 'ib-myp-g9-faq-meeting';
 
@@ -140,7 +126,7 @@ WHERE slug = 'ib-myp-g9-now-workload';
 
 UPDATE path_nodes SET
   summary = 'Who to talk to, and how the school explains the report.',
-  lead = 'Ask the school three things. Who do I talk to about a subject? How will you explain the report, including a score of 8 and a grade of 7? Can the second language still change? Opening this page does not contact the school.',
+  lead = E'Ask the school three things.\nWho do I talk to about a subject?\nHow will you explain a criterion score from 0 to 8, and a subject grade from 1 to 7?\nCan the extra language still change?',
   updated_at = now()
 WHERE slug = 'ib-myp-g9-now-support';
 
