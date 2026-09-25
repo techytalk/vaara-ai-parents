@@ -2,8 +2,8 @@
   "expo": {
     "name": "Vaara Parents",
     "slug": "vaara-parents",
-    "version": "1.0.3",
-    "runtimeVersion": "1.0.3",
+    "version": "1.0.5",
+    "runtimeVersion": "1.0.5",
     "updates": {
       "enabled": true,
       "checkAutomatically": "ON_LOAD",
@@ -34,6 +34,7 @@
       "supportsTablet": true,
       "icon": "./assets/icon.png",
       "bundleIdentifier": "com.vaara.parents",
+      "buildNumber": "2",
       "usesAppleSignIn": true,
       "googleServicesFile": "./GoogleService-Info.plist",
       "associatedDomains": ["applinks:vaara.ai", "applinks:www.vaara.ai"],

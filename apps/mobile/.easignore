@@ -1,2 +1,4 @@
+# Prefer repo-root .easignore for monorepo uploads.
+# Keep this file aligned so app-local tooling still ignores native dirs.
 android/
 ios/

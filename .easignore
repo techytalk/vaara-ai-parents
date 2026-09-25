@@ -1,0 +1,49 @@
+# EAS looks for .easignore at the git repo root (monorepo).
+# When present, it replaces ALL .gitignore files — include every needed rule.
+
+# Environment (secrets)
+.env
+.env.local
+.env.*.local
+.env*.local
+local password and urls
+
+# Dependencies (also default-ignored by eas-cli)
+node_modules/
+
+# OS
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+
+# Expo / React Native
+.expo/
+dist/
+web-build/
+**/*.jsbundle
+
+# IDE
+.idea/
+.vscode/
+.vercel
+
+# Android not needed for iOS builds
+apps/mobile/android/
+
+# CocoaPods / Xcode artifacts (pod install regenerates on EAS)
+apps/mobile/ios/Pods/
+apps/mobile/ios/build/
+apps/mobile/ios/DerivedData/
+apps/mobile/ios/**/xcuserdata/
+apps/mobile/ios/**/*.xcuserstate
+apps/mobile/ios/.xcode.env.local
+
+# Misc
+ads/
+docs/
+.tmp/
+tmp/
+**/coverage/
+**/.turbo/

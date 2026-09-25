@@ -98,6 +98,7 @@ target 'VaaraParents' do
     end
 
     # with-environment.sh runs `$1` unquoted; paths with spaces break Generate Specs.
+    # Must restore +x after write — chmod 0644 here caused EAS Archive "Permission denied".
     with_env = File.join(config[:reactNativePath], 'scripts/xcode/with-environment.sh')
     if File.exist?(with_env)
       env_content = File.read(with_env)
@@ -105,6 +106,7 @@ target 'VaaraParents' do
         File.chmod(0o644, with_env)
         File.write(with_env, env_content.sub("  $1\n", "  \"$1\"\n"))
       end
+      File.chmod(0o755, with_env)
     end
 
     # expo-constants: basename $PROJECT_DIR breaks when PROJECT_DIR has spaces.
@@ -118,6 +120,7 @@ target 'VaaraParents' do
         File.chmod(0o644, constants_script)
         File.write(constants_script, c.sub('basename $PROJECT_DIR', 'basename "$PROJECT_DIR"'))
       end
+      File.chmod(0o755, constants_script)
     end
   end
 end

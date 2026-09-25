@@ -27,5 +27,8 @@
   },
   "scripts": {
     "build": "tsc"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
   }
 }

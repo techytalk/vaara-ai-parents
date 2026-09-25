@@ -13,6 +13,7 @@
     "build:apk:dev": "npx eas-cli build -p android --profile development",
     "build:ios": "npx eas-cli build -p ios --profile preview-ios",
     "build:ios:production": "npx eas-cli build -p ios --profile production-ios",
+    "eas-build-post-install": "cd ../.. && npm run build -w @vaara/shared && chmod -R a+x node_modules/react-native/scripts",
     "update:preview": "npm run build -w @vaara/shared && npx eas-cli update --channel preview",
     "update:production": "npm run build -w @vaara/shared && npx eas-cli update --channel production"
   },
