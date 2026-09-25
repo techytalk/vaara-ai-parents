@@ -103,21 +103,24 @@ export default function RegisterScreen() {
 
   const displayError = error ?? googleError;
   const parentHeadline =
-    band === "short"
+    band === "tall"
       ? [
-          { text: "Find parents from your child’s " },
-          { text: "school", accent: true },
-          { text: " and " },
-          { text: "neighbourhood", accent: true },
-          { text: "." },
-        ]
-      : [
           { text: "Find other parents from your child’s " },
           { text: "school", accent: true },
           { text: " and " },
           { text: "neighbourhood", accent: true },
           { text: ", and get real opinions and experiences." },
+        ]
+      : [
+          { text: "Find parents from your child’s " },
+          { text: "school", accent: true },
+          { text: " and " },
+          { text: "neighbourhood", accent: true },
+          { text: "." },
         ];
+  // Long parent copy only uses display type on tall phones; everyone else
+  // stays on the compact title size so CTAs + legal stay visible.
+  const headlineBand = band === "tall" ? "tall" : "short";
 
   return (
     <AuthScreenShell
@@ -129,7 +132,7 @@ export default function RegisterScreen() {
 
           {role === "parent" ? (
             <AuthHookHeadline
-              band={band}
+              band={headlineBand}
               kicker="Create your Vaara account"
               headline={parentHeadline}
             />
@@ -148,11 +151,6 @@ export default function RegisterScreen() {
               lead="For teachers, schools, trainers and institutions. You’ll add your organisation after sign-up."
             />
           )}
-
-          <LegalFooter
-            compact
-            extra="Your real name stays private in circles."
-          />
 
           {!showEmail ? (
             <>
@@ -301,6 +299,12 @@ export default function RegisterScreen() {
               </Text>
             </Pressable>
           )}
+
+          <LegalFooter
+            brief
+            compact
+            extra="Your real name stays private in circles."
+          />
         </>
       }
     />

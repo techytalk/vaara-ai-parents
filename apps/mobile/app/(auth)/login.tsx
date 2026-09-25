@@ -101,11 +101,6 @@ export default function LoginScreen() {
             lead="Sign in to see what parents from your school, neighbourhood and class are talking about."
           />
 
-          <LegalFooter
-            compact
-            extra="Your real name stays private in circles."
-          />
-
           {!showEmail ? (
             <>
               <SocialAuthSection
@@ -179,14 +174,21 @@ export default function LoginScreen() {
         </>
       }
       footer={
-        <View style={styles.meta}>
-          <Link href="/(auth)/register" asChild>
-            <Pressable accessibilityRole="link" style={styles.loginRow}>
-              <Text style={styles.loginMuted}>New to Vaara?</Text>
-              <Text style={styles.loginAction}> Create an account →</Text>
-            </Pressable>
-          </Link>
-        </View>
+        <>
+          <View style={styles.meta}>
+            <Link href="/(auth)/register" asChild>
+              <Pressable accessibilityRole="link" style={styles.loginRow}>
+                <Text style={styles.loginMuted}>New to Vaara?</Text>
+                <Text style={styles.loginAction}> Create an account →</Text>
+              </Pressable>
+            </Link>
+          </View>
+          <LegalFooter
+            brief
+            compact
+            extra="Your real name stays private in circles."
+          />
+        </>
       }
     />
   );

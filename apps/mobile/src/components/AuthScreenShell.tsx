@@ -24,8 +24,10 @@ export function useAuthDensityBand(): AuthDensityBand {
   const insets = useSafeAreaInsets();
   const usable = windowHeight - headerHeight - insets.bottom;
 
-  if (usable < 560) return "short";
-  if (usable > 700) return "tall";
+  // iPhone mini / small phones often sit just above 560 and still overflow
+  // when the long register headline + CTAs share one fixed viewport.
+  if (usable < 640) return "short";
+  if (usable > 720) return "tall";
   return "regular";
 }
 
@@ -110,9 +112,11 @@ const styles = StyleSheet.create({
   body: {
     flexShrink: 1,
     gap: spacing.sm,
+    overflow: "hidden",
   },
   footer: {
     flexShrink: 0,
     gap: spacing.sm,
+    paddingTop: spacing.xs,
   },
 });

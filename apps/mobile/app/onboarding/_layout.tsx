@@ -12,7 +12,6 @@ export default function OnboardingLayout() {
           headerTintColor: colors.text,
           headerTitleStyle: { fontFamily: typography.semibold },
           headerShadowVisible: false,
-          statusBarStyle: "dark",
           contentStyle: { backgroundColor: colors.bg },
         }}
       >

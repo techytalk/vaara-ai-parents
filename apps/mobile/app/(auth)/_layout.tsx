@@ -11,7 +11,6 @@ export default function AuthLayout() {
         headerTintColor: colors.text,
         headerTitleStyle: { fontFamily: typography.semibold },
         headerShadowVisible: false,
-        statusBarStyle: "dark",
         contentStyle: { backgroundColor: colors.bg },
       }}
     >
