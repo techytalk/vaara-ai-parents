@@ -152,6 +152,12 @@ export default function RegisterScreen() {
             />
           )}
 
+          {/* Guideline 1.2: EULA must be visible before Apple / Google / email. */}
+          <LegalFooter
+            compact
+            extra="Your real name stays private in circles."
+          />
+
           {!showEmail ? (
             <>
               <SocialAuthSection
@@ -299,12 +305,6 @@ export default function RegisterScreen() {
               </Text>
             </Pressable>
           )}
-
-          <LegalFooter
-            brief
-            compact
-            extra="Your real name stays private in circles."
-          />
         </>
       }
     />
