@@ -1,6 +1,7 @@
 /**
- * Google Analytics (GA4) via Firebase Analytics, plus Meta App Events for
- * Facebook and Instagram app campaigns.
+ * Google Analytics (GA4) via Firebase Analytics on all platforms.
+ * Meta App Events (Facebook/Instagram campaigns) run on Android only so iOS
+ * never shows the App Tracking Transparency prompt.
  * Google Ads conversions are imported from the GA4 events after Firebase is
  * linked to Google Ads. Meta receives only sign_up, tutorial_complete, and share.
  * Never include child data, message contents, emails, or access tokens.
@@ -171,6 +172,8 @@ async function metaLog(
   name: AnalyticsEvent,
   properties?: AnalyticsProperties
 ): Promise<void> {
+  // Meta advertiser tracking / ATT only on Android; iOS uses GA4 only.
+  if (Platform.OS !== "android") return;
   try {
     const { AppEventsLogger } = await import("react-native-fbsdk-next");
     if (name === "sign_up") {
@@ -316,20 +319,12 @@ export async function initAnalytics(): Promise<void> {
     // Native module is unavailable in Expo Go and on web.
   }
 
+  // Facebook SDK + advertiser ID only on Android (avoids iOS ATT prompt).
+  if (Platform.OS !== "android") return;
   try {
     const { Settings } = await import("react-native-fbsdk-next");
     Settings.initializeSDK();
     Settings.setAutoLogAppEventsEnabled(true);
-    if (Platform.OS === "ios") {
-      const { requestTrackingPermissionsAsync } = await import(
-        "expo-tracking-transparency"
-      );
-      const { status } = await requestTrackingPermissionsAsync();
-      const allowed = status === "granted";
-      Settings.setAdvertiserIDCollectionEnabled(allowed);
-      await Settings.setAdvertiserTrackingEnabled(allowed);
-      return;
-    }
     Settings.setAdvertiserIDCollectionEnabled(true);
   } catch {
     // Native module is unavailable in Expo Go and on web.

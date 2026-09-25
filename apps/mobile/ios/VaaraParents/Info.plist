@@ -64,8 +64,6 @@
       <string>fbauth2</string>
       <string>fbshareextension</string>
     </array>
-    <key>NSUserTrackingUsageDescription</key>
-    <string>Vaara uses this to measure which ads led you to the app.</string>
     <key>SKAdNetworkItems</key>
     <array>
       <dict>
@@ -78,7 +76,7 @@
       </dict>
     </array>
     <key>CFBundleVersion</key>
-    <string>4</string>
+    <string>5</string>
     <key>LSMinimumSystemVersion</key>
     <string>12.0</string>
     <key>LSRequiresIPhoneOS</key>
