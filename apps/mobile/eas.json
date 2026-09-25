@@ -94,7 +94,6 @@
     "production-ios": {
       "channel": "production",
       "distribution": "store",
-      "image": "macos-sequoia-15.6-xcode-26.0",
       "env": {
         "EXPO_PUBLIC_API_URL": "https://api.vaara.ai",
         "EXPO_PUBLIC_REALTIME_URL": "wss://vaara-realtime.fly.dev/ws",
@@ -103,6 +102,9 @@
         "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "375946640576-p0lcqk5hb9gjj42s1tsl3u5j4ob9fds8.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_REDIRECT_URI": "https://auth.expo.io/@raj-techy1s-team/vaara-parents",
         "EXPO_PUBLIC_CLARITY_PROJECT_ID": "yfwlrijbvm"
+      },
+      "ios": {
+        "image": "macos-sequoia-15.6-xcode-26.0"
       }
     }
   },
