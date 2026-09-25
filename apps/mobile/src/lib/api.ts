@@ -1849,9 +1849,14 @@ export const api = {
       token
     ),
 
-  blockUser: (token: string, userId: string) =>
+  blockUser: (
+    token: string,
+    userId: string,
+    body?: { postId?: string; circleId?: string; messageId?: string }
+  ) =>
     request<{ ok: boolean }>(`/v1/me/blocks/${userId}`, {
       method: "POST",
+      body: JSON.stringify(body ?? {}),
     }, token),
 
   reportUser: (token: string, targetUserId: string, reason?: string) =>

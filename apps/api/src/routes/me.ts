@@ -49,6 +49,7 @@ import {
   scratchLuckyGift,
   submitLuckyGiftPhone,
 } from "../services/lucky-gift.js";
+import { sendParentBlockedAlert } from "../lib/safety-alert.js";
 
 const CHILD_SELECT = `
   ch.id, ch.nickname, ch.gender, ch.date_of_birth, ch.curriculum_id, ch.grade_id, ch.school_id,
@@ -1560,19 +1561,59 @@ export function createMeRoutes() {
       return c.json({ error: "Cannot block yourself" }, 400);
     }
 
+    const body = (await c.req.json().catch(() => null)) as {
+      postId?: string;
+      circleId?: string;
+      messageId?: string;
+    } | null;
+    const requestedPostId = body?.postId?.trim() || null;
+    const requestedMessageId = body?.messageId?.trim() || null;
+
     const client = await pool.connect();
     try {
-      const exists = await client.query("SELECT id FROM users WHERE id = $1", [
-        blockedId,
-      ]);
+      const exists = await client.query(
+        `SELECT id, anonymous_handle FROM users WHERE id = $1`,
+        [blockedId]
+      );
       if (exists.rows.length === 0) {
         return c.json({ error: "User not found" }, 404);
       }
+      const blockedHandle = String(exists.rows[0].anonymous_handle ?? "");
 
-      await client.query(
+      let postId: string | null = null;
+      let messageId: string | null = null;
+      let contentPreview: string | null = null;
+      if (requestedPostId) {
+        const postResult = await client.query(
+          `SELECT id, author_id, body FROM circle_posts WHERE id = $1`,
+          [requestedPostId]
+        );
+        if (
+          postResult.rows.length > 0 &&
+          String(postResult.rows[0].author_id) === blockedId
+        ) {
+          postId = String(postResult.rows[0].id);
+          contentPreview = String(postResult.rows[0].body ?? "");
+        }
+      } else if (requestedMessageId) {
+        const messageResult = await client.query(
+          `SELECT id, author_id, body FROM circle_messages WHERE id = $1`,
+          [requestedMessageId]
+        );
+        if (
+          messageResult.rows.length > 0 &&
+          String(messageResult.rows[0].author_id) === blockedId
+        ) {
+          messageId = String(messageResult.rows[0].id);
+          contentPreview = String(messageResult.rows[0].body ?? "");
+        }
+      }
+
+      const insertResult = await client.query(
         `INSERT INTO user_blocks (blocker_id, blocked_id)
          VALUES ($1, $2)
-         ON CONFLICT DO NOTHING`,
+         ON CONFLICT DO NOTHING
+         RETURNING blocker_id`,
         [userId, blockedId]
       );
       await client.query(
@@ -1601,6 +1642,40 @@ export function createMeRoutes() {
            )`,
         [userId, blockedId]
       );
+
+      if (insertResult.rows.length > 0) {
+        const reason = postId
+          ? `Blocked parent (post ${postId})`
+          : messageId
+            ? `Blocked parent (message ${messageId})`
+            : "Blocked parent";
+        await client.query(
+          `INSERT INTO reports (
+             reporter_id, target_user_id, target_post_id,
+             target_circle_message_id, reason
+           )
+           VALUES ($1, $2, $3, $4, $5)`,
+          [userId, blockedId, postId, messageId, reason]
+        );
+
+        const blockerResult = await client.query(
+          `SELECT anonymous_handle FROM users WHERE id = $1`,
+          [userId]
+        );
+        const blockerHandle = String(
+          blockerResult.rows[0]?.anonymous_handle ?? ""
+        );
+
+        void sendParentBlockedAlert({
+          blockerId: userId,
+          blockedId,
+          blockerHandle,
+          blockedHandle,
+          postId,
+          messageId,
+          contentPreview,
+        });
+      }
 
       return c.json({ ok: true });
     } finally {

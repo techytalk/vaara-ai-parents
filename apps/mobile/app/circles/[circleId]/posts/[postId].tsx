@@ -50,7 +50,7 @@ import {
 } from "@/lib/post-cache";
 import { sharePostLink, sharePostMedia } from "@/lib/share-post";
 import { getStoredUser, getToken } from "@/lib/session";
-import { useSubmitReport } from "@/providers/ReportProvider";
+import { usePostSafetyActions } from "@/lib/post-safety";
 
 function CommentCard({ comment }: { comment: PostComment }) {
   return (
@@ -86,7 +86,7 @@ export default function PostThreadScreen() {
   const headerHeight = useHeaderHeight();
   const bottomChrome = useBottomChromeInset();
   const androidDockOffset = useAndroidImeDockOffset(bottomChrome);
-  const submitReport = useSubmitReport();
+  const showPostSafetyActions = usePostSafetyActions();
   const [commentText, setCommentText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -189,43 +189,20 @@ export default function PostThreadScreen() {
   const readOnly = authoritative ? Boolean(threadQuery.data?.readOnly) : true;
   const saved = (savedQuery.data ?? []).includes(postId);
 
-  const showPostSafetyActions = useCallback(() => {
+  const openPostSafetyActions = useCallback(() => {
     if (!post) return;
     const authorId = post.authorId ?? post.author.userId;
-    Alert.alert("Safety options", "Choose an action for this post.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Report post",
-        onPress: () => {
-          submitReport({
-            title: "Report post",
-            submit: async (reason) => {
-              const token = await getToken();
-              if (!token) throw new Error("Not signed in");
-              await api.reportPost(token, circleId, postId, reason);
-            },
-          });
-        },
+    if (!authorId) return;
+    showPostSafetyActions({
+      circleId,
+      postId,
+      authorId,
+      handle: post.author.anonymousHandle,
+      onBlocked: () => {
+        router.back();
       },
-      ...(authorId
-        ? [
-            {
-              text: "Report parent",
-              onPress: () => {
-                submitReport({
-                  title: `Report ${post.author.anonymousHandle}`,
-                  submit: async (reason) => {
-                    const token = await getToken();
-                    if (!token) throw new Error("Not signed in");
-                    await api.reportUser(token, authorId, reason);
-                  },
-                });
-              },
-            },
-          ]
-        : []),
-    ]);
-  }, [circleId, post, postId, submitReport]);
+    });
+  }, [circleId, post, postId, router, showPostSafetyActions]);
 
   const onDelete = useCallback(async () => {
     const token = await getToken();
@@ -525,7 +502,7 @@ export default function PostThreadScreen() {
             </Pressable>
           ) : post && authoritative && !isOwnPost ? (
             <Pressable
-              onPress={showPostSafetyActions}
+              onPress={openPostSafetyActions}
               hitSlop={8}
               style={styles.headerMore}
               accessibilityRole="button"
@@ -552,7 +529,7 @@ export default function PostThreadScreen() {
     circleId,
     postId,
     router,
-    showPostSafetyActions,
+    openPostSafetyActions,
     confirmDelete,
   ]);
 

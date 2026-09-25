@@ -393,3 +393,20 @@ export async function isBlocked(
   );
   return rows.length > 0;
 }
+
+/** Peer user ids this viewer has blocked, or who have blocked this viewer. */
+export async function loadBlockedPeerIds(
+  client: PoolClient,
+  userId: string
+): Promise<Set<string>> {
+  const { rows } = await client.query(
+    `SELECT CASE
+              WHEN blocker_id = $1 THEN blocked_id
+              ELSE blocker_id
+            END AS peer_id
+     FROM user_blocks
+     WHERE blocker_id = $1 OR blocked_id = $1`,
+    [userId]
+  );
+  return new Set(rows.map((row) => String(row.peer_id)));
+}

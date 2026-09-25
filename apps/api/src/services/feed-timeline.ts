@@ -13,7 +13,7 @@ import {
   releaseCircleTimelineLock,
   type TimelineEntry,
 } from "@vaara/redis";
-import { assertCircleMember } from "../lib/author.js";
+import { assertCircleMember, loadBlockedPeerIds } from "../lib/author.js";
 import {
   encodeFeedCursor,
   encodeHomeFeedCursor,
@@ -238,6 +238,12 @@ export async function loadCircleFeedFromTimeline(params: {
     });
 
     let visible = hydrated.posts;
+    const blockedPeers = await loadBlockedPeerIds(client, params.userId);
+    if (blockedPeers.size > 0) {
+      visible = visible.filter(
+        (post) => !blockedPeers.has(post.author.userId)
+      );
+    }
     if (localFilter) {
       const allowed = await authorsSharingPin(
         client,
@@ -442,8 +448,13 @@ export async function loadHomeFeedFromTimeline(params: {
                 u.anonymous_handle, u.avatar_key
          FROM circle_posts p
          JOIN users u ON u.id = p.author_id
-         WHERE p.id = ANY($1::uuid[])`,
-        [ids]
+         WHERE p.id = ANY($1::uuid[])
+           AND NOT EXISTS (
+             SELECT 1 FROM user_blocks b
+             WHERE (b.blocker_id = $2 AND b.blocked_id = p.author_id)
+                OR (b.blocker_id = p.author_id AND b.blocked_id = $2)
+           )`,
+        [ids, params.userId]
       );
       return rows as Array<Record<string, unknown>>;
     };

@@ -156,6 +156,40 @@ export function removePostFromFeeds(
   }
 }
 
+/** Drop every cached post by this author after a block. */
+export function removeAuthorFromFeeds(
+  queryClient: QueryClient,
+  authorId: string
+) {
+  const isAuthor = (post: {
+    authorId?: string;
+    author?: { userId?: string };
+  }) =>
+    post.authorId === authorId || post.author?.userId === authorId;
+
+  queryClient.setQueryData<HomeFeedCache | undefined>(["homeFeed"], (current) => {
+    if (!current) return current;
+    return {
+      ...current,
+      pages: current.pages.map((page) => ({
+        ...page,
+        posts: page.posts.filter((item) => !isAuthor(item)),
+      })),
+    };
+  });
+
+  queryClient.setQueriesData<CircleFeedCache | undefined>(
+    { queryKey: ["circleFeed"] },
+    (current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        posts: current.posts.filter((item) => !isAuthor(item)),
+      };
+    }
+  );
+}
+
 export function removePostThreadQueries(
   queryClient: QueryClient,
   circleId: string,

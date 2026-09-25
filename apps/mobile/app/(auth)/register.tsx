@@ -149,6 +149,11 @@ export default function RegisterScreen() {
             />
           )}
 
+          <LegalFooter
+            compact
+            extra="Your real name stays private in circles."
+          />
+
           {!showEmail ? (
             <>
               <SocialAuthSection
@@ -296,11 +301,6 @@ export default function RegisterScreen() {
               </Text>
             </Pressable>
           )}
-
-          <LegalFooter
-            compact
-            extra="Your real name stays private in circles."
-          />
         </>
       }
     />

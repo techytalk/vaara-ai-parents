@@ -12,7 +12,18 @@ export function LegalFooter({
 }) {
   return (
     <Text style={[styles.text, compact && styles.textCompact]}>
-      By continuing, you agree to our{" "}
+      By continuing, you agree to the{" "}
+      <Text
+        accessibilityRole="link"
+        style={styles.link}
+        onPress={() => {
+          Linking.openURL(LEGAL_URLS.termsOfUse).catch(() => {});
+        }}
+      >
+        Terms of Use
+      </Text>
+      . Vaara has no tolerance for objectionable content or abusive users. We
+      remove that content and may remove the account. See our{" "}
       <Text
         accessibilityRole="link"
         style={styles.link}

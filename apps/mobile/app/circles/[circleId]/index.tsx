@@ -29,6 +29,7 @@ import { colors, radii, spacing, typography } from "@/constants/theme";
 import { useRealtimeChannel } from "@/hooks/useRealtimeChannel";
 import { api, type CirclePost } from "@/lib/api";
 import { removePostFromFeeds, setSavedPostId } from "@/lib/post-cache";
+import { usePostSafetyActions } from "@/lib/post-safety";
 import { getStoredUser, getToken } from "@/lib/session";
 
 function PostCard({
@@ -40,6 +41,7 @@ function PostCard({
   onPress,
   onPollVote,
   onDelete,
+  onSafety,
 }: {
   post: CirclePost;
   circleId: string;
@@ -49,20 +51,40 @@ function PostCard({
   onPress: () => void;
   onPollVote: (postId: string, optionId: string) => void;
   onDelete?: () => void;
+  onSafety?: () => void;
 }) {
   return (
     <Pressable
       style={[styles.postCard, cardShadow()]}
       onPress={onPress}
     >
-      <AuthorRow
-        handle={post.author.anonymousHandle}
-        avatarKey={post.author.avatarKey}
-        contextLabel={post.author.contextLabel}
-        timestamp={post.createdAt}
-        editedAt={post.editedAt}
-        isGuest={post.author.isGuest}
-      />
+      <View style={styles.cardHeader}>
+        <View style={styles.cardHeaderMain}>
+          <AuthorRow
+            handle={post.author.anonymousHandle}
+            avatarKey={post.author.avatarKey}
+            contextLabel={post.author.contextLabel}
+            timestamp={post.createdAt}
+            editedAt={post.editedAt}
+            isGuest={post.author.isGuest}
+          />
+        </View>
+        {onSafety ? (
+          <Pressable
+            style={styles.safetyBtn}
+            onPress={onSafety}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Post safety options"
+          >
+            <Ionicons
+              name="ellipsis-horizontal"
+              size={18}
+              color={colors.textMuted}
+            />
+          </Pressable>
+        ) : null}
+      </View>
       <View style={styles.postBody}>
         <PostTagBadge tag={post.tag} />
         {post.body ? (
@@ -132,6 +154,7 @@ export default function CircleFeedScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const queryClient = useQueryClient();
+  const showPostSafetyActions = usePostSafetyActions();
   const [savedPostIds, setSavedPostIds] = useState<Set<string>>(new Set());
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [muted, setMuted] = useState(false);
@@ -417,23 +440,38 @@ export default function CircleFeedScreen() {
             onAction={openNewPost}
           />
         }
-        renderItem={({ item }) => (
-          <PostCard
-            post={item}
-            circleId={circleId}
-            saved={savedPostIds.has(item.id)}
-            isOwnPost={currentUserId === item.author.userId}
-            onToggleSave={() => toggleSave(item.id)}
-            onPollVote={onPollVote}
-            onDelete={() => confirmDeletePost(item.id)}
-            onPress={() =>
-              router.push({
-                pathname: "/circles/[circleId]/posts/[postId]",
-                params: { circleId, postId: item.id, title },
-              })
-            }
-          />
-        )}
+        renderItem={({ item }) => {
+          const isOwnPost = currentUserId === item.author.userId;
+          const authorId = item.authorId ?? item.author.userId;
+          return (
+            <PostCard
+              post={item}
+              circleId={circleId}
+              saved={savedPostIds.has(item.id)}
+              isOwnPost={isOwnPost}
+              onToggleSave={() => toggleSave(item.id)}
+              onPollVote={onPollVote}
+              onDelete={() => confirmDeletePost(item.id)}
+              onSafety={
+                !isOwnPost && authorId
+                  ? () =>
+                      showPostSafetyActions({
+                        circleId,
+                        postId: item.id,
+                        authorId,
+                        handle: item.author.anonymousHandle,
+                      })
+                  : undefined
+              }
+              onPress={() =>
+                router.push({
+                  pathname: "/circles/[circleId]/posts/[postId]",
+                  params: { circleId, postId: item.id, title },
+                })
+              }
+            />
+          );
+        }}
       />
     </View>
   );
@@ -603,6 +641,19 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderWidth: 1,
     borderColor: theme.border,
+  },
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+  },
+  cardHeaderMain: {
+    flex: 1,
+    minWidth: 0,
+  },
+  safetyBtn: {
+    padding: 4,
+    marginTop: 2,
   },
   postBody: {
     marginTop: 14,

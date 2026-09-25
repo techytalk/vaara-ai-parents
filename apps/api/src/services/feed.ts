@@ -119,24 +119,27 @@ export async function loadCircleFeed(params: {
       FROM circle_posts p
       JOIN circle_post_targets pct ON pct.post_id = p.id
       JOIN users u ON u.id = p.author_id
-      WHERE pct.circle_id = $1`;
+      WHERE pct.circle_id = $1
+        AND NOT EXISTS (
+          SELECT 1 FROM user_blocks b
+          WHERE (b.blocker_id = $2 AND b.blocked_id = p.author_id)
+             OR (b.blocker_id = p.author_id AND b.blocked_id = $2)
+        )`;
 
-    const sqlParams: unknown[] = [params.circleId];
-    let paramIdx = 2;
+    const sqlParams: unknown[] = [params.circleId, params.userId];
+    let paramIdx = 3;
 
     if (localFilter) {
       query += `
         AND (
-          p.author_id = $${paramIdx}
+          p.author_id = $2
           OR EXISTS (
             SELECT 1 FROM user_locations viewer_loc
             JOIN user_locations author_loc ON author_loc.pin_code = viewer_loc.pin_code
-            WHERE viewer_loc.user_id = $${paramIdx}
+            WHERE viewer_loc.user_id = $2
               AND author_loc.user_id = p.author_id
           )
         )`;
-      sqlParams.push(params.userId);
-      paramIdx++;
     }
 
     const parsedCursor = parseFeedCursor(params.cursor);
@@ -303,6 +306,11 @@ const MEMBER_HOME_FEED_SQL = `
         )
       )
     )
+    AND NOT EXISTS (
+      SELECT 1 FROM user_blocks b
+      WHERE (b.blocker_id = $1 AND b.blocked_id = p.author_id)
+         OR (b.blocker_id = p.author_id AND b.blocked_id = $1)
+    )
   )
   SELECT *
   FROM post_circles
@@ -362,6 +370,11 @@ const DISCOVERY_HOME_FEED_SQL = `
         JOIN circle_members cm ON cm.circle_id = already.circle_id
         WHERE already.post_id = p.id
           AND cm.user_id = $1
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM user_blocks b
+        WHERE (b.blocker_id = $1 AND b.blocked_id = p.author_id)
+           OR (b.blocker_id = p.author_id AND b.blocked_id = $1)
       )
       AND ($6::timestamptz IS NULL OR p.created_at <= $6::timestamptz)
       AND (

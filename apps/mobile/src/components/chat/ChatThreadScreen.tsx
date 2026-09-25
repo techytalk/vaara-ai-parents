@@ -41,6 +41,7 @@ import {
 } from "@/hooks/useKeyboardHeight";
 import { useRealtimeChannel } from "@/hooks/useRealtimeChannel";
 import { api, type ChatMessage } from "@/lib/api";
+import { removeAuthorFromFeeds } from "@/lib/post-cache";
 import {
   MAX_POST_DOCUMENTS,
   documentsBusy,
@@ -688,6 +689,41 @@ export function ChatThreadScreen({
     ]);
   }
 
+  async function blockAuthor(message: ChatMessage) {
+    setSheetMessage(null);
+    const authorId = message.author.userId;
+    try {
+      await authed((token) =>
+        api.blockUser(token, authorId, {
+          circleId: message.circleId,
+          messageId: message.id,
+        })
+      );
+      removeAuthorFromFeeds(queryClient, authorId);
+      queryClient.setQueriesData<{ messages: ChatMessage[] } | undefined>(
+        { queryKey: ["chatMessages"] },
+        (current) => {
+          if (!current?.messages) return current;
+          return {
+            ...current,
+            messages: current.messages.filter(
+              (item) => item.author.userId !== authorId
+            ),
+          };
+        }
+      );
+      Alert.alert(
+        "Blocked",
+        "Their messages are removed from your chat. We’ll review this."
+      );
+    } catch (error) {
+      Alert.alert(
+        "Could not block",
+        error instanceof Error ? error.message : "Please try again."
+      );
+    }
+  }
+
   async function messageAuthor() {
     if (!threadId) return;
     const result = await authed((token) =>
@@ -1202,6 +1238,9 @@ export function ChatThreadScreen({
         onReport={() => {
           if (sheetMessage) void reportMessage(sheetMessage);
         }}
+        onBlock={() => {
+          if (sheetMessage) void blockAuthor(sheetMessage);
+        }}
       />
 
       <Modal visible={Boolean(pendingDelete)} transparent animationType="fade">
@@ -1497,6 +1536,7 @@ function MessageActionSheet({
   onEdit,
   onDelete,
   onReport,
+  onBlock,
 }: {
   message: ChatMessage | null;
   mode: "react" | "more";
@@ -1506,14 +1546,17 @@ function MessageActionSheet({
   onEdit: () => void;
   onDelete: () => void;
   onReport: () => void;
+  onBlock: () => void;
 }) {
   if (!message) return null;
   const ageMs = Date.now() - new Date(message.createdAt).getTime();
   const canEdit = mine && ageMs <= 15 * 60 * 1000;
   const canDelete = mine && ageMs <= 24 * 60 * 60 * 1000;
   const canReport = !mine;
+  const canBlock = !mine;
   const showReact = mode === "react";
-  const showMore = mode === "more" && (canEdit || canDelete || canReport);
+  const showMore =
+    mode === "more" && (canEdit || canDelete || canReport || canBlock);
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
@@ -1583,6 +1626,27 @@ function MessageActionSheet({
                     </Text>
                     <Text style={styles.sheetHint}>
                       Flag inappropriate text or attachments
+                    </Text>
+                  </View>
+                </Pressable>
+              ) : null}
+              {canBlock ? (
+                <Pressable style={styles.sheetAction} onPress={onBlock}>
+                  <View style={[styles.sheetIcon, styles.sheetIconDanger]}>
+                    <Ionicons
+                      name="hand-left-outline"
+                      size={16}
+                      color={colors.error}
+                    />
+                  </View>
+                  <View>
+                    <Text
+                      style={[styles.sheetActionLabel, styles.sheetActionDanger]}
+                    >
+                      Block parent
+                    </Text>
+                    <Text style={styles.sheetHint}>
+                      Hide their messages and notify Vaara
                     </Text>
                   </View>
                 </Pressable>
