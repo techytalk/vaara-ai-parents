@@ -94,6 +94,7 @@
     "production-ios": {
       "channel": "production",
       "distribution": "store",
+      "image": "macos-sequoia-15.6-xcode-26.0",
       "env": {
         "EXPO_PUBLIC_API_URL": "https://api.vaara.ai",
         "EXPO_PUBLIC_REALTIME_URL": "wss://vaara-realtime.fly.dev/ws",
@@ -110,6 +111,14 @@
       "android": {
         "track": "internal",
         "releaseStatus": "completed"
+      },
+      "ios": {
+        "ascAppId": "6808741428"
+      }
+    },
+    "production-ios": {
+      "ios": {
+        "ascAppId": "6808741428"
       }
     }
   }
