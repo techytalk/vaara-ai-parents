@@ -12,6 +12,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { EmptyState, ScreenLoader } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
+import { useOriginBackHeader } from "@/hooks/useOriginBack";
 import {
   isDigestNotification,
   notificationIcon,
@@ -39,6 +40,7 @@ function formatNotificationTime(iso: string) {
 }
 
 export default function NotificationsScreen() {
+  useOriginBackHeader();
   const router = useRouter();
   const queryClient = useQueryClient();
   const [items, setItems] = useState<AppNotification[]>([]);

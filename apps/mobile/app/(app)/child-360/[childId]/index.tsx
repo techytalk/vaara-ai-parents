@@ -16,16 +16,21 @@ import {
 } from "expo-router";
 import { Child360Cross } from "@/components/child-360/Child360Cross";
 import { childHeadline } from "@/constants/child-360";
-import { colors, spacing, typography } from "@/constants/theme";
+import { colors, radii, spacing, typography } from "@/constants/theme";
 import { ApiError, api, type Child360Hub } from "@/lib/api";
+import { childSwitcherTabLabel } from "@/lib/child-switcher-label";
+import { backLabelForOrigin, leaveToOrigin } from "@/lib/nav-back";
 import { getToken } from "@/lib/session";
+import { useNavFrom } from "@/hooks/useOriginBack";
 import { useChildren } from "@/hooks/useSessionQueries";
 
 export default function Child360HubScreen() {
   const { childId } = useLocalSearchParams<{ childId: string }>();
+  const from = useNavFrom();
   const router = useRouter();
   const navigation = useNavigation();
   const childrenQuery = useChildren();
+  const children = childrenQuery.data ?? [];
   const refetchChildren = childrenQuery.refetch;
   const [data, setData] = useState<Child360Hub | null>(null);
   const [loading, setLoading] = useState(true);
@@ -76,51 +81,106 @@ export default function Child360HubScreen() {
       }
       throw e;
     }
-  }, [childId, router, refetchChildren, childrenQuery.data]);
+  }, [childId, router, refetchChildren]);
 
   useFocusEffect(
     useCallback(() => {
-      let cancelled = false;
+      let active = true;
+      void childrenQuery.refetch().catch(() => undefined);
       setLoading(true);
       load()
         .catch((e) => {
-          if (!cancelled) {
+          if (active) {
             setError(e instanceof Error ? e.message : "Failed to load");
           }
         })
         .finally(() => {
-          if (!cancelled) setLoading(false);
+          if (active) setLoading(false);
         });
       return () => {
-        cancelled = true;
+        active = false;
       };
     }, [load])
   );
 
+  function selectChild(nextId: string) {
+    if (nextId === childId) return;
+    router.replace({
+      pathname: "/(app)/child-360/[childId]",
+      params: {
+        childId: nextId,
+        ...(from ? { from } : {}),
+      },
+    } as never);
+  }
+
   useLayoutEffect(() => {
+    const multi = children.length > 1;
+    const label = backLabelForOrigin(from ?? "more");
     navigation.setOptions({
+      headerLeft: from
+        ? () => (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Back to ${label}`}
+              onPress={() => leaveToOrigin(router, { from, childId })}
+              hitSlop={8}
+              style={{ flexDirection: "row", alignItems: "center" }}
+            >
+              <Text style={styles.editLink}>‹ {label}</Text>
+            </Pressable>
+          )
+        : multi
+          ? () => (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="All children"
+                onPress={() => router.push("/(app)/child-360" as never)}
+                hitSlop={8}
+                style={{ flexDirection: "row", alignItems: "center" }}
+              >
+                <Text style={styles.editLink}>‹ Children</Text>
+              </Pressable>
+            )
+          : undefined,
       headerRight: () => (
-        <Pressable
-          onPress={() =>
-            router.push({
-              pathname: "/onboarding/children/edit/[id]",
-              params: { id: childId },
-            })
-          }
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel="Edit child"
-        >
-          <Text style={styles.editLink}>Edit</Text>
-        </Pressable>
+        <View style={styles.headerActions}>
+          <Pressable
+            onPress={() =>
+              router.push({
+                pathname: "/onboarding/children/add",
+                params: { from: "child360" },
+              })
+            }
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Add a child"
+          >
+            <Text style={styles.editLink}>Add</Text>
+          </Pressable>
+          <View style={styles.headerDivider} />
+          <Pressable
+            onPress={() =>
+              router.push({
+                pathname: "/onboarding/children/edit/[id]",
+                params: { id: childId, from: "child360" },
+              })
+            }
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Edit child"
+          >
+            <Text style={styles.editLink}>Edit</Text>
+          </Pressable>
+        </View>
       ),
     });
-  }, [navigation, router, childId]);
+  }, [childId, children.length, from, navigation, router]);
 
   async function onRefresh() {
     setRefreshing(true);
     try {
-      await load();
+      await Promise.all([load(), refetchChildren()]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
@@ -139,7 +199,7 @@ export default function Child360HubScreen() {
     }
     router.push({
       pathname: "/(app)/pathways",
-      params: { childId },
+      params: { childId, from: "child360" },
     });
   }
 
@@ -219,6 +279,56 @@ export default function Child360HubScreen() {
         />
       }
     >
+      {children.length > 1 ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.chipRow}
+          style={styles.chipScroll}
+        >
+          {children.map((child, index) => {
+            const selected = child.id === childId;
+            return (
+              <Pressable
+                key={child.id}
+                onPress={() => selectChild(child.id)}
+                style={[styles.childChip, selected && styles.childChipOn]}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                accessibilityLabel={childSwitcherTabLabel(
+                  {
+                    nickname: child.nickname,
+                    curriculumCode: child.curriculum?.code ?? null,
+                    curriculumName: child.curriculum?.name ?? null,
+                    gradeLabel: child.grade?.label ?? null,
+                    ageYears: child.ageYears,
+                    track: child.track,
+                  },
+                  index
+                )}
+              >
+                <Text
+                  style={[styles.chipText, selected && styles.chipTextOn]}
+                  numberOfLines={2}
+                >
+                  {childSwitcherTabLabel(
+                    {
+                      nickname: child.nickname,
+                      curriculumCode: child.curriculum?.code ?? null,
+                      curriculumName: child.curriculum?.name ?? null,
+                      gradeLabel: child.grade?.label ?? null,
+                      ageYears: child.ageYears,
+                      track: child.track,
+                    },
+                    index
+                  )}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      ) : null}
+
       <Text style={styles.headline}>{childHeadline(data.child)}</Text>
       {error ? <Text style={styles.errorInline}>{error}</Text> : null}
       <Child360Cross
@@ -249,11 +359,52 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: spacing.sm,
   },
+  chipScroll: { marginBottom: spacing.md, marginHorizontal: -spacing.lg },
+  chipRow: {
+    paddingHorizontal: spacing.lg,
+    gap: spacing.sm,
+    flexDirection: "row",
+  },
+  childChip: {
+    maxWidth: 160,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+  },
+  childChipOn: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySoft,
+  },
+  chipText: {
+    fontFamily: typography.regular,
+    fontSize: 13,
+    color: colors.textMuted,
+  },
+  chipTextOn: {
+    fontFamily: typography.semibold,
+    color: colors.primaryDark,
+  },
   editLink: {
     fontFamily: typography.semibold,
     fontSize: 16,
     color: colors.primary,
     paddingHorizontal: 4,
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingRight: 4,
+  },
+  headerDivider: {
+    width: 1.5,
+    height: 14,
+    backgroundColor: colors.primary,
+    opacity: 0.55,
+    borderRadius: 1,
   },
   error: {
     fontFamily: typography.regular,

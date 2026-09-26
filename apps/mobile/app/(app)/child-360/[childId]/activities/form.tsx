@@ -102,6 +102,7 @@ export default function ActivityFormScreen() {
   async function onSave() {
     if (!canSave || !setting) return;
     setSaving(true);
+    setDirty(false);
     setError(null);
     try {
       const token = await getToken();
@@ -117,9 +118,9 @@ export default function ActivityFormScreen() {
       } else {
         await api.createChildActivity(token, childId, body);
       }
-      setDirty(false);
       router.back();
     } catch (e) {
+      setDirty(true);
       setError(e instanceof Error ? e.message : "Failed to save");
     } finally {
       setSaving(false);
@@ -196,6 +197,9 @@ export default function ActivityFormScreen() {
       />
 
       <Text style={styles.label}>Where</Text>
+      <Text style={styles.hint}>
+        One place per entry. Playing at school and an academy? Add the sport twice.
+      </Text>
       <View style={styles.chips}>
         {settings.map((opt) => (
           <Pressable
@@ -293,6 +297,13 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: spacing.sm,
     marginTop: spacing.md,
+  },
+  hint: {
+    fontFamily: typography.regular,
+    fontSize: 13,
+    color: colors.textMuted,
+    marginTop: -4,
+    marginBottom: spacing.sm,
   },
   input: {
     backgroundColor: colors.card,

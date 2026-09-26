@@ -4,6 +4,7 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { PathExploreThread } from "@/components/pathways/PathExploreThread";
 import { EmptyState, ScreenLoader } from "@/components/ui";
+import { ScreenBackBar } from "@/components/ui/ScreenBackBar";
 import { pathTheme } from "@/constants/path-theme";
 import { trackEvent } from "@/lib/analytics";
 import {
@@ -11,7 +12,9 @@ import {
   type PathDiscussionLink,
   type PathExploreNode,
 } from "@/lib/api";
+import { backLabelForOrigin, leaveToOrigin } from "@/lib/nav-back";
 import { getToken } from "@/lib/session";
+import { useNavFrom } from "@/hooks/useOriginBack";
 import { usePathExplore } from "@/hooks/useSessionQueries";
 
 function stageTabLabel(node: PathExploreNode): { line1: string; line2: string } {
@@ -50,9 +53,19 @@ function pathToNode(
 export default function PathwaysHubScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ childId?: string }>();
+  const from = useNavFrom();
   const paramChildId =
     typeof params.childId === "string" ? params.childId : undefined;
   const [childId, setChildId] = useState<string | undefined>(paramChildId);
+  const backLabel = backLabelForOrigin(from ?? "more");
+
+  function leavePath() {
+    leaveToOrigin(router, {
+      from: from ?? "more",
+      childId: childId ?? paramChildId,
+      fallback: "/(app)/profile",
+    });
+  }
   const [focusId, setFocusId] = useState<string | null>(null);
   const [activeStageId, setActiveStageId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -209,12 +222,17 @@ export default function PathwaysHubScreen() {
 
   const levelUpRef = useRef(levelUp);
   levelUpRef.current = levelUp;
+  const leavePathRef = useRef(leavePath);
+  leavePathRef.current = leavePath;
   const canStepUp = breadcrumb.length > 1;
 
   useEffect(() => {
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
-      if (!canStepUp) return false;
-      levelUpRef.current();
+      if (canStepUp) {
+        levelUpRef.current();
+        return true;
+      }
+      leavePathRef.current();
       return true;
     });
     return () => sub.remove();
@@ -292,6 +310,7 @@ export default function PathwaysHubScreen() {
   if ((loading && !data) || (waitingForChild && pathQuery.isFetching)) {
     return (
       <View style={styles.screen}>
+        <ScreenBackBar backLabel={backLabel} onBack={leavePath} title="Child's Path" />
         <ScreenLoader label="Loading Child's Path" />
       </View>
     );
@@ -300,7 +319,14 @@ export default function PathwaysHubScreen() {
   if ((error && !data) || (waitingForChild && pathQuery.isError)) {
     return (
       <View style={styles.screen}>
-        <EmptyState icon="map-outline" title="Child's Path unavailable" message={error} />
+        <ScreenBackBar backLabel={backLabel} onBack={leavePath} title="Child's Path" />
+        <EmptyState
+          icon="map-outline"
+          title="Child's Path unavailable"
+          message={error ?? "Could not load Child's Path."}
+          actionLabel={`Back to ${backLabel}`}
+          onAction={leavePath}
+        />
       </View>
     );
   }
@@ -327,7 +353,8 @@ export default function PathwaysHubScreen() {
           askDraft={askDraft}
           askBusy={askBusy}
           contentRefreshing={pathQuery.isFetching && Boolean(data)}
-          onMore={() => router.back()}
+          backLabel={backLabel}
+          onBack={leavePath}
           onSelectChild={(id) => {
             if (id === selectedId) return;
             setChildId(id);

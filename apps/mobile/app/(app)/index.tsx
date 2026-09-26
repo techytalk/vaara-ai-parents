@@ -358,7 +358,12 @@ export default function HomeScreen() {
         accessibilityRole="button"
         accessibilityLabel="Start a thread"
         disabled={composeLocked}
-        onPress={() => router.push("/(app)/messages")}
+        onPress={() =>
+          router.push({
+            pathname: "/(app)/messages",
+            params: { from: "home" },
+          } as never)
+        }
         style={[styles.composeCard, composeLocked && styles.composeLocked]}
       >
         <Avatar
@@ -384,7 +389,12 @@ export default function HomeScreen() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Start a thread"
-          onPress={() => router.push("/(app)/messages")}
+          onPress={() =>
+          router.push({
+            pathname: "/(app)/messages",
+            params: { from: "home" },
+          } as never)
+        }
           style={styles.fab}
         >
           <Ionicons name="add" size={22} color="#fff" />

@@ -36,7 +36,8 @@ type Props = {
   onRead: () => void;
   onLearnMore: () => void;
   onOpenCard: (slug: string, title: string) => void;
-  onMore: () => void;
+  backLabel?: string;
+  onBack: () => void;
 };
 
 export function PathBranchHub({
@@ -65,7 +66,8 @@ export function PathBranchHub({
   onRead,
   onLearnMore,
   onOpenCard,
-  onMore,
+  backLabel = "Back",
+  onBack,
 }: Props) {
   const { width, fontScale } = useWindowDimensions();
   const stacked = width < 360 || fontScale >= 1.2;
@@ -84,11 +86,11 @@ export function PathBranchHub({
         <Text style={styles.navTitle}>Child's Path</Text>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Back to More"
-          onPress={onMore}
+          accessibilityLabel={`Back to ${backLabel}`}
+          onPress={onBack}
           hitSlop={8}
         >
-          <Text style={styles.navAction}>More</Text>
+          <Text style={styles.navAction}>‹ {backLabel}</Text>
         </Pressable>
       </View>
 

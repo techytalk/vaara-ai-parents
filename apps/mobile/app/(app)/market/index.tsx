@@ -19,8 +19,10 @@ import {
   SearchField,
 } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
+import { useNavFrom } from "@/hooks/useOriginBack";
 import { listingKindLabel, listingPriceLabel } from "@/lib/market-display";
 import { api, type Listing } from "@/lib/api";
+import { backLabelForOrigin, leaveToOrigin } from "@/lib/nav-back";
 import { getToken } from "@/lib/session";
 
 const CATEGORIES = [
@@ -41,6 +43,7 @@ function kindAccent(kind: Listing["kind"]) {
 export default function MarketScreen() {
   const router = useRouter();
   const navigation = useNavigation();
+  const from = useNavFrom();
   const [listings, setListings] = useState<Listing[]>([]);
   const [scope, setScope] = useState<"community" | "pin">("community");
   const [category, setCategory] = useState("");
@@ -50,7 +53,31 @@ export default function MarketScreen() {
   const [error, setError] = useState<string | null>(null);
 
   useLayoutEffect(() => {
+    const label = backLabelForOrigin(from ?? "more");
     navigation.setOptions({
+      headerLeft: from
+        ? () => (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Back to ${label}`}
+                onPress={() => leaveToOrigin(router, { from })}
+                hitSlop={8}
+                style={{ flexDirection: "row", alignItems: "center" }}
+              >
+                <Ionicons name="chevron-back" size={28} color={colors.text} />
+                <Text
+                  style={{
+                    fontFamily: typography.semibold,
+                    fontSize: 17,
+                    color: colors.text,
+                    marginLeft: -4,
+                  }}
+                >
+                  {label}
+                </Text>
+              </Pressable>
+            )
+          : undefined,
       headerRight: () => (
         <View style={styles.headerActions}>
           <Pressable
@@ -72,7 +99,7 @@ export default function MarketScreen() {
         </View>
       ),
     });
-  }, [navigation, router]);
+  }, [from, navigation, router]);
 
   const load = useCallback(async () => {
     const token = await getToken();

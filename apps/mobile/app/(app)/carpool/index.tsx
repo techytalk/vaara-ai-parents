@@ -19,11 +19,13 @@ import {
   SectionHeader,
 } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
+import { useOriginBackHeader } from "@/hooks/useOriginBack";
 import { api, type CarpoolOffer } from "@/lib/api";
 import { useParentSafetyActions } from "@/lib/parent-safety";
 import { getToken } from "@/lib/session";
 
 export default function CarpoolScreen() {
+  useOriginBackHeader();
   const router = useRouter();
   const showParentSafetyActions = useParentSafetyActions();
   const [matches, setMatches] = useState<CarpoolOffer[]>([]);

@@ -11,10 +11,12 @@ import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { Avatar, EmptyState, ScreenLoader } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
+import { useOriginBackHeader } from "@/hooks/useOriginBack";
 import { api } from "@/lib/api";
 import { authed, endAuthenticatedSession, isUnauthorized } from "@/lib/authenticated-state";
 
 export default function SavedScreen() {
+  useOriginBackHeader();
   const router = useRouter();
   const authExitStartedRef = useRef(false);
   const savedPostsQuery = useQuery({

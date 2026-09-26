@@ -152,6 +152,7 @@ export default function OpportunityFormScreen() {
   async function onSave() {
     if (!canSave || !slug) return;
     setSaving(true);
+    setDirty(false);
     setError(null);
     try {
       const token = await getToken();
@@ -163,6 +164,7 @@ export default function OpportunityFormScreen() {
         yearRaw !== "" &&
         (!Number.isInteger(year) || year! < 2000 || year! > 2100)
       ) {
+        setDirty(true);
         setError("Year must be between 2000 and 2100");
         setSaving(false);
         return;
@@ -179,9 +181,9 @@ export default function OpportunityFormScreen() {
           targetYear: year,
         });
       }
-      setDirty(false);
       router.back();
     } catch (e) {
+      setDirty(true);
       setError(e instanceof Error ? e.message : "Failed to save");
     } finally {
       setSaving(false);

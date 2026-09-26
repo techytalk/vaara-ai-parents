@@ -49,7 +49,8 @@ type Props = {
   askDraft: string;
   askBusy: boolean;
   contentRefreshing?: boolean;
-  onMore: () => void;
+  backLabel?: string;
+  onBack: () => void;
   onSelectChild: (id: string) => void;
   onSelectStage: (id: string) => void;
   onOpenCard: (node: PathExploreNode) => void;
@@ -110,7 +111,8 @@ export function PathExploreThread({
   askDraft,
   askBusy,
   contentRefreshing = false,
-  onMore,
+  backLabel = "Back",
+  onBack,
   onSelectChild,
   onSelectStage,
   onOpenCard,
@@ -180,8 +182,8 @@ export function PathExploreThread({
       <View style={styles.nav}>
         <Text style={styles.wordmark}>vaara</Text>
         <Text style={styles.navTitle}>Child's Path</Text>
-        <Pressable accessibilityRole="button" accessibilityLabel="Back to More" onPress={onMore} hitSlop={8}>
-          <Text style={styles.navAction}>More</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel={`Back to ${backLabel}`} onPress={onBack} hitSlop={8}>
+          <Text style={styles.navAction}>‹ {backLabel}</Text>
         </Pressable>
       </View>
 

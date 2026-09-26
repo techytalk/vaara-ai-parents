@@ -4,6 +4,7 @@ import { useRouter } from "expo-router";
 import { FEATURE_FLAGS } from "@/constants/features";
 import { LEGAL_URLS } from "@/constants/legal";
 import { colors, radii, spacing, typography } from "@/constants/theme";
+import { useOriginBackHeader } from "@/hooks/useOriginBack";
 
 type MenuIcon = keyof typeof Ionicons.glyphMap;
 
@@ -39,6 +40,7 @@ function MenuRow({
 
 export default function SettingsScreen() {
   const router = useRouter();
+  useOriginBackHeader();
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>

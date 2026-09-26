@@ -13,6 +13,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { SafetyNotice } from "@/components/SafetyNotice";
 import { Chip, EmptyState, ScreenLoader } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
+import { useOriginBackHeader } from "@/hooks/useOriginBack";
 import { api, type Practitioner } from "@/lib/api";
 import { getToken } from "@/lib/session";
 
@@ -25,6 +26,7 @@ const CATEGORIES = [
 ];
 
 export default function PractitionersScreen() {
+  useOriginBackHeader();
   const router = useRouter();
   const [category, setCategory] = useState("");
   const [list, setList] = useState<Practitioner[]>([]);

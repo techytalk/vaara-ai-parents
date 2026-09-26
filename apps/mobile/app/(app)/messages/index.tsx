@@ -16,6 +16,7 @@ import { Avatar, EmptyState, ScreenLoader } from "@/components/ui";
 import { CIRCLE_TYPE_LABELS } from "@/constants/circles";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import { useRealtimeChannel } from "@/hooks/useRealtimeChannel";
+import { useNavFrom } from "@/hooks/useOriginBack";
 import {
   api,
   type ChatInbox,
@@ -26,6 +27,7 @@ import {
   type Circle,
 } from "@/lib/api";
 import { circleTypeIcon } from "@/lib/circle-icons";
+import { backLabelForOrigin, leaveToOrigin } from "@/lib/nav-back";
 import { getToken } from "@/lib/session";
 
 function formatInboxTime(iso: string | undefined) {
@@ -125,6 +127,9 @@ function GroupRow({
 export default function MessagesInboxScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const from = useNavFrom();
+  const showOriginBack = Boolean(from);
+  const backLabel = backLabelForOrigin(from);
   const [inbox, setInbox] = useState<ChatInbox>({
     groups: [],
     guestThreads: [],
@@ -267,12 +272,29 @@ export default function MessagesInboxScreen() {
   return (
     <View style={styles.screen}>
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
+        {showOriginBack ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Back to ${backLabel}`}
+            onPress={() => leaveToOrigin(router, { from })}
+            hitSlop={8}
+            style={styles.headerBack}
+          >
+            <Ionicons name="chevron-back" size={26} color={colors.text} />
+            <Text style={styles.headerBackText} numberOfLines={1}>
+              {backLabel}
+            </Text>
+          </Pressable>
+        ) : (
+          <View style={styles.headerBackPad} />
+        )}
         <Text style={styles.title}>Messages</Text>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="New message"
           hitSlop={8}
           onPress={() => router.push("/(app)/messages/new")}
+          style={styles.headerRight}
         >
           <Ionicons name="add-circle-outline" size={28} color={colors.primaryDark} />
         </Pressable>
@@ -469,8 +491,25 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.sm,
+    gap: spacing.sm,
   },
+  headerBack: {
+    flexDirection: "row",
+    alignItems: "center",
+    minWidth: 72,
+    maxWidth: 110,
+  },
+  headerBackText: {
+    fontFamily: typography.semibold,
+    fontSize: 16,
+    color: colors.text,
+    marginLeft: -2,
+  },
+  headerBackPad: { minWidth: 72 },
+  headerRight: { minWidth: 72, alignItems: "flex-end" },
   title: {
+    flex: 1,
+    textAlign: "center",
     ...typography.screenTitle,
     color: colors.text,
     fontFamily: typography.bold,

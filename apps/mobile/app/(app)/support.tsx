@@ -4,6 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import { LEGAL_URLS } from "@/constants/legal";
+import { useOriginBackHeader } from "@/hooks/useOriginBack";
 
 type MenuIcon = keyof typeof Ionicons.glyphMap;
 
@@ -51,6 +52,7 @@ function getAppVersion(): string {
 }
 
 export default function SupportScreen() {
+  useOriginBackHeader();
   const router = useRouter();
   const appVersion = getAppVersion();
 

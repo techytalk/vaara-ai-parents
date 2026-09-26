@@ -1,12 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api, type Child, type Curriculum, type School } from "@/lib/api";
 import { invalidateFamilyMeta } from "@/lib/authenticated-state";
 import { confirmRemoveChild } from "@/lib/child360Remove";
@@ -29,9 +32,33 @@ import {
 } from "@/components/onboarding/ui";
 import { useChildren } from "@/hooks/useSessionQueries";
 
+function leaveEditChild(
+  router: ReturnType<typeof useRouter>,
+  opts: { from?: string; id: string }
+) {
+  if (router.canGoBack()) {
+    router.back();
+    return;
+  }
+  if (opts.from === "child360") {
+    router.replace({
+      pathname: "/(app)/child-360/[childId]",
+      params: { childId: opts.id },
+    } as never);
+    return;
+  }
+  router.replace("/(app)/child-360" as never);
+}
+
 export default function EditChildScreen() {
-  const { id, focus } = useLocalSearchParams<{ id: string; focus?: string }>();
+  const { id, focus, from } = useLocalSearchParams<{
+    id: string;
+    focus?: string;
+    from?: string;
+  }>();
   const router = useRouter();
+  const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const childrenQuery = useChildren();
   const [token, setToken] = useState<string | null>(null);
   const [curricula, setCurricula] = useState<Curriculum[]>([]);
@@ -40,7 +67,7 @@ export default function EditChildScreen() {
   const [removing, setRemoving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [child, setChild] = useState<Child | null>(null);
-  const contentStyle = useOnboardingContentStyle();
+  const contentStyle = useOnboardingContentStyle({ includeVertical: true });
   const [defaultCity, setDefaultCity] = useState("");
   const [defaultPin, setDefaultPin] = useState("");
   const [defaultState, setDefaultState] = useState("");
@@ -53,6 +80,27 @@ export default function EditChildScreen() {
   const [ageYears, setAgeYears] = useState<3 | 4 | null>(null);
   const [curriculumId, setCurriculumId] = useState<string | null>(null);
   const [gradeId, setGradeId] = useState<string | null>(null);
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      title: "Edit child",
+      headerLeft: () => (
+        <Pressable
+          onPress={() => leaveEditChild(router, { from, id })}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          style={styles.headerBack}
+        >
+          <Ionicons name="chevron-back" size={28} color={colors.text} />
+        </Pressable>
+      ),
+      headerRight:
+        from === "child360"
+          ? () => null
+          : undefined,
+    });
+  }, [from, id, navigation, router]);
 
   useEffect(() => {
     getToken().then(async (t) => {
@@ -150,14 +198,7 @@ export default function EditChildScreen() {
 
       await api.updateChild(token, id, body);
       invalidateFamilyMeta();
-      if (router.canGoBack()) {
-        router.back();
-      } else {
-        router.replace({
-          pathname: "/onboarding/children/[id]",
-          params: { id },
-        });
-      }
+      leaveEditChild(router, { from, id });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update child");
     } finally {
@@ -173,10 +214,13 @@ export default function EditChildScreen() {
     );
   }
 
-  if (error && !selectedSchool && !loading) {
+  if (error && !child && !loading) {
     return (
       <View style={styles.centered}>
         <Text style={styles.error}>{error}</Text>
+        <Pressable onPress={() => leaveEditChild(router, { from, id })}>
+          <Text style={styles.backLink}>Go back</Text>
+        </Pressable>
       </View>
     );
   }
@@ -186,101 +230,119 @@ export default function EditChildScreen() {
       ? Boolean(selectedSchool && gender && (ageYears === 3 || ageYears === 4))
       : Boolean(selectedSchool && gender && gradeId && curriculumId);
 
+  const footerPad = Math.max(insets.bottom, 12);
+
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={[styles.content, contentStyle]}
-      keyboardShouldPersistTaps="handled"
-    >
-      <Text style={styles.title}>Edit child</Text>
-      <Text style={styles.subtitle}>
-        {track === "preschool"
-          ? "Update preschool campus or age anytime. Nickname and date of birth are optional and stay private."
-          : "Update school, board or class anytime. Nickname and date of birth are optional and stay private."}
-      </Text>
+    <View style={styles.screen}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[
+          styles.content,
+          contentStyle,
+          { paddingBottom: 24 },
+        ]}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Text style={styles.title}>Edit child</Text>
+        <Text style={styles.subtitle}>
+          {track === "preschool"
+            ? "Update preschool campus or age anytime. Nickname and date of birth are optional and stay private."
+            : "Update school, board or class anytime. Nickname and date of birth are optional and stay private."}
+        </Text>
 
-      {track === "preschool" ? (
-        <View style={styles.ageRow}>
-          <Text style={styles.ageLabel}>Age circle</Text>
-          <View style={styles.chipRow}>
-            {([3, 4] as const).map((years) => (
-              <Chip
-                key={years}
-                label={`${years} years`}
-                selected={ageYears === years}
-                onPress={() => setAgeYears(years)}
-              />
-            ))}
+        {track === "preschool" ? (
+          <View style={styles.ageRow}>
+            <Text style={styles.ageLabel}>Age circle</Text>
+            <View style={styles.chipRow}>
+              {([3, 4] as const).map((years) => (
+                <Chip
+                  key={years}
+                  label={`${years} years`}
+                  selected={ageYears === years}
+                  onPress={() => setAgeYears(years)}
+                />
+              ))}
+            </View>
           </View>
-        </View>
-      ) : null}
+        ) : null}
 
-      <ChildFormFields
-        token={token}
-        curricula={curricula}
-        nickname={nickname}
-        onNicknameChange={setNickname}
-        dateOfBirth={dateOfBirth}
-        onDateOfBirthChange={setDateOfBirth}
-        selectedSchool={selectedSchool}
-        onSchoolSelect={setSelectedSchool}
-        gender={gender}
-        onGenderChange={setGender}
-        curriculumId={curriculumId}
-        onCurriculumChange={(cid) => {
-          setCurriculumId(cid);
-          setGradeId(
-            pickGradeForCurriculum(curricula, curriculumId, gradeId, cid)
-          );
-        }}
-        gradeId={gradeId}
-        onGradeChange={setGradeId}
-        defaultCity={defaultCity}
-        defaultPin={defaultPin}
-        defaultState={defaultState}
-        identityOptional
-        schoolFirst={focus !== "identity"}
-        showBoardAndClass={track !== "preschool"}
-        list={
-          track === "preschool"
-            ? selectedSchool?.kind === "school"
-              ? "preschool_campus"
-              : "preschool"
-            : "school"
-        }
-      />
+        <ChildFormFields
+          token={token}
+          curricula={curricula}
+          nickname={nickname}
+          onNicknameChange={setNickname}
+          dateOfBirth={dateOfBirth}
+          onDateOfBirthChange={setDateOfBirth}
+          selectedSchool={selectedSchool}
+          onSchoolSelect={setSelectedSchool}
+          gender={gender}
+          onGenderChange={setGender}
+          curriculumId={curriculumId}
+          onCurriculumChange={(cid) => {
+            setCurriculumId(cid);
+            setGradeId(
+              pickGradeForCurriculum(curricula, curriculumId, gradeId, cid)
+            );
+          }}
+          gradeId={gradeId}
+          onGradeChange={setGradeId}
+          defaultCity={defaultCity}
+          defaultPin={defaultPin}
+          defaultState={defaultState}
+          identityOptional
+          schoolFirst={focus !== "identity"}
+          showBoardAndClass={track !== "preschool"}
+          list={
+            track === "preschool"
+              ? selectedSchool?.kind === "school"
+                ? "preschool_campus"
+                : "preschool"
+              : "school"
+          }
+        />
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+        {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      <PrimaryButton
-        label="Save changes"
-        onPress={onSave}
-        loading={submitting}
-        disabled={!canSave || removing}
-      />
+        {!canSave && !selectedSchool ? (
+          <Text style={styles.hint}>
+            Choose a school above to enable Save.
+          </Text>
+        ) : null}
 
-      {child ? (
-        <View style={styles.removeBtn}>
-          <SecondaryButton
-            label="Remove child"
-            onPress={() =>
-              confirmRemoveChild({
-                child,
-                remainingCount: childrenQuery.data?.length ?? 1,
-                router,
-                onBusy: setRemoving,
-                onError: setError,
-              })
-            }
-            disabled={submitting || removing}
-          />
-        </View>
-      ) : null}
-    </ScrollView>
+        {child ? (
+          <View style={styles.removeBtn}>
+            <SecondaryButton
+              label="Remove child"
+              onPress={() =>
+                confirmRemoveChild({
+                  child,
+                  remainingCount: childrenQuery.data?.length ?? 1,
+                  router,
+                  onBusy: setRemoving,
+                  onError: setError,
+                })
+              }
+              disabled={submitting || removing}
+            />
+          </View>
+        ) : null}
+      </ScrollView>
+
+      <View style={[styles.footer, { paddingBottom: footerPad }]}>
+        <PrimaryButton
+          label="Save changes"
+          onPress={onSave}
+          loading={submitting}
+          disabled={!canSave || removing}
+        />
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: colors.bg },
+  headerBack: { marginLeft: 4, paddingRight: 4 },
   container: { flex: 1, backgroundColor: colors.bg },
   content: {},
   title: {
@@ -296,8 +358,26 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     marginBottom: 14,
   },
-  centered: { flex: 1, justifyContent: "center", alignItems: "center" },
+  centered: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+    backgroundColor: colors.bg,
+  },
   error: { color: colors.error, marginBottom: 8 },
+  hint: {
+    color: colors.textMuted,
+    fontSize: 13,
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  backLink: {
+    marginTop: 12,
+    color: colors.primary,
+    fontWeight: "700",
+    fontSize: 16,
+  },
   ageRow: { marginBottom: 12 },
   ageLabel: {
     fontSize: 14,
@@ -306,5 +386,12 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  removeBtn: { marginTop: 16 },
+  removeBtn: { marginTop: 20, marginBottom: 8 },
+  footer: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    backgroundColor: colors.card,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+  },
 });

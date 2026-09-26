@@ -43,13 +43,15 @@ export default function InterestsScreen() {
 
   useLeaveWithoutSaving(dirty, saving);
 
-  const chips = useMemo(
-    () =>
+  const chips = useMemo(() => {
+    const base =
       band === "enjoy"
         ? [...ENJOY_INTEREST_CHIPS]
-        : [...PRESCHOOL_INTEREST_CHIPS],
-    [band]
-  );
+        : [...PRESCHOOL_INTEREST_CHIPS];
+    const known = new Set<string>(base);
+    const extras = [...selected].filter((label) => !known.has(label));
+    return [...base, ...extras];
+  }, [band, selected]);
 
   useLayoutEffect(() => {
     navigation.setOptions({

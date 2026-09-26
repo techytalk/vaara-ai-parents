@@ -151,7 +151,10 @@ export default function ProfileScreen() {
 
   function openMore(destination: string, label: string) {
     trackEvent("more_destination_opened", { destination: label });
-    router.push(destination as never);
+    router.push({
+      pathname: destination,
+      params: { from: "more" },
+    } as never);
   }
 
   return (

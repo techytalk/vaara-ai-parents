@@ -52,6 +52,11 @@ export default function PathwayDetailScreen() {
           icon="document-outline"
           title="Not found"
           message={error ?? "This pathway item is unavailable."}
+          actionLabel="Back"
+          onAction={() => {
+            if (router.canGoBack()) router.back();
+            else router.replace("/(app)/pathways" as never);
+          }}
         />
       </View>
     );

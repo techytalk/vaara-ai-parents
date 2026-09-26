@@ -11,6 +11,7 @@ import {
 import { TimeField } from "@/components/DateTimeField";
 import { InlineError, ScreenLoader } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
+import { useOriginBackHeader } from "@/hooks/useOriginBack";
 import { api, type NotificationPrefs } from "@/lib/api";
 import { getToken } from "@/lib/session";
 
@@ -49,6 +50,7 @@ const IMMEDIATE_PREFS = new Set<BooleanPrefKey>([
 ]);
 
 export default function NotificationPreferencesScreen() {
+  useOriginBackHeader();
   const [prefs, setPrefs] = useState<NotificationPrefs | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);

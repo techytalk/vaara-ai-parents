@@ -31,11 +31,19 @@ export const PRESCHOOL_INTEREST_CHIPS = [
   "Stories",
   "Music",
   "Drawing",
+  "Art",
+  "Dance",
   "Nature",
   "Numbers",
   "Building",
   "Pretend play",
   "Movement",
+  "Reading",
+  "Crafts",
+  "Animals",
+  "Outdoor play",
+  "Singing",
+  "Puzzles",
 ] as const;
 
 export const ENJOY_INTEREST_CHIPS = [
@@ -47,6 +55,10 @@ export const ENJOY_INTEREST_CHIPS = [
   "Languages",
   "Coding",
   "Performing arts",
+  "Art",
+  "Science",
+  "History",
+  "Music",
 ] as const;
 
 export const PATHWAY_LEAN_OPTIONS = [

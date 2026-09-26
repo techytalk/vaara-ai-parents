@@ -86,6 +86,7 @@ export default function HealthFormScreen() {
   async function onSave() {
     if (!canSave || !label) return;
     setSaving(true);
+    setDirty(false);
     setError(null);
     try {
       const token = await getToken();
@@ -101,9 +102,9 @@ export default function HealthFormScreen() {
           body: body.trim(),
         });
       }
-      setDirty(false);
       router.back();
     } catch (e) {
+      setDirty(true);
       setError(e instanceof Error ? e.message : "Failed to save");
     } finally {
       setSaving(false);

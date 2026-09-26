@@ -19,6 +19,7 @@ import {
   SectionHeader,
 } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
+import { useOriginBackHeader } from "@/hooks/useOriginBack";
 import { api, type Child, type PlaydateMatch } from "@/lib/api";
 import { useParentSafetyActions } from "@/lib/parent-safety";
 import { getToken } from "@/lib/session";
@@ -33,6 +34,7 @@ const AGE_BANDS = [
 ];
 
 export default function PlaydatesScreen() {
+  useOriginBackHeader();
   const router = useRouter();
   const showParentSafetyActions = useParentSafetyActions();
   const [children, setChildren] = useState<Child[]>([]);
