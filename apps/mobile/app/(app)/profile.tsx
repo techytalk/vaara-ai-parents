@@ -193,7 +193,7 @@ export default function ProfileScreen() {
         <MenuRow
           icon="people-outline"
           label="My Children"
-          onPress={() => openMore("/onboarding/children", "children")}
+          onPress={() => openMore("/(app)/child-360", "children")}
         />
         {FEATURE_FLAGS.showChildsPath && pathSubtitle ? (
           <MenuRow

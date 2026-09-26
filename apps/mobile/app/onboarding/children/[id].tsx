@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,7 +10,7 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { api, type Child, type Curriculum } from "@/lib/api";
-import { invalidateFamilyMeta } from "@/lib/authenticated-state";
+import { confirmRemoveChild } from "@/lib/child360Remove";
 import { getToken } from "@/lib/session";
 import { getCurriculaCached } from "@/lib/reference-cache";
 import { GENDER_LABEL } from "@/constants/onboarding";
@@ -22,6 +21,7 @@ export default function ChildDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const [child, setChild] = useState<Child | null>(null);
+  const [childrenCount, setChildrenCount] = useState(1);
   const [curricula, setCurricula] = useState<Curriculum[]>([]);
   const [loading, setLoading] = useState(true);
   const [removing, setRemoving] = useState(false);
@@ -44,6 +44,7 @@ export default function ChildDetailScreen() {
       return;
     }
     setChild(found);
+    setChildrenCount(kids.length);
     setCurricula(currs);
   }, [id, router]);
 
@@ -70,31 +71,14 @@ export default function ChildDetailScreen() {
       : child?.curriculum?.name ?? "";
 
   function onRemove() {
-    Alert.alert(
-      "Remove child?",
-      "This updates your circle memberships.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Remove",
-          style: "destructive",
-          onPress: async () => {
-            const token = await getToken();
-            if (!token || !child) return;
-            setRemoving(true);
-            try {
-              await api.deleteChild(token, child.id);
-              invalidateFamilyMeta();
-              router.back();
-            } catch (e) {
-              setError(e instanceof Error ? e.message : "Failed to remove");
-            } finally {
-              setRemoving(false);
-            }
-          },
-        },
-      ]
-    );
+    if (!child) return;
+    confirmRemoveChild({
+      child,
+      remainingCount: childrenCount,
+      router,
+      onBusy: setRemoving,
+      onError: setError,
+    });
   }
 
   if (loading) {

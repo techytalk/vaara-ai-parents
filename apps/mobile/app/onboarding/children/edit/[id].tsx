@@ -9,6 +9,7 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { api, type Child, type Curriculum, type School } from "@/lib/api";
 import { invalidateFamilyMeta } from "@/lib/authenticated-state";
+import { confirmRemoveChild } from "@/lib/child360Remove";
 import { getToken } from "@/lib/session";
 import { getCurriculaCached } from "@/lib/reference-cache";
 import { ChildFormFields } from "@/components/onboarding/ChildFormFields";
@@ -23,17 +24,22 @@ import {
   Chip,
   colors,
   PrimaryButton,
+  SecondaryButton,
   useOnboardingContentStyle,
 } from "@/components/onboarding/ui";
+import { useChildren } from "@/hooks/useSessionQueries";
 
 export default function EditChildScreen() {
   const { id, focus } = useLocalSearchParams<{ id: string; focus?: string }>();
   const router = useRouter();
+  const childrenQuery = useChildren();
   const [token, setToken] = useState<string | null>(null);
   const [curricula, setCurricula] = useState<Curriculum[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [child, setChild] = useState<Child | null>(null);
   const contentStyle = useOnboardingContentStyle();
   const [defaultCity, setDefaultCity] = useState("");
   const [defaultPin, setDefaultPin] = useState("");
@@ -61,14 +67,15 @@ export default function EditChildScreen() {
           getCurriculaCached(),
           api.getLocation(t),
         ]);
-        const child = kids.find((c) => c.id === id);
-        if (!child) {
+        const childRow = kids.find((c) => c.id === id);
+        if (!childRow) {
           setError("Child not found");
           return;
         }
+        setChild(childRow);
         const sorted = sortCurricula(list);
         setCurricula(sorted);
-        populateFromChild(child, sorted);
+        populateFromChild(childRow, sorted);
         if (loc) {
           setDefaultCity(loc.city ?? "");
           setDefaultPin(loc.pinCode ?? "");
@@ -249,8 +256,26 @@ export default function EditChildScreen() {
         label="Save changes"
         onPress={onSave}
         loading={submitting}
-        disabled={!canSave}
+        disabled={!canSave || removing}
       />
+
+      {child ? (
+        <View style={styles.removeBtn}>
+          <SecondaryButton
+            label="Remove child"
+            onPress={() =>
+              confirmRemoveChild({
+                child,
+                remainingCount: childrenQuery.data?.length ?? 1,
+                router,
+                onBusy: setRemoving,
+                onError: setError,
+              })
+            }
+            disabled={submitting || removing}
+          />
+        </View>
+      ) : null}
     </ScrollView>
   );
 }
@@ -281,4 +306,5 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  removeBtn: { marginTop: 16 },
 });

@@ -17,8 +17,13 @@ import { getCurriculaCached } from "@/lib/reference-cache";
 import { ChildFormFields } from "@/components/onboarding/ChildFormFields";
 import { sortCurricula } from "@/constants/onboarding";
 import { toIsoDateOnly } from "@/lib/dates";
-import { colors, PrimaryButton, useOnboardingContentStyle } from "@/components/onboarding/ui";
-import { useChildren, useLocation } from "@/hooks/useSessionQueries";
+import {
+  Chip,
+  colors,
+  PrimaryButton,
+  useOnboardingContentStyle,
+} from "@/components/onboarding/ui";
+import { useChildren, useLocation, useSessionUser } from "@/hooks/useSessionQueries";
 
 function leaveAddChildScreen(router: ReturnType<typeof useRouter>) {
   if (router.canGoBack()) {
@@ -33,6 +38,8 @@ export default function AddChildScreen() {
   const navigation = useNavigation();
   const { from } = useLocalSearchParams<{ from?: string }>();
   const fromPrompt = from === "prompt";
+  const fromChild360 = from === "child360";
+  const fromLastRemoved = from === "last_child_removed";
   const [token, setToken] = useState<string | null>(null);
   const [curricula, setCurricula] = useState<Curriculum[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,17 +51,24 @@ export default function AddChildScreen() {
   const contentStyle = useOnboardingContentStyle();
   const locationQuery = useLocation();
   const childrenQuery = useChildren();
+  const sessionUser = useSessionUser();
   const existingCount = childrenQuery.data?.length ?? 0;
+  const onboardingComplete = Boolean(
+    sessionUser.data?.onboardingComplete
+  );
 
+  const [track, setTrack] = useState<"school" | "preschool" | null>(null);
   const [nickname, setNickname] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState<Date | null>(null);
   const [selectedSchool, setSelectedSchool] = useState<School | null>(null);
   const [gender, setGender] = useState("");
+  const [ageYears, setAgeYears] = useState<3 | 4 | null>(null);
   const [curriculumId, setCurriculumId] = useState<string | null>(null);
   const [gradeId, setGradeId] = useState<string | null>(null);
 
   useLayoutEffect(() => {
     navigation.setOptions({
+      title: fromChild360 ? "Add child" : "Add child",
       headerLeft: () => (
         <Pressable
           onPress={() => leaveAddChildScreen(router)}
@@ -67,7 +81,7 @@ export default function AddChildScreen() {
         </Pressable>
       ),
     });
-  }, [navigation, router]);
+  }, [navigation, router, fromChild360]);
 
   useEffect(() => {
     let cancelled = false;
@@ -104,7 +118,9 @@ export default function AddChildScreen() {
   }, [locationQuery.data]);
 
   async function onSave() {
-    if (!token || !curriculumId || !gradeId || !selectedSchool || !gender) return;
+    if (!token || !selectedSchool || !gender || !track) return;
+    if (track === "preschool" && ageYears !== 3 && ageYears !== 4) return;
+    if (track === "school" && (!curriculumId || !gradeId)) return;
 
     setError(null);
     setSubmitting(true);
@@ -112,18 +128,23 @@ export default function AddChildScreen() {
       const body: {
         nickname?: string;
         dateOfBirth?: string;
-        track: "school";
+        track: "school" | "preschool";
         schoolId: string;
         gender: string;
-        curriculumId: string;
-        gradeId: string;
+        ageYears?: number;
+        curriculumId?: string;
+        gradeId?: string;
       } = {
-        track: "school",
+        track,
         schoolId: selectedSchool.id,
         gender,
-        curriculumId,
-        gradeId,
       };
+      if (track === "preschool") {
+        body.ageYears = ageYears!;
+      } else {
+        body.curriculumId = curriculumId!;
+        body.gradeId = gradeId!;
+      }
       const nick = nickname.trim();
       if (nick) body.nickname = nick;
       if (dateOfBirth) body.dateOfBirth = toIsoDateOnly(dateOfBirth);
@@ -133,11 +154,34 @@ export default function AddChildScreen() {
       invalidateFamilyMeta({ user: result.user });
       if (existingCount > 0) {
         trackEvent("second_child_added", {
-          source: fromPrompt ? "completion_prompt" : "children_list",
+          source: fromPrompt
+            ? "completion_prompt"
+            : fromLastRemoved
+              ? "last_child_removed"
+              : fromChild360
+                ? "child360"
+                : "children_list",
         });
       }
+
+      const childId = result.child.id;
       if (fromPrompt) {
         router.replace("/(app)" as never);
+      } else if (fromLastRemoved) {
+        const hasLoc = Boolean(locationQuery.data?.pinCode);
+        if (!hasLoc) {
+          router.replace("/onboarding/location" as never);
+        } else {
+          router.replace({
+            pathname: "/(app)/child-360/[childId]",
+            params: { childId },
+          } as never);
+        }
+      } else if (onboardingComplete || fromChild360) {
+        router.replace({
+          pathname: "/(app)/child-360/[childId]",
+          params: { childId },
+        } as never);
       } else if (router.canGoBack()) {
         router.back();
       } else {
@@ -158,7 +202,38 @@ export default function AddChildScreen() {
     );
   }
 
-  const canSave = Boolean(selectedSchool && gender && curriculumId && gradeId);
+  if (!track) {
+    return (
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[styles.content, contentStyle]}
+      >
+        <Text style={styles.title}>Who are you adding?</Text>
+        <Text style={styles.subtitle}>
+          Preschool for ages 3–4, or a school-age child with board and class.
+        </Text>
+        <Pressable
+          onPress={() => setTrack("preschool")}
+          style={({ pressed }) => [styles.trackCard, pressed && styles.pressed]}
+        >
+          <Text style={styles.trackTitle}>Preschool · 3–4 years</Text>
+          <Text style={styles.trackBody}>Campus and age circle</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => setTrack("school")}
+          style={({ pressed }) => [styles.trackCard, pressed && styles.pressed]}
+        >
+          <Text style={styles.trackTitle}>School-age child</Text>
+          <Text style={styles.trackBody}>School, board and class</Text>
+        </Pressable>
+      </ScrollView>
+    );
+  }
+
+  const canSave =
+    track === "preschool"
+      ? Boolean(selectedSchool && gender && (ageYears === 3 || ageYears === 4))
+      : Boolean(selectedSchool && gender && curriculumId && gradeId);
 
   return (
     <ScrollView
@@ -166,12 +241,34 @@ export default function AddChildScreen() {
       contentContainerStyle={[styles.content, contentStyle]}
       keyboardShouldPersistTaps="handled"
     >
+      <Pressable onPress={() => setTrack(null)} hitSlop={8}>
+        <Text style={styles.changeTrack}>
+          ← {track === "preschool" ? "Preschool" : "School-age"} · change
+        </Text>
+      </Pressable>
+
       <Text style={styles.title}>Add a child</Text>
       <Text style={styles.subtitle}>
-        School, gender, board and class are required so we can place you in
-        the right circles. Nickname and date of birth are optional and stay
-        private.
+        {track === "preschool"
+          ? "Campus, age and gender are required. Nickname and date of birth are optional and stay private."
+          : "School, gender, board and class are required so we can place you in the right circles. Nickname and date of birth are optional and stay private."}
       </Text>
+
+      {track === "preschool" ? (
+        <View style={styles.ageRow}>
+          <Text style={styles.ageLabel}>Age circle</Text>
+          <View style={styles.chipRow}>
+            {([3, 4] as const).map((years) => (
+              <Chip
+                key={years}
+                label={`${years} years`}
+                selected={ageYears === years}
+                onPress={() => setAgeYears(years)}
+              />
+            ))}
+          </View>
+        </View>
+      ) : null}
 
       <ChildFormFields
         token={token}
@@ -202,6 +299,14 @@ export default function AddChildScreen() {
         defaultState={defaultState}
         identityOptional
         schoolFirst
+        showBoardAndClass={track !== "preschool"}
+        list={
+          track === "preschool"
+            ? selectedSchool?.kind === "school"
+              ? "preschool_campus"
+              : "preschool"
+            : "school"
+        }
       />
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -235,4 +340,37 @@ const styles = StyleSheet.create({
   },
   centered: { flex: 1, justifyContent: "center", alignItems: "center" },
   error: { color: colors.error, marginBottom: 8 },
+  trackCard: {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 12,
+  },
+  pressed: { opacity: 0.9 },
+  trackTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  trackBody: {
+    marginTop: 4,
+    fontSize: 14,
+    color: colors.textMuted,
+  },
+  changeTrack: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: colors.primary,
+    marginBottom: 12,
+  },
+  ageRow: { marginBottom: 12 },
+  ageLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: colors.text,
+    marginBottom: 8,
+  },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
 });

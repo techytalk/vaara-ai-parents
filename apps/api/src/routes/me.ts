@@ -54,6 +54,7 @@ import { sendParentBlockedAlert } from "../lib/safety-alert.js";
 const CHILD_SELECT = `
   ch.id, ch.nickname, ch.gender, ch.date_of_birth, ch.curriculum_id, ch.grade_id, ch.school_id,
   ch.track, ch.age_years, ch.age_confirmed_at, ch.experienced_age_years, ch.age_circle_until,
+  ch.pathway_lean,
   cur.code AS curriculum_code, cur.name AS curriculum_name,
   g.code AS grade_code, g.label AS grade_label,
   s.name AS school_name, s.branch AS school_branch, s.city AS school_city,
@@ -88,6 +89,7 @@ function mapChild(row: Record<string, unknown>) {
     ageCircleUntil: row.age_circle_until
       ? new Date(row.age_circle_until as string | Date).toISOString()
       : null,
+    pathwayLean: (row.pathway_lean as string | null) ?? null,
     curriculumId: row.curriculum_id,
     gradeId: row.grade_id,
     schoolId: row.school_id,
@@ -811,9 +813,19 @@ export function createMeRoutes() {
         "UPDATE users SET onboarding_complete = $2, updated_at = now() WHERE id = $1",
         [userId, complete]
       );
+      const remaining = await client.query(
+        `SELECT id FROM children WHERE user_id = $1 ORDER BY created_at`,
+        [userId]
+      );
+      const user = await fetchAuthUserById(client, userId);
       await client.query("COMMIT");
       await invalidateFamilyPage(userId);
-      return c.json({ ok: true });
+      return c.json({
+        ok: true,
+        onboardingComplete: complete,
+        remainingChildIds: remaining.rows.map((r) => r.id as string),
+        user,
+      });
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;

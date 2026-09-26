@@ -162,6 +162,10 @@ const MIGRATIONS = [
     version: "069_lucky_gift_scratch_cards",
     file: "069_lucky_gift_scratch_cards.sql",
   },
+  {
+    version: "076_child_360",
+    file: "076_child_360.sql",
+  },
 ];
 
 async function isMigrationApplied(

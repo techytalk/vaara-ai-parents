@@ -64,12 +64,71 @@ export type Child = {
   ageConfirmedAt?: string | null;
   experiencedAgeYears?: number | null;
   ageCircleUntil?: string | null;
+  pathwayLean?: string | null;
   curriculumId: string | null;
   gradeId: string | null;
   schoolId: string;
   curriculum: { code: string; name: string } | null;
   grade: { code: string; label: string } | null;
   school: School;
+};
+
+export type ChildActivity = {
+  id: string;
+  childId: string;
+  name: string;
+  setting: string;
+  howOften: string | null;
+  status: "active" | "paused" | string;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ChildHealthNote = {
+  id: string;
+  childId: string;
+  label: string;
+  body: string;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ChildOpportunityPlan = {
+  id: string;
+  childId: string;
+  opportunitySlug: string;
+  status: "exploring" | "planning" | "this_season" | string;
+  targetYear: number | null;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type Child360Hub = {
+  child: {
+    id: string;
+    nickname: string | null;
+    track: "school" | "preschool";
+    ageYears: number | null;
+    pathwayLean: string | null;
+    curriculum: { code: string; name: string | null } | null;
+    grade: { code: string; label: string | null } | null;
+    school: { name: string | null; displayLabel: string };
+    rightBand: "interests" | "enjoy" | "pathway_lean" | "opportunities";
+  };
+  activities: ChildActivity[];
+  healthNotes: ChildHealthNote[];
+  interests: string[];
+  opportunityPlans: ChildOpportunityPlan[];
+  hub: {
+    activityName: string | null;
+    healthNoteCount: number;
+    interestPreview: string | null;
+    pathwayLean: string | null;
+    opportunityPreview: string | null;
+  };
 };
 
 export type Location = {
@@ -1304,7 +1363,12 @@ export const api = {
     ),
 
   deleteChild: (token: string, childId: string) =>
-    request<{ ok: boolean }>(`/v1/me/children/${childId}`, {
+    request<{
+      ok: boolean;
+      onboardingComplete: boolean;
+      remainingChildIds: string[];
+      user: AuthUser;
+    }>(`/v1/me/children/${childId}`, {
       method: "DELETE",
     }, token),
 
@@ -1326,6 +1390,139 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(body),
     }, token),
+
+  getChild360: (token: string, childId: string) =>
+    request<Child360Hub>(`/v1/me/children/${childId}/360`, {}, token),
+
+  createChildActivity: (
+    token: string,
+    childId: string,
+    body: {
+      name: string;
+      setting: string;
+      howOften?: string | null;
+      status?: string;
+    }
+  ) =>
+    request<ChildActivity>(`/v1/me/children/${childId}/activities`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }, token),
+
+  updateChildActivity: (
+    token: string,
+    childId: string,
+    activityId: string,
+    body: {
+      name?: string;
+      setting?: string;
+      howOften?: string | null;
+      status?: string;
+    }
+  ) =>
+    request<ChildActivity>(
+      `/v1/me/children/${childId}/activities/${activityId}`,
+      { method: "PATCH", body: JSON.stringify(body) },
+      token
+    ),
+
+  deleteChildActivity: (
+    token: string,
+    childId: string,
+    activityId: string
+  ) =>
+    request<{ ok: boolean; deleted: ChildActivity }>(
+      `/v1/me/children/${childId}/activities/${activityId}`,
+      { method: "DELETE" },
+      token
+    ),
+
+  createChildHealthNote: (
+    token: string,
+    childId: string,
+    body: { label: string; body: string }
+  ) =>
+    request<ChildHealthNote>(`/v1/me/children/${childId}/health-notes`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }, token),
+
+  updateChildHealthNote: (
+    token: string,
+    childId: string,
+    noteId: string,
+    body: { label?: string; body?: string }
+  ) =>
+    request<ChildHealthNote>(
+      `/v1/me/children/${childId}/health-notes/${noteId}`,
+      { method: "PATCH", body: JSON.stringify(body) },
+      token
+    ),
+
+  deleteChildHealthNote: (token: string, childId: string, noteId: string) =>
+    request<{ ok: boolean; deleted: ChildHealthNote }>(
+      `/v1/me/children/${childId}/health-notes/${noteId}`,
+      { method: "DELETE" },
+      token
+    ),
+
+  putChildInterests: (token: string, childId: string, labels: string[]) =>
+    request<{ labels: string[] }>(`/v1/me/children/${childId}/interests`, {
+      method: "PUT",
+      body: JSON.stringify({ labels }),
+    }, token),
+
+  patchChildPathwayLean: (
+    token: string,
+    childId: string,
+    pathwayLean: string | null
+  ) =>
+    request<{ pathwayLean: string | null }>(
+      `/v1/me/children/${childId}/pathway-lean`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ pathwayLean }),
+      },
+      token
+    ),
+
+  createChildOpportunityPlan: (
+    token: string,
+    childId: string,
+    body: {
+      opportunitySlug: string;
+      status?: string;
+      targetYear?: number | null;
+    }
+  ) =>
+    request<ChildOpportunityPlan>(
+      `/v1/me/children/${childId}/opportunity-plans`,
+      { method: "POST", body: JSON.stringify(body) },
+      token
+    ),
+
+  updateChildOpportunityPlan: (
+    token: string,
+    childId: string,
+    planId: string,
+    body: { status?: string; targetYear?: number | null }
+  ) =>
+    request<ChildOpportunityPlan>(
+      `/v1/me/children/${childId}/opportunity-plans/${planId}`,
+      { method: "PATCH", body: JSON.stringify(body) },
+      token
+    ),
+
+  deleteChildOpportunityPlan: (
+    token: string,
+    childId: string,
+    planId: string
+  ) =>
+    request<{ ok: boolean; deleted: ChildOpportunityPlan }>(
+      `/v1/me/children/${childId}/opportunity-plans/${planId}`,
+      { method: "DELETE" },
+      token
+    ),
 
   updateLocation: (
     token: string,

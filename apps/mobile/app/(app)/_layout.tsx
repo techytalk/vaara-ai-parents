@@ -158,6 +158,16 @@ export default function AppLayout() {
         }}
       />
       <Tabs.Screen
+        name="child-360"
+        options={{
+          title: "Child 360",
+          tabBarLabel: "Child 360",
+          headerShown: false,
+          tabBarIcon: tabIcon("planet", "planet-outline"),
+          href: "/child-360",
+        }}
+      />
+      <Tabs.Screen
         name="activities"
         options={{
           title: "Discover",

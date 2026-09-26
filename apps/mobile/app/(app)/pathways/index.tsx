@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BackHandler, StyleSheet, View } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { PathExploreThread } from "@/components/pathways/PathExploreThread";
 import { EmptyState, ScreenLoader } from "@/components/ui";
@@ -49,7 +49,10 @@ function pathToNode(
 
 export default function PathwaysHubScreen() {
   const router = useRouter();
-  const [childId, setChildId] = useState<string | undefined>();
+  const params = useLocalSearchParams<{ childId?: string }>();
+  const paramChildId =
+    typeof params.childId === "string" ? params.childId : undefined;
+  const [childId, setChildId] = useState<string | undefined>(paramChildId);
   const [focusId, setFocusId] = useState<string | null>(null);
   const [activeStageId, setActiveStageId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -61,6 +64,13 @@ export default function PathwaysHubScreen() {
   const [askBusy, setAskBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const appliedChildRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (paramChildId && paramChildId !== childId) {
+      setChildId(paramChildId);
+      appliedChildRef.current = null;
+    }
+  }, [paramChildId, childId]);
 
   const pathQuery = usePathExplore(childId);
   const data = pathQuery.data ?? null;

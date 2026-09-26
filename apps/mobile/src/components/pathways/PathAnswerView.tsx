@@ -15,12 +15,15 @@ type Props = {
 function tileIcon(slug: string): keyof typeof Ionicons.glyphMap {
   if (slug.includes("math")) return "calculator-outline";
   if (slug.includes("langlit") || slug.includes("lang-")) return "book-outline";
-  if (slug.includes("langacq") || slug.includes("lang")) return "language-outline";
-  if (slug.includes("soc")) return "earth-outline";
+  if (slug.includes("langacq") || slug.includes("lang") || slug.includes("-r3")) return "language-outline";
+  if (slug.includes("world") || slug.includes("sst") || slug.includes("soc")) return "earth-outline";
   if (slug.includes("sci")) return "flask-outline";
   if (slug.includes("art")) return "color-palette-outline";
-  if (slug.includes("phe") || slug.includes("health")) return "fitness-outline";
-  if (slug.includes("design")) return "extension-puzzle-outline";
+  if (slug.includes("phe") || slug.includes("health") || slug.includes("internal")) return "fitness-outline";
+  if (slug.includes("design") || slug.includes("-ct")) return "extension-puzzle-outline";
+  if (slug.includes("society")) return "people-outline";
+  if (slug.includes("board") || slug.includes("exam")) return "document-text-outline";
+  if (slug.includes("other") || slug.includes("work")) return "construct-outline";
   return "ellipse-outline";
 }
 

@@ -37,6 +37,7 @@ import { createExpertSessionRoutes } from "./routes/expert-sessions.js";
 import { createPlaydateRoutes } from "./routes/playdates.js";
 import { createCarpoolRoutes } from "./routes/carpool.js";
 import { createPathwaysRoutes } from "./routes/pathways.js";
+import { createChild360Routes } from "./routes/child-360.js";
 import { getRedis, isRedisEnabled } from "@vaara/redis";
 
 const app = new Hono();
@@ -62,6 +63,7 @@ app.get("/health", async (c) => {
 
 app.route("/v1/auth", createAuthRoutes());
 app.route("/v1/me", createMeRoutes());
+app.route("/v1/me", createChild360Routes());
 app.route("/v1/circles", createCirclesRoutes());
 app.route("/v1/circles", createCircleChatRoutes());
 app.route("/v1/chat", createChatRoutes());
