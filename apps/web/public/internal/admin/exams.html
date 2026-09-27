@@ -103,9 +103,18 @@
         letter-spacing: 0.03em;
         color: var(--muted);
       }
+      td.fit, th.fit {
+        width: 1%;
+        white-space: nowrap;
+      }
       .name { font-weight: 600; }
       .meta { font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
-      .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+      .actions {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        flex-wrap: nowrap;
+      }
       .actions button { margin: 0; }
     </style>
   </head>
@@ -184,9 +193,9 @@
         <thead>
           <tr>
             <th>Exam</th>
-            <th>Kind</th>
-            <th>Status</th>
-            <th></th>
+            <th class="fit">Kind</th>
+            <th class="fit">Status</th>
+            <th class="fit"></th>
           </tr>
         </thead>
         <tbody id="rows">
@@ -378,10 +387,10 @@
               (item.edition_label ? " · " + esc(item.edition_label) : " · no edition") +
               " · " + esc(item.edition_count) + " edition(s)</div>" +
               factsHtml(item) +
-              "</td><td>" + esc(item.kind) + "</td><td>" + badge + "</td><td class='actions'>" +
+              "</td><td class='fit'>" + esc(item.kind) + "</td><td class='fit'>" + badge + "</td><td class='fit'><div class='actions'>" +
               '<button type="button" class="ghost" data-action="edit" data-slug="' + esc(item.slug) + '">' +
-              (editing ? "Close" : "Edit") + "</button> " +
-              action + "</td></tr>" +
+              (editing ? "Close" : "Edit") + "</button>" +
+              action + "</div></td></tr>" +
               (editing ? editorHtml(item) : "")
             );
           })

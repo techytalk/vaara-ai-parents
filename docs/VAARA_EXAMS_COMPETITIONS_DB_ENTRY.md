@@ -663,13 +663,16 @@ Each JSON block is independently parseable. `data` holds candidate content value
       ]
     },
     "venue": null,
-    "registration_url": null,
-    "official_url": "https://www.crestolympiads.com/",
+    "registration_url": "https://www.crestolympiads.com/registration",
+    "official_url": "https://www.crestolympiads.com/english-olympiad-ceo",
     "source_urls": [
-      "https://www.crestolympiads.com/exam-schedule"
+      "https://www.crestolympiads.com/register-school",
+      "https://www.crestolympiads.com/exam-schedule",
+      "https://www.crestolympiads.com/syllabus",
+      "https://www.crestolympiads.com/sample-papers"
     ]
   },
-  "review_notes": "Fee left empty: checked class-specific pages quote ₹225 for some subjects, but the full eligible class range was not verified. Do not apply that fee to every subject or preschool class."
+  "review_notes": "Fee left empty: checked class-specific pages quote ₹225 for some subjects, but the full eligible class range was not verified. Do not apply that fee to every subject or preschool class. Student registration URL is the shared CREST page and does not show that this edition is still open."
 }
 ```
 
@@ -702,13 +705,16 @@ Each JSON block is independently parseable. `data` holds candidate content value
       ]
     },
     "venue": null,
-    "registration_url": null,
-    "official_url": "https://www.crestolympiads.com/",
+    "registration_url": "https://www.crestolympiads.com/registration",
+    "official_url": "https://www.crestolympiads.com/maths-olympiad-cmo",
     "source_urls": [
-      "https://www.crestolympiads.com/exam-schedule"
+      "https://www.crestolympiads.com/register-school",
+      "https://www.crestolympiads.com/exam-schedule",
+      "https://www.crestolympiads.com/syllabus",
+      "https://www.crestolympiads.com/sample-papers"
     ]
   },
-  "review_notes": "Fee left empty: checked class-specific pages quote ₹225 for some subjects, but the full eligible class range was not verified. Do not apply that fee to every subject or preschool class."
+  "review_notes": "Fee left empty: checked class-specific pages quote ₹225 for some subjects, but the full eligible class range was not verified. Do not apply that fee to every subject or preschool class. Student registration URL is the shared CREST page and does not show that this edition is still open."
 }
 ```
 
@@ -741,13 +747,16 @@ Each JSON block is independently parseable. `data` holds candidate content value
       ]
     },
     "venue": null,
-    "registration_url": null,
-    "official_url": "https://www.crestolympiads.com/",
+    "registration_url": "https://www.crestolympiads.com/registration",
+    "official_url": "https://www.crestolympiads.com/science-olympiad-cso",
     "source_urls": [
-      "https://www.crestolympiads.com/exam-schedule"
+      "https://www.crestolympiads.com/register-school",
+      "https://www.crestolympiads.com/exam-schedule",
+      "https://www.crestolympiads.com/syllabus",
+      "https://www.crestolympiads.com/sample-papers"
     ]
   },
-  "review_notes": "Fee left empty: checked class-specific pages quote ₹225 for some subjects, but the full eligible class range was not verified. Do not apply that fee to every subject or preschool class."
+  "review_notes": "Fee left empty: checked class-specific pages quote ₹225 for some subjects, but the full eligible class range was not verified. Do not apply that fee to every subject or preschool class. Student registration URL is the shared CREST page and does not show that this edition is still open."
 }
 ```
 
@@ -780,13 +789,16 @@ Each JSON block is independently parseable. `data` holds candidate content value
       ]
     },
     "venue": null,
-    "registration_url": null,
-    "official_url": "https://www.crestolympiads.com/",
+    "registration_url": "https://www.crestolympiads.com/registration",
+    "official_url": "https://www.crestolympiads.com/reasoning-olympiad-cro",
     "source_urls": [
-      "https://www.crestolympiads.com/exam-schedule"
+      "https://www.crestolympiads.com/register-school",
+      "https://www.crestolympiads.com/exam-schedule",
+      "https://www.crestolympiads.com/syllabus",
+      "https://www.crestolympiads.com/sample-papers"
     ]
   },
-  "review_notes": "Fee left empty: checked class-specific pages quote ₹225 for some subjects, but the full eligible class range was not verified. Do not apply that fee to every subject or preschool class."
+  "review_notes": "Fee left empty: checked class-specific pages quote ₹225 for some subjects, but the full eligible class range was not verified. Do not apply that fee to every subject or preschool class. Student registration URL is the shared CREST page and does not show that this edition is still open."
 }
 ```
 
@@ -819,13 +831,16 @@ Each JSON block is independently parseable. `data` holds candidate content value
       ]
     },
     "venue": null,
-    "registration_url": null,
-    "official_url": "https://www.crestolympiads.com/",
+    "registration_url": "https://www.crestolympiads.com/registration",
+    "official_url": "https://www.crestolympiads.com/cyber-olympiad-cco",
     "source_urls": [
-      "https://www.crestolympiads.com/exam-schedule"
+      "https://www.crestolympiads.com/register-school",
+      "https://www.crestolympiads.com/exam-schedule",
+      "https://www.crestolympiads.com/syllabus",
+      "https://www.crestolympiads.com/sample-papers"
     ]
   },
-  "review_notes": "Fee left empty: checked class-specific pages quote ₹225 for some subjects, but the full eligible class range was not verified. Do not apply that fee to every subject or preschool class."
+  "review_notes": "Fee left empty: checked class-specific pages quote ₹225 for some subjects, but the full eligible class range was not verified. Do not apply that fee to every subject or preschool class. Student registration URL is the shared CREST page and does not show that this edition is still open."
 }
 ```
 
@@ -858,13 +873,16 @@ Each JSON block is independently parseable. `data` holds candidate content value
       ]
     },
     "venue": null,
-    "registration_url": null,
-    "official_url": "https://www.crestolympiads.com/",
+    "registration_url": "https://www.crestolympiads.com/registration",
+    "official_url": "https://www.crestolympiads.com/green-olympiad-gwo",
     "source_urls": [
-      "https://www.crestolympiads.com/exam-schedule"
+      "https://www.crestolympiads.com/register-school",
+      "https://www.crestolympiads.com/exam-schedule",
+      "https://www.crestolympiads.com/syllabus",
+      "https://www.crestolympiads.com/sample-papers"
     ]
   },
-  "review_notes": "Fee left empty: checked class-specific pages quote ₹225 for some subjects, but the full eligible class range was not verified. Do not apply that fee to every subject or preschool class."
+  "review_notes": "Fee left empty: checked class-specific pages quote ₹225 for some subjects, but the full eligible class range was not verified. Do not apply that fee to every subject or preschool class. Student registration URL is the shared CREST page and does not show that this edition is still open."
 }
 ```
 
@@ -897,13 +915,16 @@ Each JSON block is independently parseable. `data` holds candidate content value
       ]
     },
     "venue": null,
-    "registration_url": null,
-    "official_url": "https://www.crestolympiads.com/",
+    "registration_url": "https://www.crestolympiads.com/registration",
+    "official_url": "https://www.crestolympiads.com/spellbee-winter-csbw",
     "source_urls": [
-      "https://www.crestolympiads.com/exam-schedule"
+      "https://www.crestolympiads.com/register-school",
+      "https://www.crestolympiads.com/exam-schedule",
+      "https://www.crestolympiads.com/syllabus",
+      "https://www.crestolympiads.com/sample-papers"
     ]
   },
-  "review_notes": "Fee left empty: checked class-specific pages quote ₹225 for some subjects, but the full eligible class range was not verified. Do not apply that fee to every subject or preschool class."
+  "review_notes": "Fee left empty: checked class-specific pages quote ₹225 for some subjects, but the full eligible class range was not verified. Do not apply that fee to every subject or preschool class. Student registration URL is the shared CREST page and does not show that this edition is still open."
 }
 ```
 
@@ -936,13 +957,16 @@ Each JSON block is independently parseable. `data` holds candidate content value
       ]
     },
     "venue": null,
-    "registration_url": null,
-    "official_url": "https://www.crestolympiads.com/",
+    "registration_url": "https://www.crestolympiads.com/registration",
+    "official_url": "https://www.crestolympiads.com/spellbee-summer-csb",
     "source_urls": [
-      "https://www.crestolympiads.com/exam-schedule"
+      "https://www.crestolympiads.com/register-school",
+      "https://www.crestolympiads.com/exam-schedule",
+      "https://www.crestolympiads.com/syllabus",
+      "https://www.crestolympiads.com/sample-papers"
     ]
   },
-  "review_notes": "Fee left empty: checked class-specific pages quote ₹225 for some subjects, but the full eligible class range was not verified. Do not apply that fee to every subject or preschool class."
+  "review_notes": "Fee left empty: checked class-specific pages quote ₹225 for some subjects, but the full eligible class range was not verified. Do not apply that fee to every subject or preschool class. Student registration URL is the shared CREST page and does not show that this edition is still open."
 }
 ```
 
@@ -975,13 +999,16 @@ Each JSON block is independently parseable. `data` holds candidate content value
       ]
     },
     "venue": null,
-    "registration_url": null,
-    "official_url": "https://www.crestolympiads.com/",
+    "registration_url": "https://www.crestolympiads.com/registration",
+    "official_url": "https://www.crestolympiads.com/drawing-olympiad-cido",
     "source_urls": [
-      "https://www.crestolympiads.com/exam-schedule"
+      "https://www.crestolympiads.com/register-school",
+      "https://www.crestolympiads.com/exam-schedule",
+      "https://www.crestolympiads.com/syllabus",
+      "https://www.crestolympiads.com/sample-papers"
     ]
   },
-  "review_notes": "Fee left empty: checked class-specific pages quote ₹225 for some subjects, but the full eligible class range was not verified. Do not apply that fee to every subject or preschool class."
+  "review_notes": "Fee left empty: checked class-specific pages quote ₹225 for some subjects, but the full eligible class range was not verified. Do not apply that fee to every subject or preschool class. Student registration URL is the shared CREST page and does not show that this edition is still open."
 }
 ```
 
@@ -1014,13 +1041,16 @@ Each JSON block is independently parseable. `data` holds candidate content value
       ]
     },
     "venue": null,
-    "registration_url": null,
-    "official_url": "https://www.crestolympiads.com/",
+    "registration_url": "https://www.crestolympiads.com/registration",
+    "official_url": "https://www.crestolympiads.com/mental-maths-mmo",
     "source_urls": [
-      "https://www.crestolympiads.com/exam-schedule"
+      "https://www.crestolympiads.com/register-school",
+      "https://www.crestolympiads.com/exam-schedule",
+      "https://www.crestolympiads.com/syllabus",
+      "https://www.crestolympiads.com/sample-papers"
     ]
   },
-  "review_notes": "Fee left empty: checked class-specific pages quote ₹225 for some subjects, but the full eligible class range was not verified. Do not apply that fee to every subject or preschool class."
+  "review_notes": "Fee left empty: checked class-specific pages quote ₹225 for some subjects, but the full eligible class range was not verified. Do not apply that fee to every subject or preschool class. Student registration URL is the shared CREST page and does not show that this edition is still open."
 }
 ```
 
@@ -1705,7 +1735,7 @@ Each JSON block is independently parseable. `data` holds candidate content value
     "organiser": "SilverZone",
     "subject": "Mathematics",
     "edition_label": null,
-    "eligibility_text": null,
+    "eligibility_text": "All students of classes 1 to 12 are eligible for Level 1. Level 2 is for the top 1000 students who rank between 4th and 1003rd in Level 1, in classes 3 to 12, with at least 50% marks, and for class 1st rank holders in classes 3 to 12 with at least 75% marks and 100 participation from the school in this subject. Level 3 is for international Olympiad 1st rank holders of classes 6 to 12 from Level 2, and is held in New Delhi.",
     "board_eligibility": null,
     "age_eligibility": null,
     "geographic_eligibility": null,
@@ -1721,12 +1751,12 @@ Each JSON block is independently parseable. `data` holds candidate content value
     "schedule": null,
     "venue": null,
     "registration_url": null,
-    "official_url": "https://www.silverzone.org/",
+    "official_url": "https://www.silverzone.org/Mathematics-Olympiad",
     "source_urls": [
-      "https://www.silverzone.org/"
+      "https://www.silverzone.org/Mathematics-Olympiad"
     ]
   },
-  "review_notes": "Programme catalogue entry only. Exact edition, classes, price, dates and route left empty; family-wide registration announcement is not sufficient for per-exam values."
+  "review_notes": "Programme catalogue entry only. Exact edition, classes, price, dates and route left empty; family-wide registration announcement is not sufficient for per-exam values. Class range taken from the subject page. Dates and fees are still empty because that page does not state them."
 }
 ```
 
@@ -1739,7 +1769,7 @@ Each JSON block is independently parseable. `data` holds candidate content value
     "organiser": "SilverZone",
     "subject": "Science",
     "edition_label": null,
-    "eligibility_text": null,
+    "eligibility_text": "All students of classes 1 to 12 are eligible for Level 1. Level 2 is for the top 1000 students who rank between 4th and 1003rd in Level 1, in classes 3 to 12, with at least 50% marks, and for class 1st rank holders in classes 3 to 12 with at least 75% marks and 100 participation from the school in this subject. Level 3 is for international Olympiad 1st rank holders of classes 6 to 12 from Level 2, and is held in New Delhi.",
     "board_eligibility": null,
     "age_eligibility": null,
     "geographic_eligibility": null,
@@ -1755,12 +1785,12 @@ Each JSON block is independently parseable. `data` holds candidate content value
     "schedule": null,
     "venue": null,
     "registration_url": null,
-    "official_url": "https://www.silverzone.org/",
+    "official_url": "https://www.silverzone.org/Science-Olympiad",
     "source_urls": [
-      "https://www.silverzone.org/"
+      "https://www.silverzone.org/Science-Olympiad"
     ]
   },
-  "review_notes": "Programme catalogue entry only. Exact edition, classes, price, dates and route left empty; family-wide registration announcement is not sufficient for per-exam values."
+  "review_notes": "Programme catalogue entry only. Exact edition, classes, price, dates and route left empty; family-wide registration announcement is not sufficient for per-exam values. Class range taken from the subject page. Dates and fees are still empty because that page does not state them."
 }
 ```
 
@@ -1773,7 +1803,7 @@ Each JSON block is independently parseable. `data` holds candidate content value
     "organiser": "SilverZone",
     "subject": "English",
     "edition_label": null,
-    "eligibility_text": null,
+    "eligibility_text": "All students of classes 1 to 12 are eligible for Level 1. Level 2 is for the top 1000 students who rank between 4th and 1003rd in Level 1, in classes 3 to 12, with at least 50% marks, and for class 1st rank holders in classes 3 to 12 with at least 75% marks and 100 participation from the school in this subject. Level 3 is for international Olympiad 1st rank holders of classes 6 to 12 from Level 2, and is held in New Delhi.",
     "board_eligibility": null,
     "age_eligibility": null,
     "geographic_eligibility": null,
@@ -1789,12 +1819,12 @@ Each JSON block is independently parseable. `data` holds candidate content value
     "schedule": null,
     "venue": null,
     "registration_url": null,
-    "official_url": "https://www.silverzone.org/",
+    "official_url": "https://www.silverzone.org/English-Olympiad",
     "source_urls": [
-      "https://www.silverzone.org/"
+      "https://www.silverzone.org/English-Olympiad"
     ]
   },
-  "review_notes": "Programme catalogue entry only. Exact edition, classes, price, dates and route left empty; family-wide registration announcement is not sufficient for per-exam values."
+  "review_notes": "Programme catalogue entry only. Exact edition, classes, price, dates and route left empty; family-wide registration announcement is not sufficient for per-exam values. Class range taken from the subject page. Dates and fees are still empty because that page does not state them."
 }
 ```
 
@@ -1807,7 +1837,7 @@ Each JSON block is independently parseable. `data` holds candidate content value
     "organiser": "SilverZone",
     "subject": "Computer science",
     "edition_label": null,
-    "eligibility_text": null,
+    "eligibility_text": "All students of classes 1 to 12 are eligible to take part in Level 1 only.",
     "board_eligibility": null,
     "age_eligibility": null,
     "geographic_eligibility": null,
@@ -1823,12 +1853,12 @@ Each JSON block is independently parseable. `data` holds candidate content value
     "schedule": null,
     "venue": null,
     "registration_url": null,
-    "official_url": "https://www.silverzone.org/",
+    "official_url": "https://www.silverzone.org/Computer-Olympiad",
     "source_urls": [
-      "https://www.silverzone.org/"
+      "https://www.silverzone.org/Computer-Olympiad"
     ]
   },
-  "review_notes": "Programme catalogue entry only. Exact edition, classes, price, dates and route left empty; family-wide registration announcement is not sufficient for per-exam values."
+  "review_notes": "Programme catalogue entry only. Exact edition, classes, price, dates and route left empty; family-wide registration announcement is not sufficient for per-exam values. Class range taken from the subject page. Dates and fees are still empty because that page does not state them."
 }
 ```
 
@@ -1841,7 +1871,7 @@ Each JSON block is independently parseable. `data` holds candidate content value
     "organiser": "SilverZone",
     "subject": "General knowledge",
     "edition_label": null,
-    "eligibility_text": null,
+    "eligibility_text": "All students of classes 1 to 10 are eligible to take part in Level 1 only.",
     "board_eligibility": null,
     "age_eligibility": null,
     "geographic_eligibility": null,
@@ -1857,12 +1887,12 @@ Each JSON block is independently parseable. `data` holds candidate content value
     "schedule": null,
     "venue": null,
     "registration_url": null,
-    "official_url": "https://www.silverzone.org/",
+    "official_url": "https://www.silverzone.org/General-Knowledge-Olympiad",
     "source_urls": [
-      "https://www.silverzone.org/"
+      "https://www.silverzone.org/General-Knowledge-Olympiad"
     ]
   },
-  "review_notes": "Programme catalogue entry only. Exact edition, classes, price, dates and route left empty; family-wide registration announcement is not sufficient for per-exam values."
+  "review_notes": "Programme catalogue entry only. Exact edition, classes, price, dates and route left empty; family-wide registration announcement is not sufficient for per-exam values. Class range taken from the subject page. Dates and fees are still empty because that page does not state them."
 }
 ```
 
@@ -1875,7 +1905,7 @@ Each JSON block is independently parseable. `data` holds candidate content value
     "organiser": "SilverZone",
     "subject": "Hindi",
     "edition_label": null,
-    "eligibility_text": null,
+    "eligibility_text": "Open to students of classes 1 to 10. The Hindi page says the competition is open from class 1 to class 10.",
     "board_eligibility": null,
     "age_eligibility": null,
     "geographic_eligibility": null,
@@ -1891,12 +1921,12 @@ Each JSON block is independently parseable. `data` holds candidate content value
     "schedule": null,
     "venue": null,
     "registration_url": null,
-    "official_url": "https://www.silverzone.org/",
+    "official_url": "https://www.silverzone.org/Hindi-Olympiad",
     "source_urls": [
-      "https://www.silverzone.org/"
+      "https://www.silverzone.org/Hindi-Olympiad"
     ]
   },
-  "review_notes": "Programme catalogue entry only. Exact edition, classes, price, dates and route left empty; family-wide registration announcement is not sufficient for per-exam values."
+  "review_notes": "Programme catalogue entry only. Exact edition, classes, price, dates and route left empty; family-wide registration announcement is not sufficient for per-exam values. Class range taken from the subject page. Dates and fees are still empty because that page does not state them."
 }
 ```
 
@@ -1909,7 +1939,7 @@ Each JSON block is independently parseable. `data` holds candidate content value
     "organiser": "SilverZone",
     "subject": "Social studies",
     "edition_label": null,
-    "eligibility_text": null,
+    "eligibility_text": "The examination is conducted for classes 1 to 10.",
     "board_eligibility": null,
     "age_eligibility": null,
     "geographic_eligibility": null,
@@ -1925,12 +1955,12 @@ Each JSON block is independently parseable. `data` holds candidate content value
     "schedule": null,
     "venue": null,
     "registration_url": null,
-    "official_url": "https://www.silverzone.org/",
+    "official_url": "https://www.silverzone.org/Social-Studies-Olympiad",
     "source_urls": [
-      "https://www.silverzone.org/"
+      "https://www.silverzone.org/Social-Studies-Olympiad"
     ]
   },
-  "review_notes": "Programme catalogue entry only. Exact edition, classes, price, dates and route left empty; family-wide registration announcement is not sufficient for per-exam values."
+  "review_notes": "Programme catalogue entry only. Exact edition, classes, price, dates and route left empty; family-wide registration announcement is not sufficient for per-exam values. Class range taken from the subject page. Dates and fees are still empty because that page does not state them."
 }
 ```
 
@@ -1943,7 +1973,7 @@ Each JSON block is independently parseable. `data` holds candidate content value
     "organiser": "SilverZone",
     "subject": "Reasoning and aptitude",
     "edition_label": null,
-    "eligibility_text": null,
+    "eligibility_text": "All students of classes 1 to 12 are eligible to take part in Level 1 only.",
     "board_eligibility": null,
     "age_eligibility": null,
     "geographic_eligibility": null,
@@ -1959,12 +1989,12 @@ Each JSON block is independently parseable. `data` holds candidate content value
     "schedule": null,
     "venue": null,
     "registration_url": null,
-    "official_url": "https://www.silverzone.org/",
+    "official_url": "https://www.silverzone.org/Reasoning-Olympiad",
     "source_urls": [
-      "https://www.silverzone.org/"
+      "https://www.silverzone.org/Reasoning-Olympiad"
     ]
   },
-  "review_notes": "Programme catalogue entry only. Exact edition, classes, price, dates and route left empty; family-wide registration announcement is not sufficient for per-exam values."
+  "review_notes": "Programme catalogue entry only. Exact edition, classes, price, dates and route left empty; family-wide registration announcement is not sufficient for per-exam values. Class range taken from the subject page. Dates and fees are still empty because that page does not state them."
 }
 ```
 
@@ -1977,7 +2007,7 @@ Each JSON block is independently parseable. `data` holds candidate content value
     "organiser": "SilverZone",
     "subject": "STEM",
     "edition_label": null,
-    "eligibility_text": null,
+    "eligibility_text": "All students of classes 1 to 10 are eligible to take part in Level 1 only.",
     "board_eligibility": null,
     "age_eligibility": null,
     "geographic_eligibility": null,
@@ -1993,12 +2023,12 @@ Each JSON block is independently parseable. `data` holds candidate content value
     "schedule": null,
     "venue": null,
     "registration_url": null,
-    "official_url": "https://www.silverzone.org/",
+    "official_url": "https://www.silverzone.org/Stem-Olympiad",
     "source_urls": [
-      "https://www.silverzone.org/"
+      "https://www.silverzone.org/Stem-Olympiad"
     ]
   },
-  "review_notes": "Programme catalogue entry only. Exact edition, classes, price, dates and route left empty; family-wide registration announcement is not sufficient for per-exam values."
+  "review_notes": "Programme catalogue entry only. Exact edition, classes, price, dates and route left empty; family-wide registration announcement is not sufficient for per-exam values. Class range taken from the subject page. Dates and fees are still empty because that page does not state them."
 }
 ```
 

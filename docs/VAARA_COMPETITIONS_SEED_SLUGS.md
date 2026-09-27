@@ -25,7 +25,7 @@ Rules: import as **draft** until editorially published. Never invent missing dat
 | 18 | crest-igwo | IGWO | CREST Olympiads | olympiad | general_knowledge |
 | 19 | crest-spell-bee-winter | Spell Bee — Winter | CREST Olympiads | competition | english |
 | 20 | crest-spell-bee-summer | Spell Bee — Summer | CREST Olympiads | competition | english |
-| 21 | crest-cido | CIDO | CREST Olympiads | olympiad | computing |
+| 21 | crest-cido | CIDO | CREST Olympiads | olympiad | arts |
 | 22 | crest-cmmo | CMMO | CREST Olympiads | olympiad | mathematics |
 | 23 | vvm | Vidyarthi Vigyan Manthan | null until confirmed | exam | science |
 | 24 | bebras-india | Bebras India | null until confirmed | competition | computing |

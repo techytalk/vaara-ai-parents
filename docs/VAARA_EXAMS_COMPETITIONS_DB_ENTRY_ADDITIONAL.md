@@ -708,7 +708,7 @@ Each block is valid JSON. Only the data and sourced fee options are candidate bu
     "organiser": "Indian Talent Olympiad",
     "subject": "General knowledge",
     "edition_label": "2026–27",
-    "eligibility_text": "Classes 1–10",
+    "eligibility_text": "Open to students from class 1 to class 10.",
     "board_eligibility": null,
     "age_eligibility": null,
     "geographic_eligibility": null,
@@ -727,9 +727,12 @@ Each block is valid JSON. Only the data and sourced fee options are candidate bu
       "set_c": "2026-12-15"
     },
     "venue": null,
-    "registration_url": null,
-    "official_url": "https://www.indiantalent.org/offline-olympiad-exam-schedule",
+    "registration_url": "https://www.indiantalent.org/olympiad-exam-registration-student",
+    "official_url": "https://www.indiantalent.org/general-knowledge-international-olympiad",
     "source_urls": [
+      "https://www.indiantalent.org/general-knowledge-international-olympiad",
+      "https://www.indiantalent.org/olympiad-exam-registration-student",
+      "https://www.indiantalent.org/olympiad-school-registration",
       "https://www.indiantalent.org/offline-olympiad-exam-schedule",
       "https://www.indiantalent.org/olympiad-fee-structure-and-bank-details"
     ]
@@ -738,7 +741,7 @@ Each block is valid JSON. Only the data and sourced fee options are candidate bu
   "research": {
     "checked_on": "2026-09-27",
     "coverage": "edition_details",
-    "review_notes": "Shared ITO school-route rules below apply. Other organisers use similar acronyms; retain organiser identity."
+    "review_notes": "Shared ITO school-route rules below apply. Other organisers use similar acronyms; retain organiser identity. Subject page is the source link. The student registration link does not show that this edition is still open."
   }
 }
 ```
@@ -754,7 +757,7 @@ Each block is valid JSON. Only the data and sourced fee options are candidate bu
     "organiser": "Indian Talent Olympiad",
     "subject": "Computing",
     "edition_label": "2026–27",
-    "eligibility_text": "Classes 1–10",
+    "eligibility_text": "Students from class 1 to class 10 can participate.",
     "board_eligibility": null,
     "age_eligibility": null,
     "geographic_eligibility": null,
@@ -773,9 +776,12 @@ Each block is valid JSON. Only the data and sourced fee options are candidate bu
       "set_c": "2027-01-05"
     },
     "venue": null,
-    "registration_url": null,
-    "official_url": "https://www.indiantalent.org/offline-olympiad-exam-schedule",
+    "registration_url": "https://www.indiantalent.org/olympiad-exam-registration-student",
+    "official_url": "https://www.indiantalent.org/international-computer-olympiad",
     "source_urls": [
+      "https://www.indiantalent.org/international-computer-olympiad",
+      "https://www.indiantalent.org/olympiad-exam-registration-student",
+      "https://www.indiantalent.org/olympiad-school-registration",
       "https://www.indiantalent.org/offline-olympiad-exam-schedule",
       "https://www.indiantalent.org/olympiad-fee-structure-and-bank-details"
     ]
@@ -784,7 +790,7 @@ Each block is valid JSON. Only the data and sourced fee options are candidate bu
   "research": {
     "checked_on": "2026-09-27",
     "coverage": "edition_details",
-    "review_notes": "Shared ITO school-route rules below apply. Other organisers use similar acronyms; retain organiser identity."
+    "review_notes": "Shared ITO school-route rules below apply. Other organisers use similar acronyms; retain organiser identity. Subject page is the source link. The student registration link does not show that this edition is still open."
   }
 }
 ```
@@ -800,7 +806,7 @@ Each block is valid JSON. Only the data and sourced fee options are candidate bu
     "organiser": "Indian Talent Olympiad",
     "subject": "English",
     "edition_label": "2026–27",
-    "eligibility_text": "Classes 1–12",
+    "eligibility_text": "Open to students from class 1 to class 10.",
     "board_eligibility": null,
     "age_eligibility": null,
     "geographic_eligibility": null,
@@ -819,9 +825,12 @@ Each block is valid JSON. Only the data and sourced fee options are candidate bu
       "set_c": "2026-12-16"
     },
     "venue": null,
-    "registration_url": null,
-    "official_url": "https://www.indiantalent.org/offline-olympiad-exam-schedule",
+    "registration_url": "https://www.indiantalent.org/olympiad-exam-registration-student",
+    "official_url": "https://www.indiantalent.org/english-international-olympiad",
     "source_urls": [
+      "https://www.indiantalent.org/english-international-olympiad",
+      "https://www.indiantalent.org/olympiad-exam-registration-student",
+      "https://www.indiantalent.org/olympiad-school-registration",
       "https://www.indiantalent.org/offline-olympiad-exam-schedule",
       "https://www.indiantalent.org/olympiad-fee-structure-and-bank-details"
     ]
@@ -830,7 +839,7 @@ Each block is valid JSON. Only the data and sourced fee options are candidate bu
   "research": {
     "checked_on": "2026-09-27",
     "coverage": "edition_details",
-    "review_notes": "Shared ITO school-route rules below apply. Other organisers use similar acronyms; retain organiser identity."
+    "review_notes": "Shared ITO school-route rules below apply. Other organisers use similar acronyms; retain organiser identity. Subject page is the source link. The student registration link does not show that this edition is still open."
   }
 }
 ```
@@ -846,7 +855,7 @@ Each block is valid JSON. Only the data and sourced fee options are candidate bu
     "organiser": "Indian Talent Olympiad",
     "subject": "Social studies",
     "edition_label": "2026–27",
-    "eligibility_text": "Classes 1–10",
+    "eligibility_text": "Open to students from class 1 to class 10.",
     "board_eligibility": null,
     "age_eligibility": null,
     "geographic_eligibility": null,
@@ -865,9 +874,12 @@ Each block is valid JSON. Only the data and sourced fee options are candidate bu
       "set_c": "2027-01-08"
     },
     "venue": null,
-    "registration_url": null,
-    "official_url": "https://www.indiantalent.org/offline-olympiad-exam-schedule",
+    "registration_url": "https://www.indiantalent.org/olympiad-exam-registration-student",
+    "official_url": "https://www.indiantalent.org/national-social-studies-olympiad",
     "source_urls": [
+      "https://www.indiantalent.org/national-social-studies-olympiad",
+      "https://www.indiantalent.org/olympiad-exam-registration-student",
+      "https://www.indiantalent.org/olympiad-school-registration",
       "https://www.indiantalent.org/offline-olympiad-exam-schedule",
       "https://www.indiantalent.org/olympiad-fee-structure-and-bank-details"
     ]
@@ -876,7 +888,7 @@ Each block is valid JSON. Only the data and sourced fee options are candidate bu
   "research": {
     "checked_on": "2026-09-27",
     "coverage": "edition_details",
-    "review_notes": "Shared ITO school-route rules below apply. Other organisers use similar acronyms; retain organiser identity."
+    "review_notes": "Shared ITO school-route rules below apply. Other organisers use similar acronyms; retain organiser identity. Subject page is the source link. The student registration link does not show that this edition is still open."
   }
 }
 ```
@@ -892,7 +904,7 @@ Each block is valid JSON. Only the data and sourced fee options are candidate bu
     "organiser": "Indian Talent Olympiad",
     "subject": "Essay writing",
     "edition_label": "2026–27",
-    "eligibility_text": "Classes 1–10",
+    "eligibility_text": "Open to students from class 1 to class 10.",
     "board_eligibility": null,
     "age_eligibility": null,
     "geographic_eligibility": null,
@@ -911,9 +923,12 @@ Each block is valid JSON. Only the data and sourced fee options are candidate bu
       "set_c": "2027-01-08"
     },
     "venue": null,
-    "registration_url": null,
-    "official_url": "https://www.indiantalent.org/offline-olympiad-exam-schedule",
+    "registration_url": "https://www.indiantalent.org/olympiad-exam-registration-student",
+    "official_url": "https://www.indiantalent.org/national-essay-olympiad",
     "source_urls": [
+      "https://www.indiantalent.org/national-essay-olympiad",
+      "https://www.indiantalent.org/olympiad-exam-registration-student",
+      "https://www.indiantalent.org/olympiad-school-registration",
       "https://www.indiantalent.org/offline-olympiad-exam-schedule",
       "https://www.indiantalent.org/olympiad-fee-structure-and-bank-details"
     ]
@@ -922,7 +937,7 @@ Each block is valid JSON. Only the data and sourced fee options are candidate bu
   "research": {
     "checked_on": "2026-09-27",
     "coverage": "edition_details",
-    "review_notes": "Shared ITO school-route rules below apply. Other organisers use similar acronyms; retain organiser identity."
+    "review_notes": "Shared ITO school-route rules below apply. Other organisers use similar acronyms; retain organiser identity. Subject page is the source link. The student registration link does not show that this edition is still open."
   }
 }
 ```
@@ -938,7 +953,7 @@ Each block is valid JSON. Only the data and sourced fee options are candidate bu
     "organiser": "Indian Talent Olympiad",
     "subject": "Drawing",
     "edition_label": "2026–27",
-    "eligibility_text": "Classes 1–10",
+    "eligibility_text": "Open to students from class 1 to class 10.",
     "board_eligibility": null,
     "age_eligibility": null,
     "geographic_eligibility": null,
@@ -957,9 +972,12 @@ Each block is valid JSON. Only the data and sourced fee options are candidate bu
       "set_c": "2027-01-11"
     },
     "venue": null,
-    "registration_url": null,
-    "official_url": "https://www.indiantalent.org/offline-olympiad-exam-schedule",
+    "registration_url": "https://www.indiantalent.org/olympiad-exam-registration-student",
+    "official_url": "https://www.indiantalent.org/international-drawing-olympiad",
     "source_urls": [
+      "https://www.indiantalent.org/international-drawing-olympiad",
+      "https://www.indiantalent.org/olympiad-exam-registration-student",
+      "https://www.indiantalent.org/olympiad-school-registration",
       "https://www.indiantalent.org/offline-olympiad-exam-schedule",
       "https://www.indiantalent.org/olympiad-fee-structure-and-bank-details"
     ]
@@ -968,7 +986,7 @@ Each block is valid JSON. Only the data and sourced fee options are candidate bu
   "research": {
     "checked_on": "2026-09-27",
     "coverage": "edition_details",
-    "review_notes": "Shared ITO school-route rules below apply. Other organisers use similar acronyms; retain organiser identity."
+    "review_notes": "Shared ITO school-route rules below apply. Other organisers use similar acronyms; retain organiser identity. Subject page is the source link. The student registration link does not show that this edition is still open."
   }
 }
 ```
@@ -984,7 +1002,7 @@ Each block is valid JSON. Only the data and sourced fee options are candidate bu
     "organiser": "Indian Talent Olympiad",
     "subject": "Mathematics",
     "edition_label": "2026–27",
-    "eligibility_text": "Classes 1–12",
+    "eligibility_text": "Open to students from class 1 to class 10.",
     "board_eligibility": null,
     "age_eligibility": null,
     "geographic_eligibility": null,
@@ -1003,9 +1021,12 @@ Each block is valid JSON. Only the data and sourced fee options are candidate bu
       "set_c": "2026-12-17"
     },
     "venue": null,
-    "registration_url": null,
-    "official_url": "https://www.indiantalent.org/offline-olympiad-exam-schedule",
+    "registration_url": "https://www.indiantalent.org/olympiad-exam-registration-student",
+    "official_url": "https://www.indiantalent.org/international-maths-olympiad",
     "source_urls": [
+      "https://www.indiantalent.org/international-maths-olympiad",
+      "https://www.indiantalent.org/olympiad-exam-registration-student",
+      "https://www.indiantalent.org/olympiad-school-registration",
       "https://www.indiantalent.org/offline-olympiad-exam-schedule",
       "https://www.indiantalent.org/olympiad-fee-structure-and-bank-details"
     ]
@@ -1014,7 +1035,7 @@ Each block is valid JSON. Only the data and sourced fee options are candidate bu
   "research": {
     "checked_on": "2026-09-27",
     "coverage": "edition_details",
-    "review_notes": "Shared ITO school-route rules below apply. Other organisers use similar acronyms; retain organiser identity."
+    "review_notes": "Shared ITO school-route rules below apply. Other organisers use similar acronyms; retain organiser identity. Subject page is the source link. The student registration link does not show that this edition is still open."
   }
 }
 ```
@@ -1030,7 +1051,7 @@ Each block is valid JSON. Only the data and sourced fee options are candidate bu
     "organiser": "Indian Talent Olympiad",
     "subject": "Science",
     "edition_label": "2026–27",
-    "eligibility_text": "Classes 1–12",
+    "eligibility_text": "Open to students from class 1 to class 10.",
     "board_eligibility": null,
     "age_eligibility": null,
     "geographic_eligibility": null,
@@ -1049,9 +1070,12 @@ Each block is valid JSON. Only the data and sourced fee options are candidate bu
       "set_c": "2026-12-18"
     },
     "venue": null,
-    "registration_url": null,
-    "official_url": "https://www.indiantalent.org/offline-olympiad-exam-schedule",
+    "registration_url": "https://www.indiantalent.org/olympiad-exam-registration-student",
+    "official_url": "https://www.indiantalent.org/international-science-olympiad",
     "source_urls": [
+      "https://www.indiantalent.org/international-science-olympiad",
+      "https://www.indiantalent.org/olympiad-exam-registration-student",
+      "https://www.indiantalent.org/olympiad-school-registration",
       "https://www.indiantalent.org/offline-olympiad-exam-schedule",
       "https://www.indiantalent.org/olympiad-fee-structure-and-bank-details"
     ]
@@ -1060,7 +1084,7 @@ Each block is valid JSON. Only the data and sourced fee options are candidate bu
   "research": {
     "checked_on": "2026-09-27",
     "coverage": "edition_details",
-    "review_notes": "Shared ITO school-route rules below apply. Other organisers use similar acronyms; retain organiser identity."
+    "review_notes": "Shared ITO school-route rules below apply. Other organisers use similar acronyms; retain organiser identity. Subject page is the source link. The student registration link does not show that this edition is still open."
   }
 }
 ```
