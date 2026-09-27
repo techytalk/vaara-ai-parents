@@ -1,10 +1,11 @@
 /**
- * Import staging catalogue from docs/VAARA_EXAMS_COMPETITIONS_DB_ENTRY.md
- * using slugs in docs/VAARA_COMPETITIONS_SEED_SLUGS.md.
+ * Import staging catalogues as drafts.
+ * docs/VAARA_EXAMS_COMPETITIONS_DB_ENTRY.md (63) and
+ * docs/VAARA_EXAMS_COMPETITIONS_DB_ENTRY_ADDITIONAL.md (37).
  *
- * All rows stay publication_status = draft. Nulls stay NULL.
- * Blank geography is scope_level = unknown (never inferred national).
- * Review notes are stored only on the change log, not parent-facing fields.
+ * Nulls stay NULL. Blank geography is scope_level = unknown.
+ * Review notes stay on the change log, not parent-facing fields.
+ * Re-running updates facts and does not publish a draft.
  */
 import { readFileSync } from "fs";
 import { dirname, resolve } from "path";
@@ -25,6 +26,7 @@ type Staging = {
     age_eligibility: string | null;
     geographic_eligibility: string | null;
     participation_route: string | null;
+    team_rules: string | null;
     fee_amount: number | null;
     fee_currency: string | null;
     fee_basis: string | null;
@@ -37,7 +39,19 @@ type Staging = {
     official_url: string | null;
     source_urls: string[] | null;
   };
+  fee_options?: Array<{
+    route?: string | null;
+    amount?: number | null;
+    currency?: string | null;
+    basis?: string | null;
+    tax_note?: string | null;
+    eligibility?: string | null;
+  }> | null;
   review_notes: string | null;
+  research?: {
+    coverage?: string | null;
+    review_notes?: string | null;
+  } | null;
 };
 
 type SlugRow = {
@@ -99,6 +113,20 @@ function scopeFromGeo(geo: string | null): string {
   return "unknown";
 }
 
+function reviewText(record: Staging): string | null {
+  const parts = [
+    record.review_notes,
+    record.research?.coverage ? `coverage: ${record.research.coverage}` : null,
+    record.research?.review_notes,
+  ].filter((part): part is string => Boolean(part && part.trim()));
+  return parts.length ? parts.join("\n") : null;
+}
+
+function currencyCode(value: string | null | undefined): string {
+  if (value && /^[A-Za-z]{3}$/.test(value)) return value.toUpperCase();
+  return "INR";
+}
+
 function feeStatus(amount: number | null): string {
   if (amount === null || amount === undefined) return "unknown";
   if (amount === 0) return "free";
@@ -106,17 +134,28 @@ function feeStatus(amount: number | null): string {
 }
 
 async function main() {
-  const slugs = parseSlugMap(
-    readFileSync(resolve(docs, "VAARA_COMPETITIONS_SEED_SLUGS.md"), "utf8")
-  );
-  const records = parseRecords(
-    readFileSync(resolve(docs, "VAARA_EXAMS_COMPETITIONS_DB_ENTRY.md"), "utf8")
-  );
-  if (slugs.length !== records.length) {
-    throw new Error(
-      `Slug map (${slugs.length}) and JSON records (${records.length}) differ`
-    );
-  }
+  const batches = [
+    {
+      slugs: "VAARA_COMPETITIONS_SEED_SLUGS.md",
+      records: "VAARA_EXAMS_COMPETITIONS_DB_ENTRY.md",
+      firstNumber: 1,
+    },
+    {
+      slugs: "VAARA_COMPETITIONS_SEED_SLUGS_ADDITIONAL.md",
+      records: "VAARA_EXAMS_COMPETITIONS_DB_ENTRY_ADDITIONAL.md",
+      firstNumber: 64,
+    },
+  ];
+  const loaded = batches.map((batch) => {
+    const slugs = parseSlugMap(readFileSync(resolve(docs, batch.slugs), "utf8"));
+    const records = parseRecords(readFileSync(resolve(docs, batch.records), "utf8"));
+    if (slugs.length !== records.length) {
+      throw new Error(
+        `${batch.records}: slug map (${slugs.length}) and JSON records (${records.length}) differ`
+      );
+    }
+    return { ...batch, slugs, records };
+  });
 
   const client = await pool.connect();
   try {
@@ -128,12 +167,14 @@ async function main() {
 
     let inserted = 0;
     let editions = 0;
-    for (let i = 0; i < records.length; i++) {
-      const map = slugs[i];
-      const data = records[i].data;
-      const review = records[i].review_notes;
-      if (!map || map.n !== i + 1) {
-        throw new Error(`Slug row mismatch at index ${i}`);
+    for (const batch of loaded) {
+    for (let i = 0; i < batch.records.length; i++) {
+      const map = batch.slugs[i];
+      const record = batch.records[i];
+      const data = record.data;
+      const review = reviewText(record);
+      if (!map || map.n !== batch.firstNumber + i) {
+        throw new Error(`Slug row mismatch at ${batch.records} index ${i}`);
       }
 
       const opp = await client.query<{ id: string }>(
@@ -173,12 +214,36 @@ async function main() {
         );
       }
 
-      if (!data.edition_label) continue;
+      if (!data.edition_label) {
+        await client.query(
+          `INSERT INTO opportunity_change_log (
+             entity_type, entity_id, reason, after_data
+           ) VALUES ('opportunity', $1, 'staging import', $2::jsonb)`,
+          [
+            opportunityId,
+            JSON.stringify({
+              slug: map.slug,
+              review_notes: review,
+              imported_as: "draft",
+              edition: null,
+            }),
+          ]
+        );
+        continue;
+      }
 
       const key = editionKey(data.edition_label);
       const method = registrationMethod(data.participation_route);
       const scope = scopeFromGeo(data.geographic_eligibility);
-      const fee = feeStatus(data.fee_amount);
+      const optionFees = (record.fee_options ?? []).filter(
+        (fee) => fee && fee.amount !== null && fee.amount !== undefined
+      );
+      const fee =
+        data.fee_amount !== null && data.fee_amount !== undefined
+          ? feeStatus(data.fee_amount)
+          : optionFees.length > 0
+            ? "varies"
+            : "unknown";
       const eligibility = [
         data.eligibility_text,
         data.board_eligibility ? `Board: ${data.board_eligibility}` : null,
@@ -186,6 +251,7 @@ async function main() {
         data.geographic_eligibility
           ? `Geography: ${data.geographic_eligibility}`
           : null,
+        data.team_rules ? `Team: ${data.team_rules}` : null,
       ]
         .filter(Boolean)
         .join("\n");
@@ -294,12 +360,41 @@ async function main() {
             editionId,
             data.fee_basis || "Entry",
             data.fee_amount,
-            (data.fee_currency || "INR").slice(0, 3),
-            [data.fee_basis, data.fee_tax_note].filter(Boolean).join("; ") ||
-              null,
+            (data.fee_currency && /^[A-Za-z]{3}$/.test(data.fee_currency)
+              ? data.fee_currency.toUpperCase()
+              : "INR"),
+            [
+              data.fee_amount === 0 && !data.fee_currency
+                ? "Currency not stated by the organiser"
+                : null,
+              data.fee_basis,
+              data.fee_tax_note,
+            ]
+              .filter(Boolean)
+              .join("; ") || null,
             sourceId,
           ]
         );
+      }
+      if (data.fee_amount === null || data.fee_amount === undefined) {
+        for (const option of optionFees) {
+          await client.query(
+            `INSERT INTO opportunity_fees (
+               edition_id, label, amount, currency, fee_type, applicability_text,
+               is_mandatory, source_id
+             ) VALUES ($1, $2, $3, $4, 'registration', $5, false, $6)`,
+            [
+              editionId,
+              (option.basis || option.route || "Entry").slice(0, 200),
+              option.amount,
+              currencyCode(option.currency),
+              [option.route, option.tax_note, option.eligibility]
+                .filter(Boolean)
+                .join("; ") || null,
+              sourceId,
+            ]
+          );
+        }
       }
 
       const addDate = async (
@@ -373,6 +468,74 @@ async function main() {
             [editionId, stage, schedule.month, sourceId]
           );
         }
+        if (typeof schedule.starts_on === "string") {
+          await addDate(
+            "event",
+            stage,
+            schedule.starts_on,
+            null,
+            "Start date only. End date was not stated.",
+            "date"
+          );
+        }
+        if (Array.isArray(schedule.stages)) {
+          for (const item of schedule.stages) {
+            if (!item || typeof item !== "object") continue;
+            const named = item as { name?: unknown; date?: unknown };
+            if (typeof named.date !== "string") continue;
+            await addDate(
+              "event",
+              typeof named.name === "string" ? named.name : stage,
+              named.date,
+              null,
+              null,
+              "date"
+            );
+          }
+        }
+        const itoSets = [
+          ["set_a", "Set A", "2026-09-10"],
+          ["set_b", "Set B", "2026-10-10"],
+          ["set_c", "Set C", "2026-11-10"],
+        ] as const;
+        if ((data.organiser || "").toLowerCase().includes("indian talent olympiad")) {
+          for (const [key, label, closesOn] of itoSets) {
+            const examDay = schedule[key];
+            if (typeof examDay !== "string") continue;
+            const note = `School chooses one set. Registration for ${label} closes ${closesOn}.`;
+            await addDate("event", label, examDay, null, note, "date");
+            await addDate("registration", `${label} registration`, null, closesOn, note, "date");
+          }
+        }
+        if (
+          typeof schedule.entry_window_opens_at === "string" ||
+          typeof schedule.entry_window_closes_at === "string"
+        ) {
+          await client.query(
+            `INSERT INTO opportunity_schedules (
+               edition_id, schedule_type, label, date_status, precision,
+               starts_at, ends_at, source_id
+             ) VALUES ($1, 'registration', 'Entry window', 'estimated', 'datetime', $2, $3, $4)`,
+            [
+              editionId,
+              typeof schedule.entry_window_opens_at === "string"
+                ? schedule.entry_window_opens_at
+                : null,
+              typeof schedule.entry_window_closes_at === "string"
+                ? schedule.entry_window_closes_at
+                : null,
+              sourceId,
+            ]
+          );
+        }
+        if (typeof schedule.peer_review_closes_at === "string") {
+          await client.query(
+            `INSERT INTO opportunity_schedules (
+               edition_id, schedule_type, label, date_status, precision, ends_at, source_id
+             ) VALUES ($1, 'event', 'Peer review', 'estimated', 'datetime', $2, $3)`,
+            [editionId, schedule.peer_review_closes_at, sourceId]
+          );
+        }
       }
 
       await client.query(
@@ -388,6 +551,7 @@ async function main() {
           }),
         ]
       );
+    }
     }
 
     await client.query("COMMIT");
