@@ -74,6 +74,13 @@ export type OpportunityCard = {
     officialNoticeUrl: string | null;
   } | null;
   registrationState?: string;
+  feeLabel?: "Free" | "Paid" | null;
+  registrationOpensOn?: string | null;
+  registrationClosesOn?: string | null;
+  registrationDateCount?: number;
+  eventStartsOn?: string | null;
+  eventEndsOn?: string | null;
+  eventDateCount?: number;
   checks?: {
     grade: string;
     geography: string;

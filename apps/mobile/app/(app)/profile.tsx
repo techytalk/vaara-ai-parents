@@ -208,7 +208,7 @@ export default function ProfileScreen() {
         ) : null}
         <MenuRow
           icon="school-outline"
-          label="Competitive exams"
+          label="Competitions & Exams"
           onPress={() => openMore("/(app)/opportunities", "competitive_exams")}
         />
         <MenuRow

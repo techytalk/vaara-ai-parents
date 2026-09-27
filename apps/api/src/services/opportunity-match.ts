@@ -79,6 +79,63 @@ export function deriveRegistrationState(input: {
   return "unknown";
 }
 
+export function cardFeeLabel(
+  feeStatus: string | null | undefined
+): "Free" | "Paid" | null {
+  if (feeStatus === "free") return "Free";
+  if (feeStatus === "paid" || feeStatus === "varies") return "Paid";
+  return null;
+}
+
+export type CardDateFacts = {
+  registrationOpensOn: string | null;
+  registrationClosesOn: string | null;
+  registrationDateCount: number;
+  eventStartsOn: string | null;
+  eventEndsOn: string | null;
+  eventDateCount: number;
+};
+
+function datedRows(schedules: RegistrationSchedule[], type: string) {
+  return schedules.filter(
+    (row) =>
+      row.scheduleType === type &&
+      row.dateStatus !== "unannounced" &&
+      row.dateStatus !== "unknown" &&
+      Boolean(row.startsOn || row.endsOn)
+  );
+}
+
+/** Prefer a date that has not passed. Otherwise keep the latest one we have. */
+function pickRow(rows: RegistrationSchedule[], today: string) {
+  const upcoming = rows.filter((row) => (row.endsOn || row.startsOn || "") >= today);
+  const pool = upcoming.length > 0 ? upcoming : rows;
+  return [...pool].sort((a, b) =>
+    (a.endsOn || a.startsOn || "9999-99-99").localeCompare(
+      b.endsOn || b.startsOn || "9999-99-99"
+    )
+  )[0];
+}
+
+export function cardDateFacts(
+  schedules: RegistrationSchedule[],
+  now?: Date
+): CardDateFacts {
+  const today = (now ?? new Date()).toISOString().slice(0, 10);
+  const registration = datedRows(schedules, "registration");
+  const events = datedRows(schedules, "event");
+  const registrationRow = registration.length ? pickRow(registration, today) : null;
+  const eventRow = events.length ? pickRow(events, today) : null;
+  return {
+    registrationOpensOn: registrationRow?.startsOn ?? null,
+    registrationClosesOn: registrationRow?.endsOn ?? null,
+    registrationDateCount: registration.length,
+    eventStartsOn: eventRow?.startsOn ?? null,
+    eventEndsOn: eventRow?.endsOn ?? null,
+    eventDateCount: events.length,
+  };
+}
+
 export function gradeCheck(
   eligibility: string | null | undefined,
   grade: number | null

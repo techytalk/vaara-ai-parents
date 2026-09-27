@@ -16,7 +16,7 @@ export default function OpportunitiesLayout() {
         contentStyle: { backgroundColor: colors.bg },
       }}
     >
-      <Stack.Screen name="index" options={{ title: "Competitive exams" }} />
+      <Stack.Screen name="index" options={{ title: "Competitions & Exams" }} />
       <Stack.Screen name="[slug]" options={{ title: "Exam" }} />
     </Stack>
   );

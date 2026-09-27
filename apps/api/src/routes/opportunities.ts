@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import { pool } from "@vaara/db";
 import { authMiddleware, type AuthVariables } from "../middleware/auth.js";
 import {
+  cardDateFacts,
+  cardFeeLabel,
   deriveRegistrationState,
   eligibilityCoversGrade,
   evaluateEligibility,
@@ -199,6 +201,13 @@ export function createOpportunityRoutes() {
       score: number;
       edition: ReturnType<typeof mapEdition>;
       registrationState: string;
+      feeLabel: "Free" | "Paid" | null;
+      registrationOpensOn: string | null;
+      registrationClosesOn: string | null;
+      registrationDateCount: number;
+      eventStartsOn: string | null;
+      eventEndsOn: string | null;
+      eventDateCount: number;
       checks: { grade: string; geography: string; curriculum: string; summary: string; copy: string };
       categoryCodes: string[];
     };
@@ -216,6 +225,7 @@ export function createOpportunityRoutes() {
         registrationMethod: row.registration_method as string,
         schedules: editionSchedules,
       });
+      const dates = cardDateFacts(editionSchedules);
       const eligibility = evaluateEligibility({
         eligibilityText: row.eligibility_summary as string | null,
         grade: child?.grade ?? null,
@@ -247,6 +257,8 @@ export function createOpportunityRoutes() {
         score,
         edition: mapEdition(row as EditionRow & { edition_id: string }),
         registrationState,
+        feeLabel: cardFeeLabel(row.fee_status as string),
+        ...dates,
         checks: eligibility,
         categoryCodes: Array.isArray(row.category_codes)
           ? (row.category_codes as string[])

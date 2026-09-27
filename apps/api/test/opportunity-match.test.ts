@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  cardDateFacts,
+  cardFeeLabel,
   deriveRegistrationState,
   eligibilityCoversGrade,
   evaluateEligibility,
@@ -98,4 +100,42 @@ test("search ranks a near title above a miss", () => {
   });
   assert.ok(hit > miss);
   assert.equal(miss, 0);
+});
+
+test("fee label is only Free or Paid when the status says so", () => {
+  assert.equal(cardFeeLabel("free"), "Free");
+  assert.equal(cardFeeLabel("paid"), "Paid");
+  assert.equal(cardFeeLabel("varies"), "Paid");
+  assert.equal(cardFeeLabel("unknown"), null);
+  assert.equal(cardFeeLabel(null), null);
+});
+
+test("card dates keep the next registration close and the exam window", () => {
+  const facts = cardDateFacts(
+    [
+      {
+        scheduleType: "registration",
+        startsOn: null,
+        endsOn: "2026-09-10",
+        dateStatus: "estimated",
+      },
+      {
+        scheduleType: "registration",
+        startsOn: null,
+        endsOn: "2026-11-10",
+        dateStatus: "estimated",
+      },
+      {
+        scheduleType: "event",
+        startsOn: "2026-11-18",
+        endsOn: null,
+        dateStatus: "estimated",
+      },
+    ],
+    new Date("2026-09-27T00:00:00Z")
+  );
+  assert.equal(facts.registrationClosesOn, "2026-11-10");
+  assert.equal(facts.registrationDateCount, 2);
+  assert.equal(facts.eventStartsOn, "2026-11-18");
+  assert.equal(facts.eventDateCount, 1);
 });

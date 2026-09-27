@@ -127,7 +127,7 @@ export function Child360Cross({
   let rightTitle = "Interests";
   let rightLines: string[] = [];
   if (examsCard) {
-    rightTitle = "Exams";
+    rightTitle = "Competitions & Exams";
     rightLines =
       examMatchCount > 0 ? [`${examMatchCount} for this class`] : [];
   } else {

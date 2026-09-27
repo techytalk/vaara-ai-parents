@@ -32,6 +32,51 @@ const KIND_LABEL: Record<string, string> = {
   admission_route: "Admission",
 };
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function formatDay(value: string | null | undefined): string {
+  if (!value) return "";
+  const [year, month, day] = value.slice(0, 10).split("-");
+  const label = MONTHS[Number(month) - 1];
+  if (!label || !day || !year) return value.slice(0, 10);
+  return `${Number(day)} ${label} ${year}`;
+}
+
+function feeLabelFor(item: OpportunityCard): "Free" | "Paid" | null {
+  if (item.feeLabel === "Free" || item.feeLabel === "Paid") return item.feeLabel;
+  const status = item.edition?.feeStatus;
+  if (status === "free") return "Free";
+  if (status === "paid" || status === "varies") return "Paid";
+  return null;
+}
+
+function cardFacts(item: OpportunityCard): string {
+  const parts: string[] = [];
+  const fee = feeLabelFor(item);
+  if (fee) parts.push(fee);
+  const opens = item.registrationOpensOn;
+  const closes = item.registrationClosesOn;
+  if (opens && closes) {
+    parts.push(`Registration ${formatDay(opens)} – ${formatDay(closes)}`);
+  } else if (closes) {
+    parts.push(`Registration closes ${formatDay(closes)}`);
+  } else if (opens) {
+    parts.push(`Registration opens ${formatDay(opens)}`);
+  }
+  if ((item.registrationDateCount ?? 0) > 1) parts.push("more registration dates");
+  const eventStart = formatDay(item.eventStartsOn);
+  const eventEnd = formatDay(item.eventEndsOn);
+  if (eventStart && eventEnd && eventEnd !== eventStart) {
+    parts.push(`Exam ${eventStart} – ${eventEnd}`);
+  } else if (eventStart) {
+    parts.push(`Exam ${eventStart}`);
+  } else if (eventEnd) {
+    parts.push(`Exam ${eventEnd}`);
+  }
+  if ((item.eventDateCount ?? 0) > 1) parts.push("more exam dates");
+  return parts.join(" · ");
+}
+
 export default function CompetitiveExamsScreen() {
   useOriginBackHeader();
   const router = useRouter();
@@ -207,7 +252,7 @@ export default function CompetitiveExamsScreen() {
       {!enabled ? (
         <EmptyState
           title="Not available yet"
-          message="Competitive exams will show here once the catalogue is published."
+          message="Competitions and exams will show here once the catalogue is published."
         />
       ) : (
         <FlatList
@@ -223,7 +268,9 @@ export default function CompetitiveExamsScreen() {
               message="No verified listings match these filters yet."
             />
           }
-          renderItem={({ item }) => (
+          renderItem={({ item }) => {
+            const facts = cardFacts(item);
+            return (
             <Pressable
               style={styles.card}
               onPress={() =>
@@ -238,12 +285,12 @@ export default function CompetitiveExamsScreen() {
                 {[
                   item.organizerName,
                   item.edition?.editionLabel,
-                  item.registrationState?.replace(/_/g, " "),
-                  item.kind,
+                  KIND_LABEL[item.kind] || item.kind,
                 ]
                   .filter(Boolean)
                   .join(" · ")}
               </Text>
+              {facts ? <Text style={styles.facts}>{facts}</Text> : null}
               {item.checks?.copy ? (
                 <Text style={styles.eligibility}>{item.checks.copy}</Text>
               ) : null}
@@ -253,7 +300,8 @@ export default function CompetitiveExamsScreen() {
                 </Text>
               ) : null}
             </Pressable>
-          )}
+            );
+          }}
         />
       )}
     </View>
@@ -302,6 +350,13 @@ const styles = StyleSheet.create({
     fontFamily: typography.regular,
     color: colors.textMuted,
     fontSize: 13,
+  },
+  facts: {
+    marginTop: 6,
+    fontFamily: typography.semibold,
+    color: colors.text,
+    fontSize: 13,
+    lineHeight: 18,
   },
   eligibility: {
     marginTop: 6,

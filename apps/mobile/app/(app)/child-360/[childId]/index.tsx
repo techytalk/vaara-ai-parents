@@ -347,7 +347,7 @@ export default function Child360HubScreen() {
       {data.child.rightBand === "interests" && examMatches > 0 ? (
         <Pressable style={styles.examsLink} onPress={openExams}>
           <Text style={styles.examsLinkText}>
-            Competitive exams for this class
+            Competitions & Exams for this class
           </Text>
         </Pressable>
       ) : null}

@@ -354,7 +354,7 @@ export default function PathwaysHubScreen() {
           }}
           style={{ paddingHorizontal: 16, paddingBottom: 8 }}
         >
-          <Text style={{ color: "#08786D", fontWeight: "700" }}>Competitive exams</Text>
+          <Text style={{ color: "#08786D", fontWeight: "700" }}>Competitions & Exams</Text>
         </Pressable>
         <PathExploreThread
           locationTitle={data.locationTitle}
