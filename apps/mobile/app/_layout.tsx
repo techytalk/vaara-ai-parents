@@ -1,4 +1,4 @@
-import { Stack } from "expo-router";
+import { useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import * as Linking from "expo-linking";
 import { StatusBar } from "expo-status-bar";
@@ -29,6 +29,7 @@ import { getToken } from "@/lib/session";
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function RootLayout() {
+  const router = useRouter();
   const update = useAppUpdateCheck();
   useOTAUpdates();
   const [fontsLoaded, fontError] = useFonts({
@@ -48,7 +49,16 @@ export default function RootLayout() {
       const path = pathFromShareUrl(url);
       if (!path) return;
       getToken().then((token) => {
-        if (!token) savePendingLink(path).catch(() => {});
+        if (!token) {
+          const pending = path.startsWith("/(app)")
+            ? path
+            : path;
+          savePendingLink(pending).catch(() => {});
+          return;
+        }
+        if (path.startsWith("/(app)/opportunities") || path.startsWith("/opportunities")) {
+          router.push(path as never);
+        }
       });
     }
     Linking.getInitialURL().then((url) => {

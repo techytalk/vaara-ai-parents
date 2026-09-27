@@ -33,6 +33,7 @@ export default function Child360HubScreen() {
   const children = childrenQuery.data ?? [];
   const refetchChildren = childrenQuery.refetch;
   const [data, setData] = useState<Child360Hub | null>(null);
+  const [examMatches, setExamMatches] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +56,9 @@ export default function Child360HubScreen() {
       if (loadingChildRef.current !== childId) return;
       setData(hub);
       setError(null);
+      const summary = await api.getOpportunitySummary(token, childId).catch(() => null);
+      if (loadingChildRef.current !== childId) return;
+      setExamMatches(summary?.enabled ? summary.matchCount : 0);
     } catch (e) {
       if (loadingChildRef.current !== childId) return;
       if (e instanceof ApiError && e.status === 404) {
@@ -338,6 +342,21 @@ export default function Child360HubScreen() {
         onRight={openRight}
         onBottom={openBottom}
       />
+      {examMatches > 0 ? (
+        <Pressable
+          style={styles.examsLink}
+          onPress={() =>
+            router.push({
+              pathname: "/(app)/opportunities",
+              params: { childId, from: "child360", segment: "suggested" },
+            })
+          }
+        >
+          <Text style={styles.examsLinkText}>
+            Competitive exams for this class
+          </Text>
+        </Pressable>
+      ) : null}
     </ScrollView>
   );
 }
@@ -358,6 +377,17 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     textAlign: "center",
     marginBottom: spacing.sm,
+  },
+  examsLink: {
+    alignSelf: "center",
+    marginTop: spacing.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  examsLinkText: {
+    fontFamily: typography.bold,
+    color: colors.primary,
+    fontSize: 15,
   },
   chipScroll: { marginBottom: spacing.md, marginHorizontal: -spacing.lg },
   chipRow: {

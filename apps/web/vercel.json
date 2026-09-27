@@ -14,6 +14,7 @@
     { "source": "/admin/moderation.html", "destination": "/internal/admin/moderation.html", "permanent": false },
     { "source": "/admin/signups.html", "destination": "/internal/admin/signups.html", "permanent": false },
     { "source": "/admin/lucky-gift.html", "destination": "/internal/admin/lucky-gift.html", "permanent": false },
+    { "source": "/admin/exams.html", "destination": "/internal/admin/exams.html", "permanent": false },
     { "source": "/admin/login.html", "destination": "/internal/admin/login.html", "permanent": false },
     { "source": "/admin/login", "destination": "/internal/admin/login.html", "permanent": false }
   ],

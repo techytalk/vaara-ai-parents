@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BackHandler, StyleSheet, View } from "react-native";
+import {
+  BackHandler,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { PathExploreThread } from "@/components/pathways/PathExploreThread";
@@ -335,6 +341,21 @@ export default function PathwaysHubScreen() {
 
   return (
     <SafeAreaView style={styles.screen} edges={["top"]}>
+        <Pressable
+          onPress={() => {
+            trackEvent("opportunity_list_viewed", { surface: "childs_path" });
+            router.push({
+              pathname: "/(app)/opportunities",
+              params: {
+                ...(selectedId ? { childId: selectedId, segment: "suggested" } : {}),
+                from: "child360",
+              },
+            });
+          }}
+          style={{ paddingHorizontal: 16, paddingBottom: 8 }}
+        >
+          <Text style={{ color: "#08786D", fontWeight: "700" }}>Competitive exams</Text>
+        </Pressable>
         <PathExploreThread
           locationTitle={data.locationTitle}
           stateLabel={data.context.stateLabel ?? "India (national)"}

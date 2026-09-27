@@ -225,6 +225,10 @@ export default function AppLayout() {
       <Tabs.Screen name="playdates" options={{ href: null, title: "Playdates" }} />
       <Tabs.Screen name="carpool" options={{ href: null, headerShown: false }} />
       <Tabs.Screen name="pathways" options={{ href: null, headerShown: false }} />
+      <Tabs.Screen
+        name="opportunities"
+        options={{ href: null, headerShown: false }}
+      />
       <Tabs.Screen name="settings" options={{ href: null, headerShown: false }} />
       <Tabs.Screen name="support" options={{ href: null, title: "Help & Support" }} />
     </Tabs>

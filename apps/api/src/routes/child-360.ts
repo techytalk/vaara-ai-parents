@@ -531,11 +531,15 @@ export function createChild360Routes() {
     const childId = c.req.param("childId");
     const body = await c.req.json<{
       opportunitySlug?: string;
+      opportunityId?: string;
+      editionId?: string;
       status?: string;
       targetYear?: number | null;
     }>();
-    const slug = trimName(body.opportunitySlug, 80);
-    if (!slug) {
+    let slug = trimName(body.opportunitySlug, 80);
+    const opportunityId = body.opportunityId?.trim() || null;
+    const editionId = body.editionId?.trim() || null;
+    if (!slug && !opportunityId) {
       return c.json({ error: "opportunitySlug is required" }, 400);
     }
     const status = body.status ?? "exploring";
@@ -556,21 +560,63 @@ export function createChild360Routes() {
       const child = await loadOwnedChild(client, userId, childId);
       if (!child) return c.json({ error: "Child not found" }, 404);
 
-      const existing = await client.query(
-        `SELECT id FROM child_opportunity_plans
-         WHERE child_id = $1 AND opportunity_slug = $2`,
-        [childId, slug]
-      );
-      if (existing.rows.length > 0) {
-        const { rows } = await client.query(
-          `UPDATE child_opportunity_plans
-           SET status = $1, target_year = $2, updated_at = now()
-           WHERE id = $3
-           RETURNING *`,
-          [status, targetYear, existing.rows[0].id]
+      let resolvedOpportunityId = opportunityId;
+      let resolvedEditionId = editionId;
+      if (opportunityId) {
+        const opp = await client.query(
+          `SELECT id, slug FROM opportunities
+           WHERE id = $1 AND publication_status = 'published'`,
+          [opportunityId]
         );
-        return c.json(mapOpportunityPlan(rows[0]));
+        if (!opp.rows[0]) return c.json({ error: "Exam not found" }, 404);
+        slug = opp.rows[0].slug as string;
+        if (editionId) {
+          const edition = await client.query(
+            `SELECT id FROM opportunity_editions
+             WHERE id = $1 AND opportunity_id = $2 AND publication_status = 'published'`,
+            [editionId, opportunityId]
+          );
+          if (!edition.rows[0]) return c.json({ error: "Edition not found" }, 404);
+        }
       }
+
+      if (resolvedOpportunityId && resolvedEditionId) {
+        const existing = await client.query(
+          `SELECT id FROM child_opportunity_plans
+           WHERE child_id = $1 AND opportunity_id = $2 AND edition_id = $3
+             AND plan_lifecycle = 'active'`,
+          [childId, resolvedOpportunityId, resolvedEditionId]
+        );
+        if (existing.rows[0]) {
+          const { rows } = await client.query(
+            `UPDATE child_opportunity_plans
+             SET status = $1, target_year = $2, opportunity_slug = $3, updated_at = now()
+             WHERE id = $4
+             RETURNING *`,
+            [status, targetYear, slug, existing.rows[0].id]
+          );
+          return c.json(mapOpportunityPlan(rows[0]));
+        }
+      } else if (slug) {
+        const existing = await client.query(
+          `SELECT id FROM child_opportunity_plans
+           WHERE child_id = $1 AND opportunity_slug = $2 AND opportunity_id IS NULL
+             AND plan_lifecycle = 'active'`,
+          [childId, slug]
+        );
+        if (existing.rows.length > 0) {
+          const { rows } = await client.query(
+            `UPDATE child_opportunity_plans
+             SET status = $1, target_year = $2, updated_at = now()
+             WHERE id = $3
+             RETURNING *`,
+            [status, targetYear, existing.rows[0].id]
+          );
+          return c.json(mapOpportunityPlan(rows[0]));
+        }
+      }
+
+      if (!slug) return c.json({ error: "opportunitySlug is required" }, 400);
 
       const next = await client.query(
         `SELECT COALESCE(MAX(sort_order), -1) + 1 AS n
@@ -579,10 +625,18 @@ export function createChild360Routes() {
       );
       const { rows } = await client.query(
         `INSERT INTO child_opportunity_plans
-           (child_id, opportunity_slug, status, target_year, sort_order)
-         VALUES ($1, $2, $3, $4, $5)
+           (child_id, opportunity_slug, status, target_year, sort_order, opportunity_id, edition_id, plan_lifecycle)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'active')
          RETURNING *`,
-        [childId, slug, status, targetYear, next.rows[0].n]
+        [
+          childId,
+          slug,
+          status,
+          targetYear,
+          next.rows[0].n,
+          resolvedOpportunityId,
+          resolvedEditionId,
+        ]
       );
       return c.json(mapOpportunityPlan(rows[0]), 201);
     } finally {

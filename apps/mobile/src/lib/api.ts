@@ -54,6 +54,61 @@ export type SchoolListItem = School & {
   boardCodes?: string[];
 };
 
+export type OpportunityCard = {
+  id: string;
+  slug: string;
+  title: string;
+  kind: string;
+  organizerName: string | null;
+  edition: {
+    id: string;
+    editionKey: string;
+    editionLabel: string;
+    scopeLevel: string;
+    feeStatus: string;
+    registrationMethod: string;
+    eventStatus: string;
+    eligibilitySummary: string | null;
+    registrationUrl: string | null;
+    officialNoticeUrl: string | null;
+  } | null;
+  registrationState?: string;
+};
+
+export type OpportunityDetail = {
+  id: string;
+  slug: string;
+  title: string;
+  summary: string | null;
+  description: string | null;
+  kind: string;
+  organizerName: string | null;
+  officialUrl: string | null;
+  editions: Array<
+    NonNullable<OpportunityCard["edition"]> & {
+      registrationState: string;
+      schedules: Array<{
+        type: string;
+        label: string | null;
+        dateStatus: string;
+        precision: string;
+        startsOn: string | null;
+        endsOn: string | null;
+        periodText: string | null;
+        notes: string | null;
+      }>;
+      fees: Array<{
+        label: string;
+        amount: string | number | null;
+        currency: string;
+        feeType: string;
+        applicability: string | null;
+        mandatory: boolean;
+      }>;
+    }
+  >;
+};
+
 export type Child = {
   id: string;
   nickname: string | null;
@@ -1490,7 +1545,9 @@ export const api = {
     token: string,
     childId: string,
     body: {
-      opportunitySlug: string;
+      opportunitySlug?: string;
+      opportunityId?: string;
+      editionId?: string;
       status?: string;
       targetYear?: number | null;
     }
@@ -2437,6 +2494,46 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ fireAt }),
     }, token),
+
+  getOpportunitySummary: (token: string, childId?: string) => {
+    const qs = new URLSearchParams();
+    if (childId) qs.set("childId", childId);
+    const q = qs.toString();
+    return request<{
+      enabled: boolean;
+      matchCount: number;
+      publishedCount: number;
+    }>(`/v1/opportunities/summary${q ? `?${q}` : ""}`, {}, token);
+  },
+
+  listOpportunities: (
+    token: string,
+    params?: {
+      childId?: string;
+      q?: string;
+      segment?: "all" | "suggested";
+      cursor?: string;
+    }
+  ) => {
+    const qs = new URLSearchParams();
+    if (params?.childId) qs.set("childId", params.childId);
+    if (params?.q) qs.set("q", params.q);
+    if (params?.segment) qs.set("segment", params.segment);
+    if (params?.cursor) qs.set("cursor", params.cursor);
+    const q = qs.toString();
+    return request<{
+      enabled: boolean;
+      items: OpportunityCard[];
+      nextCursor: string | null;
+    }>(`/v1/opportunities${q ? `?${q}` : ""}`, {}, token);
+  },
+
+  getOpportunity: (token: string, slug: string) =>
+    request<{ enabled: boolean; opportunity: OpportunityDetail | null }>(
+      `/v1/opportunities/${encodeURIComponent(slug)}`,
+      {},
+      token
+    ),
 
   getPathwaysHub: (
     token: string,

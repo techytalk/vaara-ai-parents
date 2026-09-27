@@ -75,7 +75,12 @@ export type AnalyticsEvent =
   | "lucky_gift_support_tapped"
   | "school_suggestion_tapped"
   | "share"
-  | "onboarding_geo";
+  | "onboarding_geo"
+  | "opportunity_list_viewed"
+  | "opportunity_filter_changed"
+  | "opportunity_detail_viewed"
+  | "opportunity_saved"
+  | "opportunity_official_link_opened";
 
 type AnalyticsProperties = Record<string, string | number | boolean>;
 

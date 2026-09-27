@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow" />
+    <title>Vaara — Competitive exams</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+        --teal: #0e9a8a;
+        --teal-dark: #08786d;
+        --bg: #fffcf7;
+        --card: #fff;
+        --text: #0d1b2a;
+        --muted: #5e6974;
+        --border: #e8e3db;
+        --ok: #078675;
+        --warn: #b96d00;
+      }
+      body { margin: 0; padding: 24px; background: var(--bg); color: var(--text); }
+      h1 { font-size: 1.45rem; margin: 0 0 6px; }
+      .muted { color: var(--muted); font-size: 0.9rem; margin: 0 0 18px; }
+      button, select, input { font: inherit; padding: 8px 12px; border-radius: 10px; }
+      button {
+        border: none;
+        background: var(--teal);
+        color: #fff;
+        cursor: pointer;
+      }
+      button.secondary { background: #44403c; }
+      button.ghost {
+        background: #fff;
+        color: var(--text);
+        border: 1px solid var(--border);
+      }
+      button:disabled { opacity: 0.55; cursor: wait; }
+      .toolbar {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        align-items: end;
+        margin-bottom: 16px;
+      }
+      label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 4px; }
+      .panel {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 14px 16px;
+        margin-bottom: 16px;
+      }
+      .row {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .badge {
+        display: inline-block;
+        border-radius: 999px;
+        padding: 2px 8px;
+        font-size: 0.75rem;
+        font-weight: 700;
+      }
+      .badge.ok { background: #e7f7f4; color: var(--ok); }
+      .badge.warn { background: #fff2d9; color: var(--warn); }
+      .err {
+        color: #b91c1c;
+        background: #feecec;
+        border-radius: 10px;
+        padding: 10px 12px;
+        margin-bottom: 12px;
+        display: none;
+      }
+      table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+      th, td {
+        text-align: left;
+        padding: 9px 8px;
+        border-bottom: 1px solid var(--border);
+        vertical-align: top;
+      }
+      th {
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        color: var(--muted);
+      }
+      .name { font-weight: 600; }
+      .meta { font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
+      .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+      .actions button { margin: 0; }
+    </style>
+  </head>
+  <body>
+    <div id="adminNav"></div>
+    <h1>Competitive exams</h1>
+    <p class="muted">
+      Draft rows stay hidden from parents. Publish an exam only after its dates, fees, and eligibility have been checked. Turning the catalogue on does not publish drafts by itself.
+    </p>
+    <div id="err" class="err"></div>
+
+    <div class="panel">
+      <div class="row">
+        <div>
+          <strong>Parent catalogue</strong>
+          <div class="meta" id="flagMeta">Loading…</div>
+        </div>
+        <button type="button" id="flagBtn" class="secondary">Turn on for parents</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2 style="margin:0 0 8px;">Add a draft</h2>
+      <p class="meta">Leave dates and fees empty unless you have them from the organizer. New rows stay unpublished.</p>
+      <div class="toolbar">
+        <div>
+          <label for="newTitle">Name</label>
+          <input id="newTitle" />
+        </div>
+        <div>
+          <label for="newKind">Kind</label>
+          <select id="newKind">
+            <option value="olympiad">olympiad</option>
+            <option value="exam">exam</option>
+            <option value="competition">competition</option>
+            <option value="scholarship">scholarship</option>
+            <option value="admission_route">admission_route</option>
+          </select>
+        </div>
+        <div>
+          <label for="newOrganizer">Organiser</label>
+          <input id="newOrganizer" />
+        </div>
+        <div>
+          <label for="newEdition">Edition label</label>
+          <input id="newEdition" placeholder="2026–27" />
+        </div>
+        <div>
+          <label for="newEligibility">Eligibility text</label>
+          <input id="newEligibility" placeholder="Classes 1–10" />
+        </div>
+        <button type="button" id="createBtn">Add draft</button>
+        <button type="button" id="rebuildBtn" class="ghost">Rebuild class suggestions</button>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <div>
+        <label for="status">Status</label>
+        <select id="status">
+          <option value="all">All</option>
+          <option value="draft" selected>Draft</option>
+          <option value="published">Published</option>
+          <option value="retired">Retired</option>
+        </select>
+      </div>
+      <div>
+        <label for="q">Search</label>
+        <input id="q" type="search" placeholder="Name or organiser" />
+      </div>
+      <button type="button" id="refresh" class="ghost">Refresh</button>
+    </div>
+
+    <div class="panel" style="padding: 0 8px 8px;">
+      <table>
+        <thead>
+          <tr>
+            <th>Exam</th>
+            <th>Kind</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="rows">
+          <tr><td colspan="4" class="meta">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <script src="/internal/admin/admin-auth.js"></script>
+    <script>
+      const errEl = document.getElementById("err");
+      const rowsEl = document.getElementById("rows");
+      const flagMeta = document.getElementById("flagMeta");
+      const flagBtn = document.getElementById("flagBtn");
+      let enabled = false;
+      let items = [];
+
+      function showError(message) {
+        errEl.style.display = message ? "block" : "none";
+        errEl.textContent = message || "";
+      }
+
+      function esc(value) {
+        return String(value ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function paintFlag() {
+        flagMeta.textContent = enabled
+          ? "On. Parents can see published exams."
+          : "Off. Parents see an empty catalogue even if exams are published.";
+        flagBtn.textContent = enabled ? "Turn off for parents" : "Turn on for parents";
+        flagBtn.className = enabled ? "ghost" : "secondary";
+      }
+
+      function paintRows() {
+        const q = document.getElementById("q").value.trim().toLowerCase();
+        const visible = items.filter((item) => {
+          if (!q) return true;
+          return (
+            String(item.title || "").toLowerCase().includes(q) ||
+            String(item.organizer_name || "").toLowerCase().includes(q) ||
+            String(item.slug || "").toLowerCase().includes(q)
+          );
+        });
+        if (visible.length === 0) {
+          rowsEl.innerHTML = '<tr><td colspan="4" class="meta">No exams in this view.</td></tr>';
+          return;
+        }
+        rowsEl.innerHTML = visible
+          .map((item) => {
+            const published = item.publication_status === "published";
+            const badge = published
+              ? '<span class="badge ok">Published</span>'
+              : '<span class="badge warn">' + esc(item.publication_status) + "</span>";
+            const action = published
+              ? '<button type="button" class="ghost" data-action="unpublish" data-slug="' + esc(item.slug) + '">Unpublish</button>'
+              : '<button type="button" data-action="publish" data-slug="' + esc(item.slug) + '">Publish</button>';
+            return (
+              "<tr><td><div class='name'>" + esc(item.title) + "</div>" +
+              "<div class='meta'>" + esc(item.organizer_name || "Organiser not set") +
+              (item.edition_label ? " · " + esc(item.edition_label) : " · no edition") +
+              " · " + esc(item.edition_count) + " edition(s)</div>" +
+              (item.eligibility_summary
+                ? "<div class='meta'>" + esc(item.eligibility_summary) + "</div>"
+                : "") +
+              "</td><td>" + esc(item.kind) + "</td><td>" + badge + "</td><td class='actions'>" +
+              action + "</td></tr>"
+            );
+          })
+          .join("");
+      }
+
+      async function load() {
+        showError("");
+        const status = document.getElementById("status").value;
+        const res = await fetch(
+          VaaraAdmin.API_BASE + "/internal/admin/opportunities?status=" + encodeURIComponent(status),
+          { headers: VaaraAdmin.headers(false) }
+        );
+        if (res.status === 401) {
+          VaaraAdmin.logout();
+          return;
+        }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          showError(data.error || "Could not load exams");
+          return;
+        }
+        enabled = data.enabled === true;
+        items = data.items || [];
+        paintFlag();
+        paintRows();
+      }
+
+      async function setFlag(next) {
+        flagBtn.disabled = true;
+        try {
+          const res = await fetch(VaaraAdmin.API_BASE + "/internal/admin/opportunities/feature", {
+            method: "POST",
+            headers: VaaraAdmin.headers(true),
+            body: JSON.stringify({ enabled: next }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            showError(data.error || "Could not update the catalogue switch");
+            return;
+          }
+          enabled = next;
+          paintFlag();
+        } finally {
+          flagBtn.disabled = false;
+        }
+      }
+
+      async function setPublished(slug, publish) {
+        const path = publish ? "publish" : "unpublish";
+        const res = await fetch(
+          VaaraAdmin.API_BASE + "/internal/admin/opportunities/" + encodeURIComponent(slug) + "/" + path,
+          { method: "POST", headers: VaaraAdmin.headers(false) }
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          showError(data.error || "Could not update " + slug);
+          return;
+        }
+        await load();
+      }
+
+      document.getElementById("refresh").addEventListener("click", () => void load());
+      document.getElementById("status").addEventListener("change", () => void load());
+      document.getElementById("q").addEventListener("input", paintRows);
+      flagBtn.addEventListener("click", () => void setFlag(!enabled));
+      document.getElementById("createBtn").addEventListener("click", async () => {
+        const button = document.getElementById("createBtn");
+        button.disabled = true;
+        try {
+          const res = await fetch(VaaraAdmin.API_BASE + "/internal/admin/opportunities", {
+            method: "POST",
+            headers: VaaraAdmin.headers(true),
+            body: JSON.stringify({
+              title: document.getElementById("newTitle").value,
+              kind: document.getElementById("newKind").value,
+              organizerName: document.getElementById("newOrganizer").value || null,
+              editionLabel: document.getElementById("newEdition").value || null,
+              eligibilitySummary: document.getElementById("newEligibility").value || null,
+            }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            showError(data.error || "Could not add exam");
+            return;
+          }
+          document.getElementById("newTitle").value = "";
+          document.getElementById("status").value = "draft";
+          await load();
+        } finally {
+          button.disabled = false;
+        }
+      });
+      document.getElementById("rebuildBtn").addEventListener("click", async () => {
+        const button = document.getElementById("rebuildBtn");
+        button.disabled = true;
+        try {
+          const res = await fetch(
+            VaaraAdmin.API_BASE + "/internal/admin/opportunities/suggestions/rebuild",
+            { method: "POST", headers: VaaraAdmin.headers(false) }
+          );
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) showError(data.error || "Could not rebuild suggestions");
+          else showError("");
+        } finally {
+          button.disabled = false;
+        }
+      });
+      rowsEl.addEventListener("click", (event) => {
+        const button = event.target.closest("button[data-action]");
+        if (!button) return;
+        const slug = button.getAttribute("data-slug");
+        const publish = button.getAttribute("data-action") === "publish";
+        button.disabled = true;
+        void setPublished(slug, publish);
+      });
+
+      VaaraAdmin.mountBar(document.getElementById("adminNav"));
+      VaaraAdmin.requireAuth().then((ok) => {
+        if (ok) void load();
+      });
+    </script>
+  </body>
+</html>

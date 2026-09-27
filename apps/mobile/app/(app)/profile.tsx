@@ -207,6 +207,11 @@ export default function ProfileScreen() {
           />
         ) : null}
         <MenuRow
+          icon="school-outline"
+          label="Competitive exams"
+          onPress={() => openMore("/(app)/opportunities", "competitive_exams")}
+        />
+        <MenuRow
           icon="chatbubbles-outline"
           label="My groups"
           onPress={() => openMore("/(app)/messages", "groups")}

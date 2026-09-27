@@ -16,7 +16,8 @@
     "build": "tsc",
     "migrate": "tsx src/migrate.ts",
     "seed": "tsx src/seed.ts",
-    "import-pincodes": "tsx src/import-pincodes.ts"
+    "import-pincodes": "tsx src/import-pincodes.ts",
+    "import-opportunities": "tsx src/import-opportunities.ts"
   },
   "dependencies": {
     "@twin.techies/india-pincode": "^0.1.5",

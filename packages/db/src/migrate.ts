@@ -166,6 +166,14 @@ const MIGRATIONS = [
     version: "076_child_360",
     file: "076_child_360.sql",
   },
+  {
+    version: "077_opportunities_catalogue",
+    file: "077_opportunities_catalogue.sql",
+  },
+  {
+    version: "078_opportunity_scope_unknown",
+    file: "078_opportunity_scope_unknown.sql",
+  },
 ];
 
 async function isMigrationApplied(

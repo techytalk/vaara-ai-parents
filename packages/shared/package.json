@@ -23,6 +23,11 @@
       "react-native": "./dist/pathways.js",
       "types": "./dist/pathways.d.ts",
       "default": "./dist/pathways.js"
+    },
+    "./opportunities-types": {
+      "react-native": "./opportunities-types.ts",
+      "types": "./dist/opportunities-types.d.ts",
+      "default": "./dist/opportunities-types.js"
     }
   },
   "scripts": {

@@ -38,6 +38,7 @@ import { createPlaydateRoutes } from "./routes/playdates.js";
 import { createCarpoolRoutes } from "./routes/carpool.js";
 import { createPathwaysRoutes } from "./routes/pathways.js";
 import { createChild360Routes } from "./routes/child-360.js";
+import { createOpportunityRoutes } from "./routes/opportunities.js";
 import { getRedis, isRedisEnabled } from "@vaara/redis";
 
 const app = new Hono();
@@ -84,6 +85,7 @@ app.route("/v1/expert-sessions", createExpertSessionRoutes());
 app.route("/v1/playdates", createPlaydateRoutes());
 app.route("/v1/carpool", createCarpoolRoutes());
 app.route("/v1/pathways", createPathwaysRoutes());
+app.route("/v1/opportunities", createOpportunityRoutes());
 app.route("/v1/providers", createProviderReviewRoutes());
 app.route("/v1/provider/reviews", createProviderReviewReplyRoutes());
 app.route("/v1/shares", createShareRoutes());
