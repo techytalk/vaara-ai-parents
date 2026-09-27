@@ -44,6 +44,7 @@
         margin-bottom: 16px;
       }
       label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 4px; }
+      #factOfficial { min-width: min(100%, 28rem); }
       .panel {
         background: var(--card);
         border: 1px solid var(--border);
@@ -256,6 +257,7 @@
       const flagBtn = document.getElementById("flagBtn");
       let enabled = false;
       let items = [];
+      let loadedOfficialUrl = "";
 
       function showError(message) {
         errEl.style.display = message ? "block" : "none";
@@ -449,8 +451,9 @@
         document.getElementById("factSlug").value = slug;
         document.getElementById("factEligibility").value = "";
         document.getElementById("factEligibility").placeholder = data.edition?.eligibility_summary || "Leave blank to keep";
-        document.getElementById("factOfficial").value = "";
-        document.getElementById("factOfficial").placeholder = data.opportunity?.official_url || "https://";
+        loadedOfficialUrl = data.opportunity?.official_url || "";
+        document.getElementById("factOfficial").value = loadedOfficialUrl;
+        document.getElementById("factOfficial").placeholder = loadedOfficialUrl ? "" : "https://";
         document.getElementById("factFee").value = "";
         document.getElementById("factFee").placeholder =
           data.fees && data.fees[0] && data.fees[0].amount != null
@@ -461,6 +464,7 @@
         document.getElementById("factClose").value = "";
         document.getElementById("factSource").value = "";
         document.getElementById("factCurrent").textContent = [
+          loadedOfficialUrl ? "Official: " + loadedOfficialUrl : "",
           data.edition?.event_status ? "Event: " + data.edition.event_status : "",
           data.edition?.scope_level ? "Geography: " + data.edition.scope_level : "",
           registration?.starts_on ? "Opens " + String(registration.starts_on).slice(0, 10) : "",
@@ -491,7 +495,7 @@
         if (scopeLevel) body.scopeLevel = scopeLevel;
         if (registrationMethod) body.registrationMethod = registrationMethod;
         if (eligibility) body.eligibilitySummary = eligibility;
-        if (official) body.officialUrl = official;
+        if (official && official !== loadedOfficialUrl) body.officialUrl = official;
         if (source) body.sourceUrl = source;
         if (opens) body.registrationOpensOn = opens;
         if (closes) body.registrationClosesOn = closes;
