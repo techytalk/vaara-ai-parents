@@ -1403,15 +1403,101 @@ export function createInternalRoutes() {
       return c.json({ error: "Invalid status" }, 400);
     }
     const { rows } = await pool.query(
-      `SELECT o.id, o.slug, o.title, o.kind, o.organizer_name, o.publication_status,
+      `SELECT o.id, o.slug, o.title, o.kind, o.organizer_name, o.official_url, o.publication_status,
               (SELECT count(*)::int FROM opportunity_editions e WHERE e.opportunity_id = o.id) AS edition_count,
-              (SELECT e.edition_label FROM opportunity_editions e
-                WHERE e.opportunity_id = o.id
-                ORDER BY e.updated_at DESC LIMIT 1) AS edition_label,
-              (SELECT e.eligibility_summary FROM opportunity_editions e
-                WHERE e.opportunity_id = o.id
-                ORDER BY e.updated_at DESC LIMIT 1) AS eligibility_summary
+              latest.edition_label,
+              latest.eligibility_summary,
+              latest.event_status,
+              latest.scope_level,
+              latest.registration_method,
+              latest.fee_status,
+              latest.fee_count,
+              latest.registration_date_count,
+              latest.event_date_count,
+              latest.registration_url,
+              fee.fee_amount,
+              reg.registration_opens_on,
+              reg.registration_closes_on,
+              ev.event_starts_on,
+              ev.event_ends_on,
+              loc.venue_name,
+              src.source_urls,
+              cats.categories
        FROM opportunities o
+       LEFT JOIN LATERAL (
+         SELECT ed.id,
+                ed.edition_label,
+                ed.eligibility_summary,
+                ed.event_status,
+                ed.scope_level,
+                ed.registration_method,
+                ed.fee_status,
+                ed.registration_url,
+                (SELECT count(*)::int FROM opportunity_fees f WHERE f.edition_id = ed.id) AS fee_count,
+                (SELECT count(*)::int FROM opportunity_schedules s
+                  WHERE s.edition_id = ed.id
+                    AND s.schedule_type = 'registration'
+                    AND s.superseded_at IS NULL) AS registration_date_count,
+                (SELECT count(*)::int FROM opportunity_schedules s
+                  WHERE s.edition_id = ed.id
+                    AND s.schedule_type = 'event'
+                    AND s.superseded_at IS NULL) AS event_date_count
+         FROM opportunity_editions ed
+         WHERE ed.opportunity_id = o.id
+         ORDER BY ed.updated_at DESC
+         LIMIT 1
+       ) latest ON true
+       LEFT JOIN LATERAL (
+         SELECT amount AS fee_amount
+         FROM opportunity_fees
+         WHERE edition_id = latest.id
+         ORDER BY created_at
+         LIMIT 1
+       ) fee ON true
+       LEFT JOIN LATERAL (
+         SELECT starts_on::text AS registration_opens_on,
+                ends_on::text AS registration_closes_on
+         FROM opportunity_schedules
+         WHERE edition_id = latest.id
+           AND schedule_type = 'registration'
+           AND superseded_at IS NULL
+         ORDER BY updated_at DESC
+         LIMIT 1
+       ) reg ON true
+       LEFT JOIN LATERAL (
+         SELECT starts_on::text AS event_starts_on,
+                ends_on::text AS event_ends_on
+         FROM opportunity_schedules
+         WHERE edition_id = latest.id
+           AND schedule_type = 'event'
+           AND superseded_at IS NULL
+         ORDER BY starts_on NULLS LAST, updated_at DESC
+         LIMIT 1
+       ) ev ON true
+       LEFT JOIN LATERAL (
+         SELECT venue_name
+         FROM opportunity_locations
+         WHERE edition_id = latest.id
+           AND role = 'venue'
+           AND venue_name IS NOT NULL
+         LIMIT 1
+       ) loc ON true
+       LEFT JOIN LATERAL (
+         SELECT string_agg(s.url, E'\n' ORDER BY s.created_at) AS source_urls
+         FROM (
+           SELECT url, created_at
+           FROM opportunity_sources
+           WHERE edition_id = latest.id
+           ORDER BY created_at
+           LIMIT 3
+         ) s
+       ) src ON true
+       LEFT JOIN LATERAL (
+         SELECT string_agg(c.label, ', ' ORDER BY c.sort_order) AS categories
+         FROM opportunity_category_links l
+         JOIN opportunity_categories c ON c.id = l.category_id
+         WHERE l.opportunity_id = o.id
+       ) cats ON true
        WHERE ($1::text = 'all' OR o.publication_status = $1)
        ORDER BY o.title
        LIMIT 200`,
@@ -1797,8 +1883,26 @@ export function createInternalRoutes() {
         [opp.rows[0].id]
       );
       if (!edition.rows[0]) {
-        await client.query("ROLLBACK");
-        return c.json({ error: "Add an edition before editing facts" }, 400);
+        const touchesEdition =
+          Boolean(body.eventStatus) ||
+          Boolean(body.registrationMethod) ||
+          Boolean(body.scopeLevel) ||
+          (body.eligibilitySummary != null && body.eligibilitySummary !== "") ||
+          body.feeAmount !== undefined ||
+          Boolean(body.registrationOpensOn) ||
+          Boolean(body.registrationClosesOn) ||
+          Boolean(body.sourceUrl?.trim());
+        if (touchesEdition) {
+          await client.query("ROLLBACK");
+          return c.json({ error: "Add an edition before editing these facts" }, 400);
+        }
+        await client.query(
+          `INSERT INTO opportunity_change_log (entity_type, entity_id, reason, after_data)
+           VALUES ('opportunity', $1, 'admin facts', $2::jsonb)`,
+          [opp.rows[0].id, JSON.stringify({ officialUrl: body.officialUrl ?? null })]
+        );
+        await client.query("COMMIT");
+        return c.json({ ok: true, slug });
       }
       const editionId = edition.rows[0].id as string;
       await client.query(
