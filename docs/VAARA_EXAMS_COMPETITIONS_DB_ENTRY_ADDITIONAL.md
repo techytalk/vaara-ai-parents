@@ -618,11 +618,11 @@ Each block is valid JSON. Only the data and sourced fee options are candidate bu
     "organiser": null,
     "subject": "Mental ability, mathematics, science and English",
     "edition_label": "2026–27",
-    "eligibility_text": "Classes 1–10",
+    "eligibility_text": "Classes 1 to 10. Individual students can take the online exam. The school exam is paper-based and registered by the school.",
     "board_eligibility": null,
     "age_eligibility": null,
     "geographic_eligibility": null,
-    "participation_route": "Direct online or school paper-based",
+    "participation_route": "Individual online or school paper-based",
     "team_rules": null,
     "fee_amount": null,
     "fee_currency": null,
@@ -632,25 +632,26 @@ Each block is valid JSON. Only the data and sourced fee options are candidate bu
     "registration_closes_on": null,
     "registration_status_as_reported": null,
     "schedule": {
-      "direct_online": {
-        "month": "2026-11"
-      },
-      "school_paper": {
-        "date": "2027-02-03"
-      }
+      "stages": [
+        { "name": "Online exam, classes 1 to 3", "date": "2026-11-29" },
+        { "name": "Online exam, classes 4 to 6", "date": "2026-11-28" },
+        { "name": "Online exam, classes 7 to 10", "date": "2026-11-22" },
+        { "name": "School exam", "date": "2027-02-03" }
+      ]
     },
     "venue": null,
     "registration_url": null,
     "official_url": "https://istse.org/",
     "source_urls": [
-      "https://istse.org/"
+      "https://istse.org/",
+      "https://istse.org/online-olympiad.html"
     ]
   },
   "fee_options": null,
   "research": {
     "checked_on": "2026-09-27",
     "coverage": "edition_details",
-    "review_notes": "Only month precision retained for online exam from live homepage. Fees and registration deadlines were not captured."
+    "review_notes": "Online class-wise dates are from the online exam page. The school date is from the homepage. The homepage says the online exam is held twice a year, but only these November dates are stated for this session. Registration fee and deadlines are not stated. Scholarship amounts are awards, not the entry fee."
   }
 }
 ```
