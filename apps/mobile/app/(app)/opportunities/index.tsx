@@ -24,6 +24,14 @@ function isOffline(error: unknown): boolean {
   );
 }
 
+const KIND_LABEL: Record<string, string> = {
+  competition: "Competition",
+  olympiad: "Olympiad",
+  exam: "Exam",
+  scholarship: "Scholarship",
+  admission_route: "Admission",
+};
+
 export default function CompetitiveExamsScreen() {
   useOriginBackHeader();
   const router = useRouter();
@@ -33,6 +41,12 @@ export default function CompetitiveExamsScreen() {
     params.segment === "suggested" && childId ? "suggested" : "all"
   );
   const [query, setQuery] = useState("");
+  const [kind, setKind] = useState<string | null>(null);
+  const [category, setCategory] = useState<string | null>(null);
+  const [facets, setFacets] = useState<{
+    kinds: string[];
+    categories: Array<{ code: string; label: string }>;
+  }>({ kinds: [], categories: [] });
   const [items, setItems] = useState<OpportunityCard[]>([]);
   const [enabled, setEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -50,9 +64,13 @@ export default function CompetitiveExamsScreen() {
         childId,
         q: query.trim() || undefined,
         segment: childId ? segment : "all",
+        kind: kind ?? undefined,
+        category: category ?? undefined,
+        limit: 50,
       });
       setEnabled(result.enabled);
       setItems(result.items);
+      setFacets(result.facets ?? { kinds: [], categories: [] });
       setError(null);
       trackEvent("opportunity_list_viewed", {
         surface: "competitive_exams",
@@ -68,7 +86,7 @@ export default function CompetitiveExamsScreen() {
             : "Could not load exams"
       );
     }
-  }, [childId, query, router, segment]);
+  }, [category, childId, kind, query, router, segment]);
 
   useFocusEffect(
     useCallback(() => {
@@ -123,6 +141,68 @@ export default function CompetitiveExamsScreen() {
           })}
         </View>
       ) : null}
+      {facets.kinds.length > 1 ? (
+        <View style={styles.segments}>
+          <Pressable
+            onPress={() => {
+              trackEvent("opportunity_filter_changed", { kind: "all" });
+              setKind(null);
+            }}
+            style={[styles.segment, !kind && styles.segmentOn]}
+          >
+            <Text style={[styles.segmentText, !kind && styles.segmentTextOn]}>Any kind</Text>
+          </Pressable>
+          {facets.kinds.map((value) => {
+            const on = kind === value;
+            return (
+              <Pressable
+                key={value}
+                onPress={() => {
+                  trackEvent("opportunity_filter_changed", { kind: value });
+                  setKind(value);
+                }}
+                style={[styles.segment, on && styles.segmentOn]}
+              >
+                <Text style={[styles.segmentText, on && styles.segmentTextOn]}>
+                  {KIND_LABEL[value] ?? value}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
+      {facets.categories.length > 1 ? (
+        <View style={styles.segments}>
+          <Pressable
+            onPress={() => {
+              trackEvent("opportunity_filter_changed", { category: "all" });
+              setCategory(null);
+            }}
+            style={[styles.segment, !category && styles.segmentOn]}
+          >
+            <Text style={[styles.segmentText, !category && styles.segmentTextOn]}>
+              Any subject
+            </Text>
+          </Pressable>
+          {facets.categories.map((value) => {
+            const on = category === value.code;
+            return (
+              <Pressable
+                key={value.code}
+                onPress={() => {
+                  trackEvent("opportunity_filter_changed", { category: value.code });
+                  setCategory(value.code);
+                }}
+                style={[styles.segment, on && styles.segmentOn]}
+              >
+                <Text style={[styles.segmentText, on && styles.segmentTextOn]}>
+                  {value.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
       {!enabled ? (
         <EmptyState
@@ -164,6 +244,9 @@ export default function CompetitiveExamsScreen() {
                   .filter(Boolean)
                   .join(" · ")}
               </Text>
+              {item.checks?.copy ? (
+                <Text style={styles.eligibility}>{item.checks.copy}</Text>
+              ) : null}
               {item.edition?.eligibilitySummary ? (
                 <Text style={styles.eligibility} numberOfLines={2}>
                   {item.edition.eligibilitySummary}
@@ -191,6 +274,7 @@ const styles = StyleSheet.create({
   },
   segments: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: spacing.sm,
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.sm,

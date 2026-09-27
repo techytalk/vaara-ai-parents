@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   Alert,
   Linking,
@@ -43,6 +43,7 @@ export default function OpportunityDetailScreen() {
   const [children, setChildren] = useState<Child[]>([]);
   const [childId, setChildId] = useState<string | null>(childIdParam ?? null);
   const [planStatus, setPlanStatus] = useState("exploring");
+  const initialStatus = useRef(planStatus);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -53,7 +54,7 @@ export default function OpportunityDetailScreen() {
     const token = await getToken();
     if (!token) return;
     try {
-      const result = await api.getOpportunity(token, slug);
+      const result = await api.getOpportunity(token, slug, childId ?? undefined);
       setItem(result.opportunity);
       setError(result.enabled ? null : "Not available yet");
       if (result.opportunity) {
@@ -91,6 +92,14 @@ export default function OpportunityDetailScreen() {
   }
 
   const edition = item.editions[0];
+  const retired = item.publicationStatus === "retired";
+  const registrationQuiet =
+    retired ||
+    edition?.registrationState === "cancelled" ||
+    edition?.registrationState === "closed";
+  const officialLink = registrationQuiet
+    ? edition?.officialNoticeUrl || item.officialUrl
+    : edition?.registrationUrl || item.officialUrl;
 
   async function savePlan() {
     if (!childId || !edition) return;
@@ -106,6 +115,13 @@ export default function OpportunityDetailScreen() {
         status: planStatus,
       });
       trackEvent("opportunity_saved", { status: planStatus });
+      if (planStatus !== initialStatus.current) {
+        trackEvent("opportunity_plan_status_changed", {
+          from: initialStatus.current,
+          to: planStatus,
+        });
+        initialStatus.current = planStatus;
+      }
       setSaved("Saved for this child.");
     } catch (e) {
       setSaved(e instanceof Error ? e.message : "Could not save");
@@ -117,6 +133,9 @@ export default function OpportunityDetailScreen() {
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <Text style={styles.title}>{item.title}</Text>
+      {retired ? (
+        <Text style={styles.body}>This exam is no longer listed. A saved plan stays on the child.</Text>
+      ) : null}
       {item.organizerName ? (
         <Text style={styles.meta}>{item.organizerName}</Text>
       ) : null}
@@ -133,6 +152,9 @@ export default function OpportunityDetailScreen() {
       ) : (
         <Text style={styles.meta}>Current edition details not available</Text>
       )}
+      {edition?.checks?.copy ? (
+        <Text style={styles.body}>{edition.checks.copy}</Text>
+      ) : null}
       {edition?.eligibilitySummary ? (
         <Text style={styles.body}>{edition.eligibilitySummary}</Text>
       ) : null}
@@ -166,7 +188,7 @@ export default function OpportunityDetailScreen() {
           ))}
         </View>
       ) : null}
-      {children.length > 0 && edition ? (
+      {children.length > 0 && edition && !retired ? (
         <View style={styles.block}>
           <Text style={styles.heading}>Save to a child</Text>
           <View style={styles.segments}>
@@ -199,17 +221,14 @@ export default function OpportunityDetailScreen() {
           {saved ? <Text style={styles.body}>{saved}</Text> : null}
         </View>
       ) : null}
-      {edition?.registrationUrl || item.officialUrl ? (
-        <Pressable
-          style={styles.button}
-          onPress={() =>
-            openOfficial(edition?.registrationUrl || item.officialUrl || "")
-          }
-        >
+      {officialLink ? (
+        <Pressable style={styles.button} onPress={() => openOfficial(officialLink)}>
           <Text style={styles.buttonText}>
-            {edition?.registrationMethod === "through_school"
-              ? "How to apply through school"
-              : "Official information"}
+            {registrationQuiet
+              ? "Official notice"
+              : edition?.registrationMethod === "through_school"
+                ? "How to apply through school"
+                : "Official information"}
           </Text>
         </Pressable>
       ) : null}

@@ -84,9 +84,15 @@ export function createChild360Routes() {
           [childId]
         ),
         client.query(
-          `SELECT * FROM child_opportunity_plans
-           WHERE child_id = $1
-           ORDER BY sort_order ASC, created_at ASC`,
+          `SELECT p.*,
+                  COALESCE(o.title, os.title) AS opportunity_title,
+                  COALESCE(o.publication_status, os.publication_status) AS opportunity_publication_status
+           FROM child_opportunity_plans p
+           LEFT JOIN opportunities o ON o.id = p.opportunity_id
+           LEFT JOIN opportunities os
+             ON p.opportunity_id IS NULL AND os.slug = p.opportunity_slug
+           WHERE p.child_id = $1
+           ORDER BY p.sort_order ASC, p.created_at ASC`,
           [childId]
         ),
       ]);
@@ -515,9 +521,15 @@ export function createChild360Routes() {
       const child = await loadOwnedChild(client, userId, childId);
       if (!child) return c.json({ error: "Child not found" }, 404);
       const { rows } = await client.query(
-        `SELECT * FROM child_opportunity_plans
-         WHERE child_id = $1
-         ORDER BY sort_order ASC, created_at ASC`,
+        `SELECT p.*,
+                COALESCE(o.title, os.title) AS opportunity_title,
+                COALESCE(o.publication_status, os.publication_status) AS opportunity_publication_status
+         FROM child_opportunity_plans p
+         LEFT JOIN opportunities o ON o.id = p.opportunity_id
+         LEFT JOIN opportunities os
+           ON p.opportunity_id IS NULL AND os.slug = p.opportunity_slug
+         WHERE p.child_id = $1
+         ORDER BY p.sort_order ASC, p.created_at ASC`,
         [childId]
       );
       return c.json(rows.map(mapOpportunityPlan));

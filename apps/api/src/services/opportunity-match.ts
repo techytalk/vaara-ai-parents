@@ -88,6 +88,51 @@ export function gradeCheck(
   return eligibilityCoversGrade(eligibility, grade) ? "pass" : "fail";
 }
 
+export type EligibilitySummary =
+  | "known_requirements_match"
+  | "does_not_match"
+  | "needs_confirmation";
+
+export function evaluateEligibility(input: {
+  eligibilityText: string | null | undefined;
+  grade: number | null;
+  scopeLevel: string | null | undefined;
+  schoolState: string | null | undefined;
+  editionState: string | null | undefined;
+  curriculumPolicy: string | null | undefined;
+}): {
+  grade: "pass" | "fail" | "unknown";
+  geography: "pass" | "fail" | "unknown";
+  curriculum: "pass" | "fail" | "unknown";
+  summary: EligibilitySummary;
+  copy: string;
+} {
+  const grade = gradeCheck(input.eligibilityText, input.grade);
+  const scope = input.scopeLevel || "unknown";
+  let geography: "pass" | "fail" | "unknown" = "unknown";
+  if (scope === "national" || scope === "international") geography = "pass";
+  else if (scope === "state") {
+    const school = (input.schoolState || "").trim().toLowerCase();
+    const edition = (input.editionState || "").trim().toLowerCase();
+    if (school && edition) {
+      geography = scopeMatchesSchool(scope, school, edition) ? "pass" : "fail";
+    }
+  }
+  const policy = input.curriculumPolicy || "unknown";
+  const curriculum = policy === "all" ? "pass" : "unknown";
+  const results = [grade, geography, curriculum];
+  let summary: EligibilitySummary = "needs_confirmation";
+  if (results.includes("fail")) summary = "does_not_match";
+  else if (results.every((item) => item === "pass")) summary = "known_requirements_match";
+  const copy =
+    summary === "does_not_match"
+      ? "A requirement does not match"
+      : summary === "known_requirements_match"
+        ? "Matches the requirements we could check"
+        : "Check these requirements";
+  return { grade, geography, curriculum, summary, copy };
+}
+
 function levenshtein(a: string, b: string): number {
   const rows = a.length + 1;
   const cols = b.length + 1;

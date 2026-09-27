@@ -56,6 +56,7 @@ export type SchoolListItem = School & {
 
 export type OpportunityCard = {
   id: string;
+  opportunityId?: string;
   slug: string;
   title: string;
   kind: string;
@@ -73,6 +74,13 @@ export type OpportunityCard = {
     officialNoticeUrl: string | null;
   } | null;
   registrationState?: string;
+  checks?: {
+    grade: string;
+    geography: string;
+    curriculum: string;
+    summary: string;
+    copy: string;
+  };
 };
 
 export type OpportunityDetail = {
@@ -84,9 +92,17 @@ export type OpportunityDetail = {
   kind: string;
   organizerName: string | null;
   officialUrl: string | null;
+  publicationStatus?: "published" | "retired" | string;
   editions: Array<
     NonNullable<OpportunityCard["edition"]> & {
       registrationState: string;
+      checks?: {
+        grade: string;
+        geography: string;
+        curriculum: string;
+        summary: string;
+        copy: string;
+      };
       schedules: Array<{
         type: string;
         label: string | null;
@@ -154,6 +170,10 @@ export type ChildOpportunityPlan = {
   id: string;
   childId: string;
   opportunitySlug: string;
+  opportunityId?: string | null;
+  editionId?: string | null;
+  title?: string | null;
+  publicationStatus?: string | null;
   status: "exploring" | "planning" | "this_season" | string;
   targetYear: number | null;
   sortOrder: number;
@@ -2512,28 +2532,42 @@ export const api = {
       childId?: string;
       q?: string;
       segment?: "all" | "suggested";
+      kind?: string;
+      category?: string;
       cursor?: string;
+      limit?: number;
     }
   ) => {
     const qs = new URLSearchParams();
     if (params?.childId) qs.set("childId", params.childId);
     if (params?.q) qs.set("q", params.q);
     if (params?.segment) qs.set("segment", params.segment);
+    if (params?.kind) qs.set("kind", params.kind);
+    if (params?.category) qs.set("category", params.category);
     if (params?.cursor) qs.set("cursor", params.cursor);
+    if (params?.limit) qs.set("limit", String(params.limit));
     const q = qs.toString();
     return request<{
       enabled: boolean;
       items: OpportunityCard[];
       nextCursor: string | null;
+      facets?: {
+        kinds: string[];
+        categories: Array<{ code: string; label: string }>;
+      };
     }>(`/v1/opportunities${q ? `?${q}` : ""}`, {}, token);
   },
 
-  getOpportunity: (token: string, slug: string) =>
-    request<{ enabled: boolean; opportunity: OpportunityDetail | null }>(
-      `/v1/opportunities/${encodeURIComponent(slug)}`,
+  getOpportunity: (token: string, slug: string, childId?: string) => {
+    const qs = new URLSearchParams();
+    if (childId) qs.set("childId", childId);
+    const q = qs.toString();
+    return request<{ enabled: boolean; opportunity: OpportunityDetail | null }>(
+      `/v1/opportunities/${encodeURIComponent(slug)}${q ? `?${q}` : ""}`,
       {},
       token
-    ),
+    );
+  },
 
   getPathwaysHub: (
     token: string,

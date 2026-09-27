@@ -38,7 +38,7 @@ export default function OpportunitiesListScreen() {
   const { undo, take } = useChild360Undo(childId, "opportunity");
 
   useLayoutEffect(() => {
-    navigation.setOptions({ title: "Exams" });
+    navigation.setOptions({ title: "Saved plans" });
   }, [navigation]);
 
   useEffect(() => {
@@ -126,20 +126,38 @@ export default function OpportunitiesListScreen() {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {error ? <Text style={styles.error}>{error}</Text> : null}
       {items.map((item) => (
-        <Pressable
-          key={item.id}
-          onPress={() => openForm(item.id)}
-          style={({ pressed }) => [styles.card, pressed && styles.pressed]}
-        >
-          <Text style={styles.cardTitle}>
-            {titles[item.opportunitySlug] ??
-              item.opportunitySlug.toUpperCase()}
-          </Text>
-          <Text style={styles.cardMeta}>
-            {statusLabel(item.status)}
-            {item.targetYear ? ` · ${item.targetYear}` : ""}
-          </Text>
-        </Pressable>
+        <View key={item.id} style={styles.card}>
+          <Pressable
+            onPress={() => {
+              if (
+                item.publicationStatus === "published" ||
+                item.publicationStatus === "retired"
+              ) {
+                router.push({
+                  pathname: "/(app)/opportunities/[slug]",
+                  params: { slug: item.opportunitySlug, childId },
+                });
+                return;
+              }
+              openForm(item.id);
+            }}
+            style={({ pressed }) => pressed && styles.pressed}
+          >
+            <Text style={styles.cardTitle}>
+              {item.title ??
+                titles[item.opportunitySlug] ??
+                item.opportunitySlug.toUpperCase()}
+            </Text>
+            <Text style={styles.cardMeta}>
+              {statusLabel(item.status)}
+              {item.targetYear ? ` · ${item.targetYear}` : ""}
+              {item.publicationStatus === "retired" ? " · No longer listed" : ""}
+            </Text>
+          </Pressable>
+          <Pressable onPress={() => openForm(item.id)}>
+            <Text style={styles.cardMeta}>Edit</Text>
+          </Pressable>
+        </View>
       ))}
       {items.length === 0 ? (
         <Text style={styles.empty}>

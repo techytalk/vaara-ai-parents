@@ -27,6 +27,7 @@ import {
 import { publishChatNudge } from "../services/chat.js";
 import { signAdminToken, verifyAdminToken } from "../lib/jwt.js";
 import { mountAdminModeration } from "./admin-moderation.js";
+import { rebuildOpportunitySuggestions } from "../services/opportunity-suggestions.js";
 import { getAdminDashboard } from "../services/admin-dashboard.js";
 import {
   adminGenerateWinningMoments,
@@ -34,6 +35,12 @@ import {
   adminListWinners,
   adminUpdateLuckyGiftCampaign,
 } from "../services/lucky-gift.js";
+
+function cronBearer(c: { req: { header: (n: string) => string | undefined } }) {
+  const expected = process.env.CRON_SECRET;
+  const auth = c.req.header("Authorization") ?? "";
+  return Boolean(expected && auth === `Bearer ${expected}`);
+}
 
 function requireCronSecret(c: { req: { header: (n: string) => string | undefined } }) {
   const secret = c.req.header("X-Cron-Secret");
@@ -127,6 +134,38 @@ export function createInternalRoutes() {
     const admin = await requireAdminAuth(c);
     if (!admin) return c.json({ error: "Unauthorized" }, 401);
     return c.json({ ok: true, email: admin.email });
+  });
+
+  app.post("/cron/opportunity-suggestions", async (c) => {
+    if (!requireCronSecret(c) && !cronBearer(c)) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    const client = await pool.connect();
+    try {
+      const result = await rebuildOpportunitySuggestions(client);
+      return c.json({ ok: true, ...result });
+    } catch (error) {
+      console.error("[cron.opportunity-suggestions] failed", error);
+      return c.json({ error: "Could not rebuild suggestions" }, 500);
+    } finally {
+      client.release();
+    }
+  });
+
+  app.get("/cron/opportunity-suggestions", async (c) => {
+    if (!requireCronSecret(c) && !cronBearer(c)) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    const client = await pool.connect();
+    try {
+      const result = await rebuildOpportunitySuggestions(client);
+      return c.json({ ok: true, ...result });
+    } catch (error) {
+      console.error("[cron.opportunity-suggestions] failed", error);
+      return c.json({ error: "Could not rebuild suggestions" }, 500);
+    } finally {
+      client.release();
+    }
   });
 
   app.post("/cron/reminders", async (c) => {
@@ -1620,56 +1659,215 @@ export function createInternalRoutes() {
     if (!(await requireAdminAuth(c))) return c.json({ error: "Unauthorized" }, 401);
     const client = await pool.connect();
     try {
-      await client.query("BEGIN");
-      await client.query(`DELETE FROM opportunity_suggestion_buckets`);
-      const grades = await client.query(
-        `SELECT g.id AS grade_id, g.code, g.curriculum_id, s.state
-         FROM curriculum_grades g
-         JOIN children ch ON ch.grade_id = g.id
-         JOIN schools s ON s.id = ch.school_id
-         WHERE ch.track = 'school' AND s.state IS NOT NULL
-         GROUP BY g.id, g.code, g.curriculum_id, s.state`
-      );
-      const exams = await client.query(
-        `SELECT o.id AS opportunity_id, e.id AS edition_id, e.eligibility_summary, e.scope_level
-         FROM opportunities o
-         JOIN opportunity_editions e ON e.opportunity_id = o.id
-         WHERE o.publication_status = 'published'
-           AND e.publication_status = 'published'`
-      );
-      let inserted = 0;
-      for (const grade of grades.rows) {
-        const match = String(grade.code || "").match(/^[GY](\d+)$/i);
-        const n = match ? Number(match[1]) : null;
-        if (n == null) continue;
-        let rank = 0;
-        for (const exam of exams.rows) {
-          const text = exam.eligibility_summary as string | null;
-          const ranges = text ? [...text.matchAll(/classes?\s*(\d+)\s*[–—-]\s*(\d+)/gi)] : [];
-          const covers = ranges.some((m) => {
-            const a = Number(m[1]);
-            const b = Number(m[2]);
-            return n >= Math.min(a, b) && n <= Math.max(a, b);
-          });
-          if (!covers) continue;
-          if (exam.scope_level === "state") continue;
-          await client.query(
-            `INSERT INTO opportunity_suggestion_buckets (
-               curriculum_id, curriculum_grade_id, state_code, opportunity_id, edition_id, rank, reason_code
-             ) VALUES ($1, $2, $3, $4, $5, $6, 'class_match')
-             ON CONFLICT DO NOTHING`,
-            [grade.curriculum_id, grade.grade_id, grade.state, exam.opportunity_id, exam.edition_id, rank]
-          );
-          rank += 1;
-          inserted += 1;
-        }
-      }
-      await client.query("COMMIT");
-      return c.json({ ok: true, inserted });
+      const result = await rebuildOpportunitySuggestions(client);
+      return c.json({ ok: true, ...result });
     } catch (error) {
-      await client.query("ROLLBACK");
       console.error("[admin.opportunities.suggestions] failed", error);
       return c.json({ error: "Could not rebuild suggestions" }, 500);
+    } finally {
+      client.release();
+    }
+  });
+
+  app.get("/admin/opportunities/:slug", async (c) => {
+    if (!(await requireAdminAuth(c))) return c.json({ error: "Unauthorized" }, 401);
+    const slug = c.req.param("slug");
+    const opp = await pool.query(
+      `SELECT id, slug, title, kind, organizer_name, official_url, publication_status
+       FROM opportunities WHERE slug = $1`,
+      [slug]
+    );
+    if (!opp.rows[0]) return c.json({ error: "Not found" }, 404);
+    const editions = await pool.query(
+      `SELECT id, edition_key, edition_label, scope_level, event_status,
+              registration_method, eligibility_summary, fee_status, registration_url
+       FROM opportunity_editions WHERE opportunity_id = $1
+       ORDER BY updated_at DESC`,
+      [opp.rows[0].id]
+    );
+    const edition = editions.rows[0];
+    const fees = edition
+      ? await pool.query(
+          `SELECT label, amount, currency, applicability_text FROM opportunity_fees WHERE edition_id = $1`,
+          [edition.id]
+        )
+      : { rows: [] };
+    const schedules = edition
+      ? await pool.query(
+          `SELECT schedule_type, label, starts_on::text, ends_on::text, date_status
+           FROM opportunity_schedules WHERE edition_id = $1 AND superseded_at IS NULL`,
+          [edition.id]
+        )
+      : { rows: [] };
+    const sources = edition
+      ? await pool.query(
+          `SELECT url, source_type FROM opportunity_sources WHERE edition_id = $1`,
+          [edition.id]
+        )
+      : { rows: [] };
+    return c.json({
+      opportunity: opp.rows[0],
+      edition,
+      fees: fees.rows,
+      schedules: schedules.rows,
+      sources: sources.rows,
+    });
+  });
+
+  app.post("/admin/opportunities/:slug/facts", async (c) => {
+    if (!(await requireAdminAuth(c))) return c.json({ error: "Unauthorized" }, 401);
+    const slug = c.req.param("slug");
+    let body: {
+      eventStatus?: string;
+      eligibilitySummary?: string | null;
+      registrationMethod?: string;
+      scopeLevel?: string;
+      feeAmount?: number | null;
+      feeCurrency?: string | null;
+      feeBasis?: string | null;
+      registrationOpensOn?: string | null;
+      registrationClosesOn?: string | null;
+      sourceUrl?: string | null;
+      officialUrl?: string | null;
+    };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    const events = new Set(["scheduled", "postponed", "cancelled", "completed", "unknown"]);
+    const methods = new Set([
+      "direct",
+      "through_school",
+      "nomination",
+      "qualification",
+      "mixed",
+      "unknown",
+    ]);
+    const scopes = new Set([
+      "school",
+      "local",
+      "district",
+      "state",
+      "national",
+      "international",
+      "unknown",
+    ]);
+    if (body.eventStatus && !events.has(body.eventStatus)) {
+      return c.json({ error: "Unknown event status" }, 400);
+    }
+    if (body.registrationMethod && !methods.has(body.registrationMethod)) {
+      return c.json({ error: "Unknown registration method" }, 400);
+    }
+    if (body.scopeLevel && !scopes.has(body.scopeLevel)) {
+      return c.json({ error: "Unknown geography" }, 400);
+    }
+    if (
+      body.feeAmount !== undefined &&
+      body.feeAmount !== null &&
+      (!Number.isFinite(body.feeAmount) || body.feeAmount < 0)
+    ) {
+      return c.json({ error: "Fee amount must be a number, or left blank" }, 400);
+    }
+    const day = /^\d{4}-\d{2}-\d{2}$/;
+    if (body.registrationOpensOn && !day.test(body.registrationOpensOn)) {
+      return c.json({ error: "Registration open date must be YYYY-MM-DD" }, 400);
+    }
+    if (body.registrationClosesOn && !day.test(body.registrationClosesOn)) {
+      return c.json({ error: "Registration close date must be YYYY-MM-DD" }, 400);
+    }
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const opp = await client.query(
+        `UPDATE opportunities
+         SET official_url = COALESCE($2, official_url), updated_at = now()
+         WHERE slug = $1
+         RETURNING id`,
+        [slug, body.officialUrl?.trim() || null]
+      );
+      if (!opp.rows[0]) {
+        await client.query("ROLLBACK");
+        return c.json({ error: "Not found" }, 404);
+      }
+      const edition = await client.query(
+        `SELECT id FROM opportunity_editions
+         WHERE opportunity_id = $1
+         ORDER BY updated_at DESC LIMIT 1`,
+        [opp.rows[0].id]
+      );
+      if (!edition.rows[0]) {
+        await client.query("ROLLBACK");
+        return c.json({ error: "Add an edition before editing facts" }, 400);
+      }
+      const editionId = edition.rows[0].id as string;
+      await client.query(
+        `UPDATE opportunity_editions
+         SET event_status = COALESCE($2, event_status),
+             eligibility_summary = COALESCE($3, eligibility_summary),
+             registration_method = COALESCE($4, registration_method),
+             scope_level = COALESCE($5, scope_level),
+             fee_status = CASE
+               WHEN $6::numeric IS NULL THEN fee_status
+               WHEN $6 = 0 THEN 'free'
+               ELSE 'paid'
+             END,
+             updated_at = now()
+         WHERE id = $1`,
+        [
+          editionId,
+          body.eventStatus || null,
+          body.eligibilitySummary === undefined ? null : body.eligibilitySummary,
+          body.registrationMethod || null,
+          body.scopeLevel || null,
+          body.feeAmount === undefined ? null : body.feeAmount,
+        ]
+      );
+      if (body.feeAmount !== undefined && body.feeAmount !== null) {
+        await client.query(`DELETE FROM opportunity_fees WHERE edition_id = $1`, [editionId]);
+        await client.query(
+          `INSERT INTO opportunity_fees (edition_id, label, amount, currency, fee_type, applicability_text)
+           VALUES ($1, $2, $3, $4, 'registration', $5)`,
+          [
+            editionId,
+            body.feeBasis?.trim() || "Entry",
+            body.feeAmount,
+            (body.feeCurrency || "INR").slice(0, 3),
+            body.feeBasis || null,
+          ]
+        );
+      }
+      if (body.registrationOpensOn || body.registrationClosesOn) {
+        await client.query(
+          `DELETE FROM opportunity_schedules
+           WHERE edition_id = $1 AND schedule_type = 'registration'`,
+          [editionId]
+        );
+        await client.query(
+          `INSERT INTO opportunity_schedules (
+             edition_id, schedule_type, label, date_status, precision, starts_on, ends_on
+           ) VALUES ($1, 'registration', 'Registration', 'verified', 'date', $2, $3)`,
+          [editionId, body.registrationOpensOn || null, body.registrationClosesOn || null]
+        );
+      }
+      if (body.sourceUrl?.trim()) {
+        await client.query(
+          `INSERT INTO opportunity_sources (edition_id, url, source_type, verification_status)
+           VALUES ($1, $2, 'organizer_page', 'unverified')`,
+          [editionId, body.sourceUrl.trim()]
+        );
+      }
+      await client.query(
+        `INSERT INTO opportunity_change_log (entity_type, entity_id, reason, after_data)
+         VALUES ('edition', $1, 'admin facts', $2::jsonb)`,
+        [editionId, JSON.stringify(body)]
+      );
+      await client.query("COMMIT");
+      return c.json({ ok: true, slug });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      console.error("[admin.opportunities.facts] failed", error);
+      return c.json({ error: "Could not save facts" }, 500);
     } finally {
       client.release();
     }

@@ -27,7 +27,7 @@ export default function Child360Layout() {
       <Stack.Screen name="[childId]/pathway-lean" options={{ title: "After Class 10" }} />
       <Stack.Screen
         name="[childId]/opportunities/index"
-        options={{ title: "Exams" }}
+        options={{ title: "Saved plans" }}
       />
       <Stack.Screen
         name="[childId]/opportunities/form"

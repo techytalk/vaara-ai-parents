@@ -180,6 +180,74 @@
       </table>
     </div>
 
+    <div class="panel" id="factsPanel" hidden>
+      <h2 style="margin:0 0 8px;">Captured facts</h2>
+      <p class="meta" id="factCurrent"></p>
+      <div class="toolbar">
+        <div>
+          <label for="factSlug">Exam</label>
+          <input id="factSlug" readonly />
+        </div>
+        <div>
+          <label for="factEvent">Event status</label>
+          <select id="factEvent">
+            <option value="">Keep current</option>
+            <option value="scheduled">scheduled</option>
+            <option value="postponed">postponed</option>
+            <option value="cancelled">cancelled</option>
+            <option value="completed">completed</option>
+            <option value="unknown">unknown</option>
+          </select>
+        </div>
+        <div>
+          <label for="factScope">Geography</label>
+          <select id="factScope">
+            <option value="">Keep current</option>
+            <option value="national">national</option>
+            <option value="state">state</option>
+            <option value="international">international</option>
+            <option value="unknown">unknown</option>
+          </select>
+        </div>
+        <div>
+          <label for="factMethod">Registration</label>
+          <select id="factMethod">
+            <option value="">Keep current</option>
+            <option value="direct">direct</option>
+            <option value="through_school">through_school</option>
+            <option value="nomination">nomination</option>
+            <option value="mixed">mixed</option>
+            <option value="unknown">unknown</option>
+          </select>
+        </div>
+        <div>
+          <label for="factEligibility">Eligibility text</label>
+          <input id="factEligibility" placeholder="Leave blank to keep" />
+        </div>
+        <div>
+          <label for="factFee">Fee amount (INR)</label>
+          <input id="factFee" inputmode="decimal" placeholder="Blank keeps current. 0 only if free." />
+        </div>
+        <div>
+          <label for="factOpen">Registration opens</label>
+          <input id="factOpen" type="date" />
+        </div>
+        <div>
+          <label for="factClose">Registration closes</label>
+          <input id="factClose" type="date" />
+        </div>
+        <div>
+          <label for="factSource">Source URL</label>
+          <input id="factSource" placeholder="https://" />
+        </div>
+        <div>
+          <label for="factOfficial">Official URL</label>
+          <input id="factOfficial" placeholder="https://" />
+        </div>
+        <button type="button" id="saveFacts">Save facts</button>
+      </div>
+    </div>
+
     <script src="/internal/admin/admin-auth.js"></script>
     <script>
       const errEl = document.getElementById("err");
@@ -242,6 +310,7 @@
                 ? "<div class='meta'>" + esc(item.eligibility_summary) + "</div>"
                 : "") +
               "</td><td>" + esc(item.kind) + "</td><td>" + badge + "</td><td class='actions'>" +
+              '<button type="button" class="ghost" data-action="facts" data-slug="' + esc(item.slug) + '">Facts</button> ' +
               action + "</td></tr>"
             );
           })
@@ -354,9 +423,107 @@
         const button = event.target.closest("button[data-action]");
         if (!button) return;
         const slug = button.getAttribute("data-slug");
-        const publish = button.getAttribute("data-action") === "publish";
+        const action = button.getAttribute("data-action");
+        if (action === "facts") {
+          void openFacts(slug);
+          return;
+        }
+        const publish = action === "publish";
         button.disabled = true;
-        void setPublished(slug, publish);
+        void setPublished(slug, publish).finally(() => {
+          button.disabled = false;
+        });
+      });
+
+      async function openFacts(slug) {
+        const panel = document.getElementById("factsPanel");
+        const res = await fetch(
+          VaaraAdmin.API_BASE + "/internal/admin/opportunities/" + encodeURIComponent(slug),
+          { headers: VaaraAdmin.headers(false) }
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          showError(data.error || "Could not load facts");
+          return;
+        }
+        document.getElementById("factSlug").value = slug;
+        document.getElementById("factEligibility").value = "";
+        document.getElementById("factEligibility").placeholder = data.edition?.eligibility_summary || "Leave blank to keep";
+        document.getElementById("factOfficial").value = "";
+        document.getElementById("factOfficial").placeholder = data.opportunity?.official_url || "https://";
+        document.getElementById("factFee").value = "";
+        document.getElementById("factFee").placeholder =
+          data.fees && data.fees[0] && data.fees[0].amount != null
+            ? "Current " + data.fees[0].amount
+            : "Blank keeps current. 0 only if free.";
+        const registration = (data.schedules || []).find((row) => row.schedule_type === "registration");
+        document.getElementById("factOpen").value = "";
+        document.getElementById("factClose").value = "";
+        document.getElementById("factSource").value = "";
+        document.getElementById("factCurrent").textContent = [
+          data.edition?.event_status ? "Event: " + data.edition.event_status : "",
+          data.edition?.scope_level ? "Geography: " + data.edition.scope_level : "",
+          registration?.starts_on ? "Opens " + String(registration.starts_on).slice(0, 10) : "",
+          registration?.ends_on ? "Closes " + String(registration.ends_on).slice(0, 10) : "",
+          data.edition?.eligibility_summary || "",
+        ].filter(Boolean).join(" · ") || "No captured facts yet.";
+        document.getElementById("factEvent").value = "";
+        document.getElementById("factScope").value = "";
+        document.getElementById("factMethod").value = "";
+        panel.hidden = false;
+        panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+
+      document.getElementById("saveFacts").addEventListener("click", async () => {
+        const button = document.getElementById("saveFacts");
+        const slug = document.getElementById("factSlug").value;
+        const feeRaw = document.getElementById("factFee").value.trim();
+        const body = {};
+        const eventStatus = document.getElementById("factEvent").value;
+        const scopeLevel = document.getElementById("factScope").value;
+        const registrationMethod = document.getElementById("factMethod").value;
+        const eligibility = document.getElementById("factEligibility").value.trim();
+        const official = document.getElementById("factOfficial").value.trim();
+        const source = document.getElementById("factSource").value.trim();
+        const opens = document.getElementById("factOpen").value;
+        const closes = document.getElementById("factClose").value;
+        if (eventStatus) body.eventStatus = eventStatus;
+        if (scopeLevel) body.scopeLevel = scopeLevel;
+        if (registrationMethod) body.registrationMethod = registrationMethod;
+        if (eligibility) body.eligibilitySummary = eligibility;
+        if (official) body.officialUrl = official;
+        if (source) body.sourceUrl = source;
+        if (opens) body.registrationOpensOn = opens;
+        if (closes) body.registrationClosesOn = closes;
+        if (feeRaw !== "") {
+          const amount = Number(feeRaw);
+          if (!Number.isFinite(amount) || amount < 0) {
+            showError("Fee amount must be a number, or left blank");
+            return;
+          }
+          body.feeAmount = amount;
+          body.feeCurrency = "INR";
+        }
+        button.disabled = true;
+        try {
+          const res = await fetch(
+            VaaraAdmin.API_BASE + "/internal/admin/opportunities/" + encodeURIComponent(slug) + "/facts",
+            {
+              method: "POST",
+              headers: VaaraAdmin.headers(true),
+              body: JSON.stringify(body),
+            }
+          );
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            showError(data.error || "Could not save facts");
+            return;
+          }
+          showError("");
+          await load();
+        } finally {
+          button.disabled = false;
+        }
       });
 
       VaaraAdmin.mountBar(document.getElementById("adminNav"));

@@ -17,7 +17,8 @@ import {
 import { PLAN_STATUS_OPTIONS } from "@/constants/child-360";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import { useLeaveWithoutSaving } from "@/hooks/useLeaveWithoutSaving";
-import { api, type PathwayCard } from "@/lib/api";
+import { api, type OpportunityCard } from "@/lib/api";
+import { trackEvent } from "@/lib/analytics";
 import { setChild360Undo } from "@/lib/child360Undo";
 import { getToken } from "@/lib/session";
 
@@ -25,37 +26,26 @@ type CatalogueOption = {
   slug: string;
   title: string;
   summary: string;
-  visibility: string;
+  opportunityId: string;
+  editionId: string;
 };
 
-function collectCatalogueOptions(
-  groups: Array<{ cards: PathwayCard[] }>,
-  already: Set<string>
-): CatalogueOption[] {
-  const bySlug = new Map<string, CatalogueOption>();
-  for (const group of groups) {
-    for (const card of group.cards) {
-      if (card.slug.startsWith("_")) continue;
-      if (card.status === "inactive" || card.status === "draft") continue;
-      if (
-        card.kind !== "exam" &&
-        card.kind !== "olympiad" &&
-        card.kind !== "admission_route"
-      ) {
-        continue;
-      }
-      if (already.has(card.slug)) continue;
-      if (!bySlug.has(card.slug)) {
-        bySlug.set(card.slug, {
-          slug: card.slug,
-          title: card.title,
-          summary: card.summary,
-          visibility: card.visibility,
-        });
-      }
-    }
+async function loadPublishedExams(token: string, childId: string) {
+  const items: OpportunityCard[] = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < 8; page += 1) {
+    const result = await api.listOpportunities(token, {
+      childId,
+      segment: "all",
+      limit: 50,
+      cursor,
+    });
+    if (!result.enabled) return [];
+    items.push(...result.items);
+    if (!result.nextCursor) break;
+    cursor = result.nextCursor;
   }
-  return [...bySlug.values()].sort((a, b) => a.title.localeCompare(b.title));
+  return items;
 }
 
 export default function OpportunityFormScreen() {
@@ -75,6 +65,8 @@ export default function OpportunityFormScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [initialStatus, setInitialStatus] = useState("exploring");
+  const [retiredPlan, setRetiredPlan] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useLeaveWithoutSaving(dirty, saving);
@@ -94,21 +86,36 @@ export default function OpportunityFormScreen() {
           router.replace("/(auth)/login");
           return;
         }
-        const [hub, pathwayHub] = await Promise.all([
+        const [hub, exams] = await Promise.all([
           api.getChild360(token, childId),
-          api.getPathwaysHub(token, { childId }),
+          loadPublishedExams(token, childId),
         ]);
         if (cancelled) return;
 
-        const planned = new Set(
-          hub.opportunityPlans
-            .filter((p) => p.id !== planId)
-            .map((p) => p.opportunitySlug)
+        const others = hub.opportunityPlans.filter((plan) => plan.id !== planId);
+        const plannedEditions = new Set(
+          others.map((plan) => plan.editionId).filter((id): id is string => Boolean(id))
         );
-        const catalogue = collectCatalogueOptions(
-          pathwayHub.groups,
-          planned
+        const plannedSlugs = new Set(
+          others.filter((plan) => !plan.editionId).map((plan) => plan.opportunitySlug)
         );
+        const catalogue = exams
+          .filter((item) => {
+            if (!item.edition) return false;
+            if (plannedEditions.has(item.edition.id)) return false;
+            if (plannedSlugs.has(item.slug)) return false;
+            return true;
+          })
+          .map((item) => ({
+            slug: item.slug,
+            title: item.edition?.editionLabel
+              ? `${item.title} · ${item.edition.editionLabel}`
+              : item.title,
+            summary: item.checks?.copy || item.edition?.eligibilitySummary || item.kind,
+            opportunityId: item.opportunityId ?? "",
+            editionId: item.edition?.id ?? "",
+          }))
+          .filter((item) => item.editionId && item.opportunityId);
         setOptions(catalogue);
 
         if (planId) {
@@ -117,17 +124,14 @@ export default function OpportunityFormScreen() {
             setError("Plan not found");
             return;
           }
-          setSlug(row.opportunitySlug);
+          setSlug(row.editionId ?? row.opportunitySlug);
           setStatus(row.status);
+          setInitialStatus(row.status);
           setTargetYear(
             row.targetYear != null ? String(row.targetYear) : ""
           );
-          const known =
-            catalogue.find((o) => o.slug === row.opportunitySlug) ??
-            collectCatalogueOptions(pathwayHub.groups, new Set()).find(
-              (o) => o.slug === row.opportunitySlug
-            );
-          setTitle(known?.title ?? row.opportunitySlug.toUpperCase());
+          setTitle(row.title ?? row.opportunitySlug.toUpperCase());
+          setRetiredPlan(row.publicationStatus === "retired");
         }
       } catch (e) {
         if (!cancelled) {
@@ -143,11 +147,11 @@ export default function OpportunityFormScreen() {
   }, [childId, planId, router]);
 
   const selected = useMemo(
-    () => options.find((o) => o.slug === slug) ?? null,
+    () => options.find((option) => option.editionId === slug) ?? null,
     [options, slug]
   );
 
-  const canSave = Boolean(slug) && !saving;
+  const canSave = (editing || Boolean(selected)) && !saving;
 
   async function onSave() {
     if (!canSave || !slug) return;
@@ -174,12 +178,27 @@ export default function OpportunityFormScreen() {
           status,
           targetYear: year,
         });
-      } else {
+        if (status !== initialStatus) {
+          trackEvent("opportunity_plan_status_changed", {
+            from: initialStatus,
+            to: status,
+          });
+        }
+      } else if (selected) {
         await api.createChildOpportunityPlan(token, childId, {
-          opportunitySlug: slug,
+          opportunityId: selected.opportunityId,
+          editionId: selected.editionId,
+          opportunitySlug: selected.slug,
           status,
           targetYear: year,
         });
+        trackEvent("opportunity_saved", { status });
+        if (status !== "exploring") {
+          trackEvent("opportunity_plan_status_changed", {
+            from: "exploring",
+            to: status,
+          });
+        }
       }
       router.back();
     } catch (e) {
@@ -247,23 +266,23 @@ export default function OpportunityFormScreen() {
       {editing ? (
         <View style={styles.locked}>
           <Text style={styles.lockedTitle}>{title}</Text>
-          {selected?.summary ? (
-            <Text style={styles.lockedSummary}>{selected.summary}</Text>
+          {retiredPlan ? (
+            <Text style={styles.lockedSummary}>This exam is no longer listed.</Text>
           ) : null}
         </View>
       ) : options.length === 0 ? (
         <Text style={styles.emptyCatalogue}>
-          No catalogue exams available for this board and class yet.
+          No published exams to add yet.
         </Text>
       ) : (
         <View style={styles.options}>
           {options.map((opt) => {
-            const on = slug === opt.slug;
+            const on = slug === opt.editionId;
             return (
               <Pressable
-                key={opt.slug}
+                key={opt.editionId}
                 onPress={() => {
-                  setSlug(opt.slug);
+                  setSlug(opt.editionId);
                   setTitle(opt.title);
                   setDirty(true);
                 }}
@@ -274,7 +293,6 @@ export default function OpportunityFormScreen() {
                 </Text>
                 <Text style={styles.optionSummary} numberOfLines={2}>
                   {opt.summary}
-                  {opt.visibility === "dimmed" ? " · Later" : ""}
                 </Text>
               </Pressable>
             );
@@ -285,21 +303,16 @@ export default function OpportunityFormScreen() {
       <Text style={styles.label}>Status</Text>
       <View style={styles.chips}>
         {PLAN_STATUS_OPTIONS.map((opt) => {
-          const laterOnly =
-            !editing && selected?.visibility === "dimmed" && opt.value === "this_season";
           return (
             <Pressable
               key={opt.value}
-              disabled={laterOnly}
               onPress={() => {
-                if (laterOnly) return;
                 setStatus(opt.value);
                 setDirty(true);
               }}
               style={[
                 styles.chip,
                 status === opt.value && styles.chipOn,
-                laterOnly && styles.chipDisabled,
               ]}
             >
               <Text
@@ -314,12 +327,6 @@ export default function OpportunityFormScreen() {
           );
         })}
       </View>
-      {!editing && selected?.visibility === "dimmed" ? (
-        <Text style={styles.hint}>
-          This paper is ahead of this stage. You can explore or plan it, not mark
-          This season.
-        </Text>
-      ) : null}
 
       <Text style={styles.label}>Target year (optional)</Text>
       <TextInput

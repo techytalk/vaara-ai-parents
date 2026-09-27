@@ -117,6 +117,10 @@ export function mapOpportunityPlan(row: Record<string, unknown>) {
     id: row.id as string,
     childId: row.child_id as string,
     opportunitySlug: row.opportunity_slug as string,
+    opportunityId: (row.opportunity_id as string | null) ?? null,
+    editionId: (row.edition_id as string | null) ?? null,
+    title: (row.opportunity_title as string | null) ?? null,
+    publicationStatus: (row.opportunity_publication_status as string | null) ?? null,
     status: row.status as string,
     targetYear:
       row.target_year == null ? null : Number(row.target_year),

@@ -3,11 +3,11 @@ import { colors, radii, spacing, typography } from "@/constants/theme";
 import type { Child360Hub } from "@/lib/api";
 import {
   centreName,
-  pathwayLeanDisplay,
 } from "@/constants/child-360";
 
 type Props = {
   data: Child360Hub;
+  examMatchCount?: number;
   onLeft: () => void;
   onTop: () => void;
   onRight: () => void;
@@ -69,7 +69,14 @@ function SideCard({
   );
 }
 
-export function Child360Cross({ data, onLeft, onTop, onRight, onBottom }: Props) {
+export function Child360Cross({
+  data,
+  examMatchCount = 0,
+  onLeft,
+  onTop,
+  onRight,
+  onBottom,
+}: Props) {
   const { child } = data;
   const centre = centreName(child);
   const isPreschool = child.track === "preschool";
@@ -113,21 +120,16 @@ export function Child360Cross({ data, onLeft, onTop, onRight, onBottom }: Props)
         ]
       : [];
 
+  const examsCard =
+    child.rightBand === "enjoy" ||
+    child.rightBand === "pathway_lean" ||
+    child.rightBand === "opportunities";
   let rightTitle = "Interests";
   let rightLines: string[] = [];
-  if (child.rightBand === "enjoy") {
+  if (examsCard) {
     rightTitle = "Exams";
-    rightLines = previewLines(data.interests, PREVIEW_MAX);
-  } else if (child.rightBand === "pathway_lean") {
-    rightTitle = "Exams";
-    const lean = pathwayLeanDisplay(data.hub.pathwayLean);
-    rightLines = lean ? [lean] : [];
-  } else if (child.rightBand === "opportunities") {
-    rightTitle = "Exams";
-    rightLines = previewLines(
-      data.opportunityPlans.map((p) => p.opportunitySlug),
-      PREVIEW_MAX
-    );
+    rightLines =
+      examMatchCount > 0 ? [`${examMatchCount} for this class`] : [];
   } else {
     rightLines = previewLines(data.interests, PREVIEW_MAX);
   }
@@ -152,7 +154,12 @@ export function Child360Cross({ data, onLeft, onTop, onRight, onBottom }: Props)
             {centre.subtitle}
           </Text>
         </View>
-        <SideCard title={rightTitle} lines={rightLines} onPress={onRight} />
+        <SideCard
+          title={rightTitle}
+          lines={rightLines}
+          emptyLabel={examsCard ? "For this class" : "+ Add"}
+          onPress={onRight}
+        />
       </View>
       <View style={styles.rowCenter}>
         <SideCard title="Health" lines={bottomLines} onPress={onBottom} />

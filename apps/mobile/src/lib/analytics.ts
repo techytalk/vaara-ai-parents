@@ -80,6 +80,7 @@ export type AnalyticsEvent =
   | "opportunity_filter_changed"
   | "opportunity_detail_viewed"
   | "opportunity_saved"
+  | "opportunity_plan_status_changed"
   | "opportunity_official_link_opened";
 
 type AnalyticsProperties = Record<string, string | number | boolean>;

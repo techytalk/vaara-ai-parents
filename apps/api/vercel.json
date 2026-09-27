@@ -1,5 +1,11 @@
 {
   "installCommand": "cd ../.. && npm install",
   "buildCommand": "cd ../.. && npm run build:api",
-  "regions": ["bom1"]
+  "regions": ["bom1"],
+  "crons": [
+    {
+      "path": "/internal/cron/opportunity-suggestions",
+      "schedule": "30 18 * * *"
+    }
+  ]
 }

@@ -4,7 +4,7 @@ import { authMiddleware, type AuthVariables } from "../middleware/auth.js";
 import {
   deriveRegistrationState,
   eligibilityCoversGrade,
-  gradeCheck,
+  evaluateEligibility,
   scopeMatchesSchool,
   searchScore,
 } from "../services/opportunity-match.js";
@@ -132,6 +132,8 @@ export function createOpportunityRoutes() {
     );
     const q = c.req.query("q")?.trim() || null;
     const cursor = c.req.query("cursor")?.trim() || null;
+    const kindFilter = c.req.query("kind")?.trim() || null;
+    const categoryFilter = c.req.query("category")?.trim() || null;
     const segment = c.req.query("segment") === "suggested" ? "suggested" : "all";
     const childId = c.req.query("childId")?.trim() || null;
 
@@ -142,14 +144,28 @@ export function createOpportunityRoutes() {
       child = owned;
     }
 
+    const categoryLabels = await pool.query(
+      `SELECT code, label FROM opportunity_categories ORDER BY sort_order, code`
+    );
+    const labelByCode = new Map(
+      categoryLabels.rows.map((row) => [String(row.code), String(row.label)])
+    );
+
     const { rows } = await pool.query(
       `SELECT o.id, o.slug, o.title, o.kind, o.organizer_name,
               e.id AS edition_id, e.edition_key, e.edition_label,
               e.scope_level, e.fee_status, e.registration_method, e.event_status,
               e.eligibility_summary, e.registration_url, e.official_notice_url,
+              e.curriculum_policy,
               (SELECT l.state_code FROM opportunity_locations l
                 WHERE l.edition_id = e.id AND l.role = 'eligibility_school'
-                ORDER BY l.created_at LIMIT 1) AS state_code
+                ORDER BY l.created_at LIMIT 1) AS state_code,
+              COALESCE((
+                SELECT array_agg(cat.code ORDER BY cat.sort_order)
+                FROM opportunity_category_links link
+                JOIN opportunity_categories cat ON cat.id = link.category_id
+                WHERE link.opportunity_id = o.id
+              ), ARRAY[]::text[]) AS category_codes
        FROM opportunities o
        JOIN opportunity_editions e ON e.opportunity_id = o.id
        WHERE o.publication_status = 'published'
@@ -175,6 +191,7 @@ export function createOpportunityRoutes() {
 
     type Card = {
       id: string;
+      opportunityId: string;
       slug: string;
       title: string;
       kind: string;
@@ -182,7 +199,8 @@ export function createOpportunityRoutes() {
       score: number;
       edition: ReturnType<typeof mapEdition>;
       registrationState: string;
-      checks: { grade: string; geography: string; summary: string };
+      checks: { grade: string; geography: string; curriculum: string; summary: string; copy: string };
+      categoryCodes: string[];
     };
 
     const cards: Card[] = [];
@@ -198,20 +216,19 @@ export function createOpportunityRoutes() {
         registrationMethod: row.registration_method as string,
         schedules: editionSchedules,
       });
-      const openish = registrationState === "open" || registrationState === "opening_soon" || registrationState === "unknown" || registrationState === "check_with_school" || registrationState === "dates_unannounced";
-      if (!openish && registrationState === "closed") {
-        // Past editions stay in All, not in the suggested set.
-      }
-      const gradeResult = child ? gradeCheck(row.eligibility_summary as string | null, child.grade) : "unknown";
-      const geoOk = scopeMatchesSchool(
-        row.scope_level as string,
-        child?.schoolState,
-        row.state_code as string | null
-      );
+      const eligibility = evaluateEligibility({
+        eligibilityText: row.eligibility_summary as string | null,
+        grade: child?.grade ?? null,
+        scopeLevel: row.scope_level as string,
+        schoolState: child?.schoolState,
+        editionState: row.state_code as string | null,
+        curriculumPolicy: row.curriculum_policy as string | null,
+      });
+      const geoOk = eligibility.geography !== "fail";
       if (segment === "suggested") {
-        if (!child || gradeResult !== "pass" || !geoOk) continue;
+        if (!child || eligibility.grade !== "pass" || !geoOk) continue;
         if (registrationState === "closed" || registrationState === "cancelled") continue;
-      } else if (child && !geoOk && row.scope_level === "state") {
+      } else if (child && eligibility.geography === "fail") {
         continue;
       }
       const score = searchScore(q, {
@@ -220,14 +237,9 @@ export function createOpportunityRoutes() {
         editionLabel: row.edition_label as string | null,
       });
       if (q && score <= 0) continue;
-      const summary =
-        gradeResult === "fail"
-          ? "does_not_match"
-          : gradeResult === "pass" && geoOk
-            ? "needs_confirmation"
-            : "needs_confirmation";
       cards.push({
         id: String(row.edition_id),
+        opportunityId: String(row.id),
         slug: String(row.slug),
         title: String(row.title),
         kind: String(row.kind),
@@ -235,11 +247,10 @@ export function createOpportunityRoutes() {
         score,
         edition: mapEdition(row as EditionRow & { edition_id: string }),
         registrationState,
-        checks: {
-          grade: gradeResult,
-          geography: geoOk ? "pass" : "unknown",
-          summary,
-        },
+        checks: eligibility,
+        categoryCodes: Array.isArray(row.category_codes)
+          ? (row.category_codes as string[])
+          : [],
       });
     }
 
@@ -260,19 +271,37 @@ export function createOpportunityRoutes() {
       }
     }
 
-    cards.sort((a, b) => b.score - a.score || a.title.localeCompare(b.title) || a.id.localeCompare(b.id));
+    const kinds = [...new Set(cards.map((card) => card.kind))].sort();
+    const usedCategories = [
+      ...new Set(cards.flatMap((card) => card.categoryCodes)),
+    ].filter((code) => labelByCode.has(code));
+    const filtered = cards.filter((card) => {
+      if (kindFilter && card.kind !== kindFilter) return false;
+      if (categoryFilter && !card.categoryCodes.includes(categoryFilter)) return false;
+      return true;
+    });
+    filtered.sort(
+      (a, b) => b.score - a.score || a.title.localeCompare(b.title) || a.id.localeCompare(b.id)
+    );
     let start = 0;
     if (cursor) {
-      const idx = cards.findIndex((card) => card.id === cursor);
+      const idx = filtered.findIndex((card) => card.id === cursor);
       start = idx >= 0 ? idx + 1 : 0;
     }
-    const page = cards.slice(start, start + limit);
-    const next = start + limit < cards.length ? page[page.length - 1]?.id ?? null : null;
+    const page = filtered.slice(start, start + limit);
+    const next = start + limit < filtered.length ? page[page.length - 1]?.id ?? null : null;
 
     return c.json({
       enabled: true,
-      items: page.map(({ score: _score, ...item }) => item),
+      items: page.map(({ score: _score, categoryCodes: _codes, ...item }) => item),
       nextCursor: next,
+      facets: {
+        kinds,
+        categories: usedCategories.map((code) => ({
+          code,
+          label: labelByCode.get(code) ?? code,
+        })),
+      },
     });
   });
 
@@ -282,24 +311,41 @@ export function createOpportunityRoutes() {
     }
     const slug = c.req.param("slug");
     const { rows } = await pool.query(
-      `SELECT id, slug, title, summary, description, kind, organizer_name, official_url
+      `SELECT id, slug, title, summary, description, kind, organizer_name, official_url,
+              publication_status
        FROM opportunities
        WHERE (slug = $1 OR id IN (
          SELECT opportunity_id FROM opportunity_slug_aliases WHERE alias = $1
        ))
-         AND publication_status = 'published'`,
+         AND publication_status IN ('published', 'retired')`,
       [slug]
     );
     if (!rows[0]) return c.json({ error: "Not found" }, 404);
+    const retired = rows[0].publication_status === "retired";
+
+    const childId = c.req.query("childId") ?? "";
+    let child: { grade: number | null; schoolState: string | null } | null = null;
+    if (childId) {
+      const owned = await loadOwnedChildContext(c.get("user").sub, childId);
+      if (owned === "missing") return c.json({ error: "Child not found" }, 404);
+      child = owned;
+    }
 
     const editions = await pool.query(
-      `SELECT id, edition_key, edition_label, scope_level, fee_status,
-              registration_method, event_status, eligibility_summary,
-              registration_url, official_notice_url
-       FROM opportunity_editions
-       WHERE opportunity_id = $1 AND publication_status = 'published'
-       ORDER BY edition_label, id`,
-      [rows[0].id]
+      `SELECT e.id, e.edition_key, e.edition_label, e.scope_level, e.fee_status,
+              e.registration_method, e.event_status, e.eligibility_summary,
+              e.registration_url, e.official_notice_url, e.curriculum_policy,
+              (SELECT l.state_code FROM opportunity_locations l
+                WHERE l.edition_id = e.id AND l.role = 'eligibility_school'
+                ORDER BY l.created_at LIMIT 1) AS state_code
+       FROM opportunity_editions e
+       WHERE e.opportunity_id = $1
+         AND (
+           e.publication_status = 'published'
+           OR ($2::boolean AND e.publication_status = 'retired')
+         )
+       ORDER BY e.edition_label, e.id`,
+      [rows[0].id, retired]
     );
 
     const editionIds = editions.rows.map((ed) => ed.id);
@@ -337,6 +383,7 @@ export function createOpportunityRoutes() {
         kind: rows[0].kind,
         organizerName: rows[0].organizer_name,
         officialUrl: rows[0].official_url,
+        publicationStatus: rows[0].publication_status,
         editions: editions.rows.map((ed) => ({
           ...mapEdition(ed as EditionRow),
           registrationState: deriveRegistrationState({
@@ -350,6 +397,14 @@ export function createOpportunityRoutes() {
                 endsOn: s.ends_on ? String(s.ends_on).slice(0, 10) : null,
                 dateStatus: String(s.date_status),
               })),
+          }),
+          checks: evaluateEligibility({
+            eligibilityText: ed.eligibility_summary as string | null,
+            grade: child?.grade ?? null,
+            scopeLevel: ed.scope_level as string,
+            schoolState: child?.schoolState,
+            editionState: ed.state_code as string | null,
+            curriculumPolicy: ed.curriculum_policy as string | null,
           }),
           schedules: schedules.rows
             .filter((s) => s.edition_id === ed.id)

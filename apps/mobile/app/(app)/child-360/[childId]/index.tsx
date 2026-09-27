@@ -221,21 +221,22 @@ export default function Child360HubScreen() {
     });
   }
 
+  function openExams() {
+    router.push({
+      pathname: "/(app)/opportunities",
+      params: { childId, from: "child360", segment: "suggested" },
+    });
+  }
+
   function openRight() {
     if (!data) return;
     const band = data.child.rightBand;
-    if (band === "pathway_lean") {
-      router.push({
-        pathname: "/(app)/child-360/[childId]/pathway-lean",
-        params: { childId },
-      });
-      return;
-    }
-    if (band === "opportunities") {
-      router.push({
-        pathname: "/(app)/child-360/[childId]/opportunities",
-        params: { childId },
-      });
+    if (
+      band === "enjoy" ||
+      band === "pathway_lean" ||
+      band === "opportunities"
+    ) {
+      openExams();
       return;
     }
     router.push({
@@ -337,24 +338,56 @@ export default function Child360HubScreen() {
       {error ? <Text style={styles.errorInline}>{error}</Text> : null}
       <Child360Cross
         data={data}
+        examMatchCount={examMatches}
         onLeft={openLeft}
         onTop={openTop}
         onRight={openRight}
         onBottom={openBottom}
       />
-      {examMatches > 0 ? (
+      {data.child.rightBand === "interests" && examMatches > 0 ? (
+        <Pressable style={styles.examsLink} onPress={openExams}>
+          <Text style={styles.examsLinkText}>
+            Competitive exams for this class
+          </Text>
+        </Pressable>
+      ) : null}
+      {data.child.rightBand === "enjoy" ? (
         <Pressable
           style={styles.examsLink}
           onPress={() =>
             router.push({
-              pathname: "/(app)/opportunities",
-              params: { childId, from: "child360", segment: "suggested" },
+              pathname: "/(app)/child-360/[childId]/interests",
+              params: { childId },
             })
           }
         >
-          <Text style={styles.examsLinkText}>
-            Competitive exams for this class
-          </Text>
+          <Text style={styles.examsLinkText}>What they enjoy</Text>
+        </Pressable>
+      ) : null}
+      {data.child.rightBand === "pathway_lean" ? (
+        <Pressable
+          style={styles.examsLink}
+          onPress={() =>
+            router.push({
+              pathname: "/(app)/child-360/[childId]/pathway-lean",
+              params: { childId },
+            })
+          }
+        >
+          <Text style={styles.examsLinkText}>After Class 10</Text>
+        </Pressable>
+      ) : null}
+      {data.child.rightBand === "opportunities" ? (
+        <Pressable
+          style={styles.examsLink}
+          onPress={() =>
+            router.push({
+              pathname: "/(app)/child-360/[childId]/opportunities",
+              params: { childId },
+            })
+          }
+        >
+          <Text style={styles.examsLinkText}>Saved exam plans</Text>
         </Pressable>
       ) : null}
     </ScrollView>
