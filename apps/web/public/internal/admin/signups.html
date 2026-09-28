@@ -18,6 +18,7 @@
         --border: #e8e3db;
         --ok: #078675;
         --warn: #b96d00;
+        --blocked: #b91c1c;
       }
       body {
         margin: 0;
@@ -86,6 +87,35 @@
         color: var(--teal-dark);
         font-weight: 600;
       }
+      .day-card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        margin-bottom: 8px;
+        overflow: hidden;
+      }
+      .day-card.is-active { border-color: var(--teal); }
+      .day-head {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        text-align: left;
+        background: transparent;
+        color: var(--text);
+        border: none;
+        border-radius: 0;
+        padding: 12px 14px;
+        margin: 0;
+      }
+      .day-head:hover { background: #f7f4ee; }
+      .day-date { font-weight: 700; min-width: 9.5rem; }
+      .day-meta { color: var(--muted); font-size: 0.85rem; flex: 1; }
+      .chevron { color: var(--muted); font-size: 0.8rem; }
+      .day-body { border-top: 1px solid var(--border); padding: 0 0 2px; }
+      .day-body table { border: none; border-radius: 0; }
+      .sub { color: var(--muted); font-size: 0.78rem; margin-top: 2px; }
+      tr.blocked td { background: #fff8f8; }
       table {
         width: 100%;
         border-collapse: collapse;
@@ -115,9 +145,11 @@
         padding: 2px 8px;
         font-size: 0.75rem;
         font-weight: 700;
+        white-space: nowrap;
       }
       .badge.ok { background: #e7f7f4; color: var(--ok); }
       .badge.warn { background: #fff2d9; color: var(--warn); }
+      .badge.blocked { background: #feecec; color: var(--blocked); }
       .err {
         color: #b91c1c;
         background: #feecec;
@@ -150,6 +182,7 @@
           <option value="all">All</option>
           <option value="complete">Complete</option>
           <option value="incomplete">Incomplete</option>
+          <option value="blocked">Blocked</option>
         </select>
       </div>
       <button id="refresh" type="button">Refresh</button>
@@ -162,13 +195,12 @@
       <div class="stat"><div class="n" id="nTotal">—</div><div class="l">Total that day</div></div>
       <div class="stat"><div class="n" id="nComplete">—</div><div class="l">Onboarding complete</div></div>
       <div class="stat"><div class="n" id="nIncomplete">—</div><div class="l">Incomplete</div></div>
+      <div class="stat"><div class="n" id="nBlocked">—</div><div class="l">Blocked</div></div>
     </div>
 
-    <h2>Last 14 days</h2>
-    <div class="days" id="days"></div>
-
-    <h2>Parents</h2>
-    <div id="list"><p class="empty">Loading…</p></div>
+    <h2>Registrations by day</h2>
+    <p class="muted" id="dayTotals">Every parent account, grouped by signup day (Asia/Kolkata). Expand a day to see who joined, including blocked profiles.</p>
+    <div id="days"><p class="empty">Loading…</p></div>
 
     <script src="/internal/admin/admin-auth.js"></script>
     <script>
@@ -197,45 +229,56 @@
         box.textContent = msg;
       }
 
+      const parentCache = new Map();
+      const openDays = new Set();
+      let dayRows = [];
+
       function locationLine(p) {
         const parts = [p.locality, p.city, p.state, p.pin_code].filter(Boolean);
         return parts.length ? parts.join(" · ") : "—";
       }
 
-      function renderDays(recentDays, activeDate) {
-        const wrap = $("days");
-        wrap.replaceChildren();
-        if (!recentDays || !recentDays.length) {
-          wrap.appendChild(Object.assign(document.createElement("span"), {
-            className: "empty",
-            textContent: "No signups in the last 14 days.",
-          }));
-          return;
-        }
-        for (const d of recentDays) {
-          const chip = document.createElement("button");
-          chip.type = "button";
-          chip.className = "day-chip" + (d.date === activeDate ? " active" : "");
-          chip.textContent = `${d.date} · ${d.total} (${d.complete}✓ / ${d.incomplete}…)`;
-          chip.addEventListener("click", () => {
-            $("date").value = d.date;
-            loadParents();
-          });
-          wrap.appendChild(chip);
-        }
+      function cacheKey(date, status) {
+        return `${date}|${status}`;
       }
 
-      function renderParents(parents) {
-        const list = $("list");
-        list.replaceChildren();
-        if (!parents || !parents.length) {
-          list.appendChild(Object.assign(document.createElement("p"), {
-            className: "empty",
-            textContent: "No parents for this date / filter.",
-          }));
-          return;
-        }
+      function formatDay(iso) {
+        const [y, m, d] = String(iso).split("-").map(Number);
+        if (!y || !m || !d) return iso;
+        return new Intl.DateTimeFormat("en-IN", {
+          timeZone: "UTC",
+          weekday: "short",
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+        }).format(new Date(Date.UTC(y, m - 1, d)));
+      }
 
+      function humanReason(reason) {
+        return String(reason).replace(/_/g, " ");
+      }
+
+      function statusHtml(p) {
+        const onboarding = p.onboarding_complete
+          ? '<span class="badge ok">Complete</span>'
+          : '<span class="badge warn">Incomplete</span>';
+        if (p.content_blocked !== true) return onboarding;
+        const reason = p.content_blocked_reason
+          ? ` · ${escapeHtml(humanReason(p.content_blocked_reason))}`
+          : "";
+        const when = p.blocked_ist
+          ? `<div class="sub">Blocked ${escapeHtml(p.blocked_ist)} IST</div>`
+          : "";
+        return `${onboarding} <span class="badge blocked">Blocked${reason}</span>${when}`;
+      }
+
+      function parentTable(parents, emptyText) {
+        if (!parents || !parents.length) {
+          return Object.assign(document.createElement("p"), {
+            className: "empty",
+            textContent: emptyText,
+          });
+        }
         const table = document.createElement("table");
         table.innerHTML = `
           <thead>
@@ -252,13 +295,17 @@
         const tbody = document.createElement("tbody");
         for (const p of parents) {
           const tr = document.createElement("tr");
-          const status = p.onboarding_complete
-            ? '<span class="badge ok">Complete</span>'
-            : '<span class="badge warn">Incomplete</span>';
+          if (p.content_blocked === true) tr.className = "blocked";
+          const handle = p.anonymous_handle
+            ? `<div class="sub">${escapeHtml(p.anonymous_handle)}</div>`
+            : "";
+          const moderate = p.content_blocked === true && p.anonymous_handle
+            ? `<div class="sub"><a href="/internal/admin/moderation.html?handle=${encodeURIComponent(p.anonymous_handle)}">Open in moderation</a></div>`
+            : "";
           tr.innerHTML = `
-            <td>${p.created_ist || "—"}</td>
-            <td>${escapeHtml(p.email || "—")}</td>
-            <td>${status}</td>
+            <td>${escapeHtml(p.created_ist || "—")}</td>
+            <td>${escapeHtml(p.email || "—")}${handle}${moderate}</td>
+            <td>${statusHtml(p)}</td>
             <td>${escapeHtml(locationLine(p))}</td>
             <td>${p.child_count ?? 0}</td>
             <td>${escapeHtml(p.first_school || "—")}</td>
@@ -266,7 +313,137 @@
           tbody.appendChild(tr);
         }
         table.appendChild(tbody);
-        list.appendChild(table);
+        return table;
+      }
+
+      function visibleDays(days, status) {
+        return days.filter((d) => {
+          if (status === "complete") return Number(d.complete) > 0;
+          if (status === "incomplete") return Number(d.incomplete) > 0;
+          if (status === "blocked") return Number(d.blocked) > 0;
+          return true;
+        });
+      }
+
+      function renderDayTotals(days) {
+        const total = days.reduce((n, d) => n + Number(d.total || 0), 0);
+        const blocked = days.reduce((n, d) => n + Number(d.blocked || 0), 0);
+        const line = $("dayTotals");
+        if (!days.length) {
+          line.textContent = "No parent accounts yet.";
+          return;
+        }
+        line.textContent =
+          `${total} parent${total === 1 ? "" : "s"} across ${days.length} day${days.length === 1 ? "" : "s"}` +
+          ` · ${blocked} blocked. Expand a day to see who joined.`;
+      }
+
+      function fillDayBody(body, date) {
+        body.replaceChildren();
+        const status = $("status").value;
+        const key = cacheKey(date, status);
+        if (!parentCache.has(key)) {
+          body.appendChild(Object.assign(document.createElement("p"), {
+            className: "empty",
+            textContent: "Loading…",
+          }));
+          return;
+        }
+        const empty = status === "blocked"
+          ? "No blocked parents that day."
+          : "No parents for this date / filter.";
+        body.appendChild(parentTable(parentCache.get(key), empty));
+      }
+
+      function renderDayList(activeDate) {
+        const wrap = $("days");
+        wrap.replaceChildren();
+        renderDayTotals(dayRows);
+        const status = $("status").value;
+        const days = visibleDays(dayRows, status);
+        if (!days.length) {
+          wrap.appendChild(Object.assign(document.createElement("p"), {
+            className: "empty",
+            textContent: status === "blocked"
+              ? "No blocked parents."
+              : "No signups for this filter.",
+          }));
+          return;
+        }
+        for (const d of days) {
+          const open = openDays.has(d.date);
+          const card = document.createElement("div");
+          card.className = "day-card" + (d.date === activeDate ? " is-active" : "");
+          card.id = `day-${d.date}`;
+          const head = document.createElement("button");
+          head.type = "button";
+          head.className = "day-head";
+          head.setAttribute("aria-expanded", open ? "true" : "false");
+          const blocked = Number(d.blocked || 0);
+          const blockedBadge = blocked
+            ? `<span class="badge blocked">${blocked} blocked</span>`
+            : "";
+          head.innerHTML = `
+            <span class="day-date">${escapeHtml(formatDay(d.date))}</span>
+            <span class="day-meta">${Number(d.total || 0)} registered · ${Number(d.complete || 0)} complete · ${Number(d.incomplete || 0)} incomplete</span>
+            ${blockedBadge}
+            <span class="chevron">${open ? "▾" : "▸"}</span>
+          `;
+          head.addEventListener("click", () => { void toggleDay(d.date); });
+          const body = document.createElement("div");
+          body.className = "day-body";
+          body.hidden = !open;
+          if (open) fillDayBody(body, d.date);
+          card.append(head, body);
+          wrap.appendChild(card);
+        }
+      }
+
+      async function fetchParents(date, status) {
+        const url =
+          `${API_BASE}/internal/admin/parents` +
+          `?date=${encodeURIComponent(date)}` +
+          `&status=${encodeURIComponent(status)}` +
+          `&limit=500`;
+        const res = await fetch(url, { headers: VaaraAdmin.headers(false) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        return data;
+      }
+
+      async function ensureParents(date) {
+        const status = $("status").value;
+        const key = cacheKey(date, status);
+        if (parentCache.has(key)) return;
+        const data = await fetchParents(date, status);
+        parentCache.set(key, data.parents || []);
+      }
+
+      function applyDayStats(date) {
+        const d = dayRows.find((row) => row.date === date);
+        $("nTotal").textContent = d ? Number(d.total || 0) : 0;
+        $("nComplete").textContent = d ? Number(d.complete || 0) : 0;
+        $("nIncomplete").textContent = d ? Number(d.incomplete || 0) : 0;
+        $("nBlocked").textContent = d ? Number(d.blocked || 0) : 0;
+      }
+
+      async function toggleDay(date) {
+        if (openDays.has(date)) {
+          openDays.delete(date);
+          renderDayList($("date").value);
+          return;
+        }
+        openDays.add(date);
+        $("date").value = date;
+        applyDayStats(date);
+        renderDayList(date);
+        try {
+          showError("");
+          await ensureParents(date);
+          renderDayList(date);
+        } catch (e) {
+          showError(e instanceof Error ? e.message : "Failed to load");
+        }
       }
 
       function escapeHtml(value) {
@@ -285,21 +462,20 @@
           const date = $("date").value || todayIst();
           $("date").value = date;
           const status = $("status").value;
-          const url =
-            `${API_BASE}/internal/admin/parents` +
-            `?date=${encodeURIComponent(date)}` +
-            `&status=${encodeURIComponent(status)}`;
-          const res = await fetch(url, { headers: VaaraAdmin.headers(false) });
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok) {
-            throw new Error(data.error || `HTTP ${res.status}`);
-          }
+          const data = await fetchParents(date, status);
           const s = data.summary || {};
           $("nTotal").textContent = s.total ?? 0;
           $("nComplete").textContent = s.complete ?? 0;
           $("nIncomplete").textContent = s.incomplete ?? 0;
-          renderDays(data.recentDays || [], s.date || date);
-          renderParents(data.parents || []);
+          $("nBlocked").textContent = s.blocked ?? 0;
+          dayRows = data.recentDays || [];
+          parentCache.clear();
+          parentCache.set(cacheKey(date, status), data.parents || []);
+          openDays.add(s.date || date);
+          const others = [...openDays].filter((d) => d !== (s.date || date));
+          await Promise.all(others.map((d) => ensureParents(d)));
+          renderDayList(s.date || date);
+          document.getElementById(`day-${s.date || date}`)?.scrollIntoView({ block: "nearest" });
         } catch (e) {
           showError(e instanceof Error ? e.message : "Failed to load");
         } finally {

@@ -461,7 +461,9 @@ export function createInternalRoutes() {
         ? "AND u.onboarding_complete IS TRUE"
         : status === "incomplete"
           ? "AND COALESCE(u.onboarding_complete, false) IS FALSE"
-          : "";
+          : status === "blocked"
+            ? "AND u.content_blocked IS TRUE"
+            : "";
 
     const client = await pool.connect();
     try {
@@ -473,7 +475,8 @@ export function createInternalRoutes() {
            day.d::text AS date,
            COUNT(u.id)::int AS total,
            COUNT(u.id) FILTER (WHERE u.onboarding_complete IS TRUE)::int AS complete,
-           COUNT(u.id) FILTER (WHERE u.id IS NOT NULL AND COALESCE(u.onboarding_complete, false) IS FALSE)::int AS incomplete
+           COUNT(u.id) FILTER (WHERE u.id IS NOT NULL AND COALESCE(u.onboarding_complete, false) IS FALSE)::int AS incomplete,
+           COUNT(u.id) FILTER (WHERE u.content_blocked IS TRUE)::int AS blocked
          FROM day
          LEFT JOIN users u
            ON u.role = 'parent'
@@ -490,7 +493,11 @@ export function createInternalRoutes() {
            u.id,
            u.email,
            u.display_name,
+           u.anonymous_handle,
            u.onboarding_complete,
+           u.content_blocked,
+           u.content_blocked_reason,
+           to_char(u.content_blocked_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD HH24:MI') AS blocked_ist,
            to_char(u.created_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD HH24:MI') AS created_ist,
            to_char(u.updated_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD HH24:MI') AS updated_ist,
            loc.pin_code,
@@ -534,11 +541,10 @@ export function createInternalRoutes() {
            (created_at AT TIME ZONE 'Asia/Kolkata')::date::text AS date,
            COUNT(*)::int AS total,
            COUNT(*) FILTER (WHERE onboarding_complete IS TRUE)::int AS complete,
-           COUNT(*) FILTER (WHERE COALESCE(onboarding_complete, false) IS FALSE)::int AS incomplete
+           COUNT(*) FILTER (WHERE COALESCE(onboarding_complete, false) IS FALSE)::int AS incomplete,
+           COUNT(*) FILTER (WHERE content_blocked IS TRUE)::int AS blocked
          FROM users
          WHERE role = 'parent'
-           AND created_at >= (now() AT TIME ZONE 'Asia/Kolkata')::date AT TIME ZONE 'Asia/Kolkata'
-                           - interval '14 days'
          GROUP BY 1
          ORDER BY 1 DESC`
       );
