@@ -330,13 +330,50 @@ function generateMomentsForCampaign(campaign: LuckyGiftCampaign): Array<{
   return moments;
 }
 
-async function loadCampaignBySlug(
+async function loadCampaignById(
   client: PoolClient,
-  slug = "suchitra-500"
+  campaignId: string
 ): Promise<LuckyGiftCampaign | null> {
   const { rows } = await client.query<CampaignRow>(
-    `SELECT * FROM lucky_gift_campaigns WHERE slug = $1`,
-    [slug]
+    `SELECT * FROM lucky_gift_campaigns WHERE id = $1`,
+    [campaignId]
+  );
+  return rows[0] ? mapCampaign(rows[0]) : null;
+}
+
+async function loadLatestUserCard(
+  client: PoolClient,
+  userId: string
+): Promise<CardRow | null> {
+  const { rows } = await client.query<CardRow>(
+    `SELECT * FROM lucky_gift_cards
+     WHERE user_id = $1
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [userId]
+  );
+  return rows[0] ?? null;
+}
+
+async function findIssuingCampaign(
+  client: PoolClient,
+  accountCreatedAt: Date | string
+): Promise<LuckyGiftCampaign | null> {
+  const { rows } = await client.query<CampaignRow>(
+    `SELECT c.*
+     FROM lucky_gift_campaigns c
+     WHERE c.active = true
+       AND c.starts_at <= now()
+       AND c.ends_at >= now()
+       AND c.starts_at <= $1
+       AND c.ends_at >= $1
+       AND EXISTS (
+         SELECT 1 FROM lucky_gift_winning_moments m
+         WHERE m.campaign_id = c.id
+       )
+     ORDER BY c.starts_at DESC
+     LIMIT 1`,
+    [new Date(accountCreatedAt).toISOString()]
   );
   return rows[0] ? mapCampaign(rows[0]) : null;
 }
@@ -511,12 +548,10 @@ export async function getLuckyGiftForUser(input: {
 }): Promise<LuckyGiftResponse> {
   const client = await pool.connect();
   try {
-    const campaign = await loadCampaignBySlug(client);
-    if (!campaign) return { status: "hidden" };
-
-    const existing = await loadUserCard(client, campaign.id, input.userId);
-
+    const existing = await loadLatestUserCard(client, input.userId);
     if (existing) {
+      const campaign = await loadCampaignById(client, existing.campaign_id);
+      if (!campaign) return { status: "hidden" };
       if (existing.scratched_at) {
         return revealedPayload(campaign, existing);
       }
@@ -526,29 +561,12 @@ export async function getLuckyGiftForUser(input: {
       return { status: "hidden" };
     }
 
-    // New cards only while the campaign is live.
-    if (!isCampaignLive(campaign)) {
-      return { status: "hidden" };
-    }
-
     if (input.role !== "parent" || !input.onboardingComplete) {
       return { status: "hidden" };
     }
 
-    const createdAt = new Date(input.accountCreatedAt).getTime();
-    if (
-      createdAt < new Date(campaign.startsAt).getTime() ||
-      createdAt > new Date(campaign.endsAt).getTime()
-    ) {
-      return { status: "hidden" };
-    }
-
-    // Need at least one moment schedule before issuing cards.
-    const { rows: momentCount } = await client.query(
-      `SELECT COUNT(*)::int AS n FROM lucky_gift_winning_moments WHERE campaign_id = $1`,
-      [campaign.id]
-    );
-    if (Number(momentCount[0]?.n ?? 0) === 0) {
+    const campaign = await findIssuingCampaign(client, input.accountCreatedAt);
+    if (!campaign || !isCampaignLive(campaign)) {
       return { status: "hidden" };
     }
 
@@ -572,11 +590,10 @@ export async function scratchLuckyGift(input: {
 }): Promise<LuckyGiftResponse | { error: string; status: number }> {
   const client = await pool.connect();
   try {
-    const campaign = await loadCampaignBySlug(client);
-    if (!campaign) return { error: "Campaign not found", status: 404 };
-
-    const card = await loadUserCard(client, campaign.id, input.userId);
+    const card = await loadLatestUserCard(client, input.userId);
     if (!card) return { error: "No lucky gift card", status: 404 };
+    const campaign = await loadCampaignById(client, card.campaign_id);
+    if (!campaign) return { error: "Campaign not found", status: 404 };
 
     if (!card.scratched_at) {
       if (!canAccessPendingCard(campaign)) {
@@ -612,11 +629,10 @@ export async function submitLuckyGiftPhone(input: {
 
   const client = await pool.connect();
   try {
-    const campaign = await loadCampaignBySlug(client);
-    if (!campaign) return { error: "Campaign not found", status: 404 };
-
-    const card = await loadUserCard(client, campaign.id, input.userId);
+    const card = await loadLatestUserCard(client, input.userId);
     if (!card) return { error: "No lucky gift card", status: 404 };
+    const campaign = await loadCampaignById(client, card.campaign_id);
+    if (!campaign) return { error: "Campaign not found", status: 404 };
     if (card.outcome !== "win") {
       return { error: "Only winners can submit a phone number", status: 400 };
     }
@@ -645,10 +661,100 @@ export async function submitLuckyGiftPhone(input: {
 
 // ---- Admin ----
 
-export async function adminGetLuckyGiftCampaign(slug = "suchitra-500") {
+export async function adminListLuckyGiftCampaigns() {
+  const { rows } = await pool.query(
+    `SELECT c.id, c.name, c.active, c.starts_at, c.ends_at, c.created_at,
+            COUNT(k.id)::int AS cards
+     FROM lucky_gift_campaigns c
+     LEFT JOIN lucky_gift_cards k ON k.campaign_id = c.id
+     GROUP BY c.id
+     ORDER BY c.created_at DESC`
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    active: Boolean(row.active),
+    startsAt: toIso(row.starts_at),
+    endsAt: toIso(row.ends_at),
+    cards: Number(row.cards ?? 0),
+  }));
+}
+
+export async function adminCreateLuckyGiftCampaign(input: {
+  name: string;
+  prizeLabel?: string;
+  supportPhone?: string;
+  startsAt: string;
+  endsAt: string;
+  claimDeadline: string;
+}): Promise<
+  | { ok: true; campaign: LuckyGiftCampaign }
+  | { error: string; status: number }
+> {
+  const name = input.name.trim();
+  if (!name) return { error: "Enter a campaign name", status: 400 };
+  if (
+    Number.isNaN(new Date(input.startsAt).getTime()) ||
+    Number.isNaN(new Date(input.endsAt).getTime()) ||
+    Number.isNaN(new Date(input.claimDeadline).getTime())
+  ) {
+    return { error: "Enter a start, end, and claim deadline", status: 400 };
+  }
+  if (name.length > 80) {
+    return { error: "Campaign name must be 80 characters or fewer", status: 400 };
+  }
+  if (new Date(input.endsAt) <= new Date(input.startsAt)) {
+    return { error: "endsAt must be after startsAt", status: 400 };
+  }
+  if (new Date(input.claimDeadline) < new Date(input.endsAt)) {
+    return { error: "claimDeadline must be on or after endsAt", status: 400 };
+  }
+  const supportPhone = input.supportPhone?.trim() || "+910000000000";
+  if (supportPhone !== "+910000000000" && !/^\+[1-9]\d{7,14}$/.test(supportPhone)) {
+    return { error: "supportPhone must be E.164, e.g. +9198XXXXXXXX", status: 400 };
+  }
+
   const client = await pool.connect();
   try {
-    const campaign = await loadCampaignBySlug(client, slug);
+    let slug = "";
+    for (let i = 0; i < 5; i++) {
+      const candidate = `campaign-${randomBytes(4).toString("hex")}`;
+      const taken = await client.query(
+        `SELECT 1 FROM lucky_gift_campaigns WHERE slug = $1`,
+        [candidate]
+      );
+      if (taken.rows.length === 0) {
+        slug = candidate;
+        break;
+      }
+    }
+    if (!slug) return { error: "Could not create campaign", status: 500 };
+
+    const { rows } = await client.query<CampaignRow>(
+      `INSERT INTO lucky_gift_campaigns
+         (slug, name, prize_label, support_phone, starts_at, ends_at, claim_deadline, active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, false)
+       RETURNING *`,
+      [
+        slug,
+        name,
+        input.prizeLabel?.trim() || "₹500 gift voucher",
+        supportPhone,
+        input.startsAt,
+        input.endsAt,
+        input.claimDeadline,
+      ]
+    );
+    return { ok: true, campaign: mapCampaign(rows[0]) };
+  } finally {
+    client.release();
+  }
+}
+
+export async function adminGetLuckyGiftCampaign(campaignId: string) {
+  const client = await pool.connect();
+  try {
+    const campaign = await loadCampaignById(client, campaignId);
     if (!campaign) return null;
 
     const [moments, stats, unclaimed] = await Promise.all([
@@ -706,10 +812,10 @@ export async function adminGetLuckyGiftCampaign(slug = "suchitra-500") {
   }
 }
 
-export async function adminListWinners(slug = "suchitra-500") {
+export async function adminListWinners(campaignId: string) {
   const client = await pool.connect();
   try {
-    const campaign = await loadCampaignBySlug(client, slug);
+    const campaign = await loadCampaignById(client, campaignId);
     if (!campaign) return null;
     const { rows } = await client.query(
       `SELECT c.claim_code, c.winner_phone, c.scratched_at, c.phone_submitted_at,
@@ -753,7 +859,7 @@ export type AdminCampaignPatch = {
 
 export async function adminUpdateLuckyGiftCampaign(
   patch: AdminCampaignPatch,
-  slug = "suchitra-500"
+  campaignId: string
 ): Promise<
   | {
       ok: true;
@@ -766,7 +872,7 @@ export async function adminUpdateLuckyGiftCampaign(
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const campaign = await loadCampaignBySlug(client, slug);
+    const campaign = await loadCampaignById(client, campaignId);
     if (!campaign) {
       await client.query("ROLLBACK");
       return { error: "Campaign not found", status: 404 };
@@ -938,7 +1044,7 @@ export async function adminUpdateLuckyGiftCampaign(
 }
 
 export async function adminGenerateWinningMoments(
-  slug = "suchitra-500"
+  campaignId: string
 ): Promise<
   | { ok: true; momentCount: number; moments: Array<{ period: string; availableAt: string }> }
   | { error: string; status: number }
@@ -946,7 +1052,7 @@ export async function adminGenerateWinningMoments(
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const campaign = await loadCampaignBySlug(client, slug);
+    const campaign = await loadCampaignById(client, campaignId);
     if (!campaign) {
       await client.query("ROLLBACK");
       return { error: "Campaign not found", status: 404 };

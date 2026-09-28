@@ -143,6 +143,40 @@
     <div class="stats" id="stats"></div>
 
     <div class="panel">
+      <h2>Campaigns</h2>
+      <div class="toolbar">
+        <div>
+          <label for="campaignPick">Open</label>
+          <select id="campaignPick"></select>
+        </div>
+      </div>
+      <p class="muted">Creating a campaign leaves the others, and their winners, unchanged.</p>
+      <div class="grid2">
+        <div class="row">
+          <label for="newName">New campaign name</label>
+          <input id="newName" maxlength="80" style="width:100%" />
+        </div>
+        <div class="row">
+          <label for="newPhone">Support phone (E.164)</label>
+          <input id="newPhone" placeholder="+9198XXXXXXXX" style="width:100%" />
+        </div>
+        <div class="row">
+          <label for="newStarts">Starts (IST)</label>
+          <input id="newStarts" type="datetime-local" style="width:100%" />
+        </div>
+        <div class="row">
+          <label for="newEnds">Ends (IST)</label>
+          <input id="newEnds" type="datetime-local" style="width:100%" />
+        </div>
+        <div class="row">
+          <label for="newClaim">Claim deadline (IST)</label>
+          <input id="newClaim" type="datetime-local" style="width:100%" />
+        </div>
+      </div>
+      <button type="button" id="btnCreate">Create campaign</button>
+    </div>
+
+    <div class="panel">
       <h2>Campaign controls</h2>
       <div class="grid2">
         <div class="row">
@@ -209,6 +243,7 @@
         const API_BASE = VaaraAdmin.API_BASE;
         const $ = (id) => document.getElementById(id);
         const PERIODS = ["morning", "afternoon", "evening"];
+        let selectedCampaignId = "";
         const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000;
 
         function toKolkataInput(iso) {
@@ -370,11 +405,44 @@
           </table>`;
         }
 
-        async function load() {
-          showError("");
-          const res = await fetch(API_BASE + "/internal/admin/lucky-gift", {
+        function campaignQuery() {
+          return "campaignId=" + encodeURIComponent(selectedCampaignId);
+        }
+
+        async function loadCampaignList(preferId) {
+          const res = await fetch(API_BASE + "/internal/admin/lucky-gift/campaigns", {
             headers: VaaraAdmin.headers(false),
           });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            showError(data.error || "Could not load campaigns");
+            return;
+          }
+          const campaigns = data.campaigns || [];
+          const pick = $("campaignPick");
+          pick.innerHTML = campaigns
+            .map((campaign) => {
+              const state = campaign.active ? "on" : "off";
+              return `<option value="${escapeHtml(campaign.id)}">${escapeHtml(campaign.name)} · ${state} · ${campaign.cards} cards</option>`;
+            })
+            .join("");
+          const chosen =
+            campaigns.find((campaign) => campaign.id === preferId) ||
+            campaigns[0];
+          selectedCampaignId = chosen ? chosen.id : "";
+          pick.value = selectedCampaignId;
+        }
+
+        async function load() {
+          showError("");
+          if (!selectedCampaignId) {
+            showError("No campaign selected");
+            return;
+          }
+          const res = await fetch(
+            API_BASE + "/internal/admin/lucky-gift?" + campaignQuery(),
+            { headers: VaaraAdmin.headers(false) }
+          );
           const data = await res.json().catch(() => ({}));
           if (!res.ok) {
             showError(data.error || "Failed to load campaign");
@@ -406,6 +474,7 @@
             carryUnclaimedForward: $("carryForward").checked,
             claimsOpen: $("claimsOpen").checked,
             periodWindows: readWindows(),
+            campaignId: selectedCampaignId,
             ...extra,
           };
           const res = await fetch(API_BASE + "/internal/admin/lucky-gift", {
@@ -425,6 +494,7 @@
                 ? "Campaign turned ON."
                 : "Saved."
           );
+          await loadCampaignList(selectedCampaignId);
           await load();
           return true;
         }
@@ -444,7 +514,11 @@
           if (!(await save({}))) return;
           const res = await fetch(
             API_BASE + "/internal/admin/lucky-gift/generate-moments",
-            { method: "POST", headers: VaaraAdmin.headers(true) }
+            {
+              method: "POST",
+              headers: VaaraAdmin.headers(true),
+              body: JSON.stringify({ campaignId: selectedCampaignId }),
+            }
           );
           const data = await res.json().catch(() => ({}));
           if (!res.ok) {
@@ -456,7 +530,7 @@
         });
         $("btnWinners").addEventListener("click", async () => {
           const res = await fetch(
-            API_BASE + "/internal/admin/lucky-gift/winners",
+            API_BASE + "/internal/admin/lucky-gift/winners?" + campaignQuery(),
             { headers: VaaraAdmin.headers(false) }
           );
           const data = await res.json().catch(() => ({}));
@@ -488,6 +562,45 @@
           </table>`;
         });
 
+        $("campaignPick").addEventListener("change", () => {
+          selectedCampaignId = $("campaignPick").value;
+          $("winners").className = "muted";
+          $("winners").textContent = "—";
+          void load();
+        });
+        $("btnCreate").addEventListener("click", async () => {
+          showError("");
+          showOk("");
+          $("btnCreate").disabled = true;
+          try {
+            const res = await fetch(API_BASE + "/internal/admin/lucky-gift/campaigns", {
+              method: "POST",
+              headers: VaaraAdmin.headers(true),
+              body: JSON.stringify({
+                name: $("newName").value.trim(),
+                supportPhone: $("newPhone").value.trim(),
+                startsAt: fromKolkataInput($("newStarts").value),
+                endsAt: fromKolkataInput($("newEnds").value),
+                claimDeadline: fromKolkataInput($("newClaim").value),
+              }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+              showError(data.error || "Could not create campaign");
+              return;
+            }
+            $("newName").value = "";
+            showOk("Created " + (data.campaign?.name || "campaign") + ". Generate moments, then turn it on.");
+            await loadCampaignList(data.campaign?.id);
+            await load();
+          } catch {
+            showError("Could not create campaign");
+          } finally {
+            $("btnCreate").disabled = false;
+          }
+        });
+
+        await loadCampaignList();
         await load();
       })();
     </script>

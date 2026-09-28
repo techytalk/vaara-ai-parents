@@ -35,8 +35,10 @@ import { mountAdminModeration } from "./admin-moderation.js";
 import { rebuildOpportunitySuggestions } from "../services/opportunity-suggestions.js";
 import { getAdminDashboard } from "../services/admin-dashboard.js";
 import {
+  adminCreateLuckyGiftCampaign,
   adminGenerateWinningMoments,
   adminGetLuckyGiftCampaign,
+  adminListLuckyGiftCampaigns,
   adminListWinners,
   adminUpdateLuckyGiftCampaign,
 } from "../services/lucky-gift.js";
@@ -1538,10 +1540,58 @@ export function createInternalRoutes() {
     }
   });
 
-  app.get("/admin/lucky-gift", async (c) => {
+  const campaignIdOk = (value: unknown): value is string =>
+    typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+
+  app.get("/admin/lucky-gift/campaigns", async (c) => {
     if (!(await requireAdminAuth(c))) return c.json({ error: "Unauthorized" }, 401);
     try {
-      const data = await adminGetLuckyGiftCampaign();
+      const campaigns = await adminListLuckyGiftCampaigns();
+      return c.json({ ok: true, campaigns });
+    } catch (error) {
+      console.error("[admin.lucky-gift.list] failed", error);
+      return c.json({ error: "Could not load campaigns" }, 500);
+    }
+  });
+
+  app.post("/admin/lucky-gift/campaigns", async (c) => {
+    if (!(await requireAdminAuth(c))) return c.json({ error: "Unauthorized" }, 401);
+    let body: Record<string, unknown>;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    try {
+      const result = await adminCreateLuckyGiftCampaign({
+        name: typeof body.name === "string" ? body.name : "",
+        prizeLabel: typeof body.prizeLabel === "string" ? body.prizeLabel : undefined,
+        supportPhone:
+          typeof body.supportPhone === "string" ? body.supportPhone : undefined,
+        startsAt: typeof body.startsAt === "string" ? body.startsAt : "",
+        endsAt: typeof body.endsAt === "string" ? body.endsAt : "",
+        claimDeadline:
+          typeof body.claimDeadline === "string" ? body.claimDeadline : "",
+      });
+      if ("error" in result) {
+        return c.json({ error: result.error }, result.status as 400 | 500);
+      }
+      return c.json(result);
+    } catch (error) {
+      console.error("[admin.lucky-gift.create] failed", error);
+      return c.json({ error: "Could not create campaign" }, 500);
+    }
+  });
+
+  app.get("/admin/lucky-gift", async (c) => {
+    if (!(await requireAdminAuth(c))) return c.json({ error: "Unauthorized" }, 401);
+    const campaignId = c.req.query("campaignId") ?? "";
+    if (!campaignIdOk(campaignId)) {
+      return c.json({ error: "Choose a campaign" }, 400);
+    }
+    try {
+      const data = await adminGetLuckyGiftCampaign(campaignId);
       if (!data) return c.json({ error: "Campaign not found" }, 404);
       return c.json({ ok: true, ...data });
     } catch (error) {
@@ -1552,8 +1602,12 @@ export function createInternalRoutes() {
 
   app.get("/admin/lucky-gift/winners", async (c) => {
     if (!(await requireAdminAuth(c))) return c.json({ error: "Unauthorized" }, 401);
+    const campaignId = c.req.query("campaignId") ?? "";
+    if (!campaignIdOk(campaignId)) {
+      return c.json({ error: "Choose a campaign" }, 400);
+    }
     try {
-      const data = await adminListWinners();
+      const data = await adminListWinners(campaignId);
       if (!data) return c.json({ error: "Campaign not found" }, 404);
       return c.json({ ok: true, ...data });
     } catch (error) {
@@ -1569,6 +1623,9 @@ export function createInternalRoutes() {
       body = await c.req.json();
     } catch {
       return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    if (!campaignIdOk(body.campaignId)) {
+      return c.json({ error: "Choose a campaign" }, 400);
     }
     try {
       const result = await adminUpdateLuckyGiftCampaign({
@@ -1592,7 +1649,7 @@ export function createInternalRoutes() {
         claimsOpen:
           typeof body.claimsOpen === "boolean" ? body.claimsOpen : undefined,
         active: typeof body.active === "boolean" ? body.active : undefined,
-      });
+      }, body.campaignId);
       if ("error" in result) {
         return c.json({ error: result.error }, result.status as 400 | 404);
       }
@@ -1605,8 +1662,17 @@ export function createInternalRoutes() {
 
   app.post("/admin/lucky-gift/generate-moments", async (c) => {
     if (!(await requireAdminAuth(c))) return c.json({ error: "Unauthorized" }, 401);
+    let body: Record<string, unknown> = {};
     try {
-      const result = await adminGenerateWinningMoments();
+      body = await c.req.json();
+    } catch {
+      body = {};
+    }
+    if (!campaignIdOk(body.campaignId)) {
+      return c.json({ error: "Choose a campaign" }, 400);
+    }
+    try {
+      const result = await adminGenerateWinningMoments(body.campaignId);
       if ("error" in result) {
         return c.json({ error: result.error }, result.status as 400 | 404);
       }
