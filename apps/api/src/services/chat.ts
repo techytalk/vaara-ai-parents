@@ -2146,7 +2146,7 @@ export async function searchMessagesCircles(
   let memberTypeClause = "";
   if (type) {
     memberParams.push(type);
-    memberTypeClause = `AND c.circle_type = $${memberParams.length}`;
+    memberTypeClause = `AND c.circle_type::text = $${memberParams.length}`;
   }
   let memberSearchClause = "";
   if (q) {
@@ -2167,10 +2167,10 @@ export async function searchMessagesCircles(
   );
 
   const otherParams: unknown[] = [userId, [...GUEST_CIRCLE_TYPES]];
-  let otherTypeClause = `AND c.circle_type = ANY($2::text[])`;
+  let otherTypeClause = `AND c.circle_type::text = ANY($2::text[])`;
   if (type) {
     otherParams.push(type);
-    otherTypeClause = `AND c.circle_type = $${otherParams.length}`;
+    otherTypeClause = `AND c.circle_type::text = $${otherParams.length}`;
   }
   let otherSearchClause = "";
   if (q) {

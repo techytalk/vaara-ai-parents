@@ -152,10 +152,10 @@ export async function searchCircleDirectory(
   const type = typeParsed.type;
 
   const sqlParams: unknown[] = [userId, [...GUEST_CIRCLE_TYPES]];
-  let typeClause = `AND c.circle_type = ANY($2::text[])`;
+  let typeClause = `AND c.circle_type::text = ANY($2::text[])`;
   if (type) {
     sqlParams.push(type);
-    typeClause = `AND c.circle_type = $${sqlParams.length}`;
+    typeClause = `AND c.circle_type::text = $${sqlParams.length}`;
   }
 
   let searchClause = "";
