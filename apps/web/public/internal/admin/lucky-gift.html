@@ -154,16 +154,16 @@
           <input id="supportPhone" placeholder="+9198XXXXXXXX" style="width:100%" />
         </div>
         <div class="row">
-          <label for="startsAt">Starts at (UTC ISO)</label>
-          <input id="startsAt" style="width:100%" />
+          <label for="startsAt">Starts (IST)</label>
+          <input id="startsAt" type="datetime-local" style="width:100%" />
         </div>
         <div class="row">
-          <label for="endsAt">Ends at (UTC ISO)</label>
-          <input id="endsAt" style="width:100%" />
+          <label for="endsAt">Ends (IST)</label>
+          <input id="endsAt" type="datetime-local" style="width:100%" />
         </div>
         <div class="row">
-          <label for="claimDeadline">Claim deadline (UTC ISO)</label>
-          <input id="claimDeadline" style="width:100%" />
+          <label for="claimDeadline">Claim deadline (IST)</label>
+          <input id="claimDeadline" type="datetime-local" style="width:100%" />
         </div>
       </div>
       <div class="check">
@@ -204,6 +204,40 @@
         const API_BASE = VaaraAdmin.API_BASE;
         const $ = (id) => document.getElementById(id);
         const PERIODS = ["morning", "afternoon", "evening"];
+        const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000;
+
+        function toKolkataInput(iso) {
+          const d = new Date(iso);
+          if (Number.isNaN(d.getTime())) return "";
+          const shifted = new Date(d.getTime() + IST_OFFSET_MS);
+          const pad = (n) => String(n).padStart(2, "0");
+          return (
+            shifted.getUTCFullYear() +
+            "-" +
+            pad(shifted.getUTCMonth() + 1) +
+            "-" +
+            pad(shifted.getUTCDate()) +
+            "T" +
+            pad(shifted.getUTCHours()) +
+            ":" +
+            pad(shifted.getUTCMinutes())
+          );
+        }
+
+        function fromKolkataInput(value) {
+          const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(
+            (value || "").trim()
+          );
+          if (!match) return "";
+          const utc = Date.UTC(
+            Number(match[1]),
+            Number(match[2]) - 1,
+            Number(match[3]),
+            Number(match[4]),
+            Number(match[5])
+          );
+          return new Date(utc - IST_OFFSET_MS).toISOString();
+        }
 
         function escapeHtml(value) {
           return String(value || "")
@@ -264,9 +298,9 @@
         function fillForm(campaign) {
           $("prizeLabel").value = campaign.prizeLabel || "";
           $("supportPhone").value = campaign.supportPhone || "";
-          $("startsAt").value = campaign.startsAt || "";
-          $("endsAt").value = campaign.endsAt || "";
-          $("claimDeadline").value = campaign.claimDeadline || "";
+          $("startsAt").value = toKolkataInput(campaign.startsAt);
+          $("endsAt").value = toKolkataInput(campaign.endsAt);
+          $("claimDeadline").value = toKolkataInput(campaign.claimDeadline);
           $("carryForward").checked = !!campaign.carryUnclaimedForward;
           $("claimsOpen").checked = !!campaign.claimsOpen;
           renderWindows(campaign.periodWindows || {});
@@ -356,9 +390,9 @@
           const body = {
             prizeLabel: $("prizeLabel").value.trim(),
             supportPhone: $("supportPhone").value.trim(),
-            startsAt: $("startsAt").value.trim(),
-            endsAt: $("endsAt").value.trim(),
-            claimDeadline: $("claimDeadline").value.trim(),
+            startsAt: fromKolkataInput($("startsAt").value),
+            endsAt: fromKolkataInput($("endsAt").value),
+            claimDeadline: fromKolkataInput($("claimDeadline").value),
             carryUnclaimedForward: $("carryForward").checked,
             claimsOpen: $("claimsOpen").checked,
             periodWindows: readWindows(),
