@@ -18,6 +18,7 @@ import { Child360Cross } from "@/components/child-360/Child360Cross";
 import { childHeadline } from "@/constants/child-360";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import { ApiError, api, type Child360Hub } from "@/lib/api";
+import { setLastChild360Id } from "@/lib/child360-last";
 import { childSwitcherTabLabel } from "@/lib/child-switcher-label";
 import { backLabelForOrigin, leaveToOrigin } from "@/lib/nav-back";
 import { getToken } from "@/lib/session";
@@ -66,8 +67,7 @@ export default function Child360HubScreen() {
         const kids = result?.data ?? childrenQuery.data ?? [];
         const stillThere = kids.some((k) => k.id === childId);
         if (!stillThere) {
-          // Child was deleted — leave this hub. Do not replace onto the same id.
-          if (kids.length === 1) {
+          if (kids[0]) {
             router.replace({
               pathname: "/(app)/child-360/[childId]",
               params: { childId: kids[0].id },
@@ -109,6 +109,7 @@ export default function Child360HubScreen() {
 
   function selectChild(nextId: string) {
     if (nextId === childId) return;
+    setLastChild360Id(nextId);
     router.replace({
       pathname: "/(app)/child-360/[childId]",
       params: {
@@ -119,7 +120,7 @@ export default function Child360HubScreen() {
   }
 
   useLayoutEffect(() => {
-    const multi = children.length > 1;
+    if (childId) setLastChild360Id(childId);
     const label = backLabelForOrigin(from ?? "more");
     navigation.setOptions({
       headerLeft: from
@@ -134,19 +135,7 @@ export default function Child360HubScreen() {
               <Text style={styles.editLink}>‹ {label}</Text>
             </Pressable>
           )
-        : multi
-          ? () => (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="All children"
-                onPress={() => router.push("/(app)/child-360" as never)}
-                hitSlop={8}
-                style={{ flexDirection: "row", alignItems: "center" }}
-              >
-                <Text style={styles.editLink}>‹ Children</Text>
-              </Pressable>
-            )
-          : undefined,
+        : undefined,
       headerRight: () => (
         <View style={styles.headerActions}>
           <Pressable
@@ -179,7 +168,7 @@ export default function Child360HubScreen() {
         </View>
       ),
     });
-  }, [childId, children.length, from, navigation, router]);
+  }, [childId, from, navigation, router]);
 
   async function onRefresh() {
     setRefreshing(true);
