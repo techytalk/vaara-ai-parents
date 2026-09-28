@@ -222,7 +222,6 @@ export default function HomeScreen() {
   }, [navigation, router, unreadAlerts]);
 
   const loading = userQuery.isLoading;
-  const composeLocked = circlesQuery.isPending || circlesQuery.isError;
   const showLuckyGift =
     !luckyGiftDismissed && luckyGift?.status === "pending";
   const needsClaimReminder =
@@ -351,26 +350,6 @@ export default function HomeScreen() {
           <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
         </Pressable>
       ) : null}
-
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Start a thread"
-        disabled={composeLocked}
-        onPress={() =>
-          router.push({
-            pathname: "/(app)/messages",
-            params: { from: "home" },
-          } as never)
-        }
-        style={[styles.composeCard, composeLocked && styles.composeLocked]}
-      >
-        <Avatar
-          handle={user?.anonymousHandle ?? "Parent"}
-          avatarKey={user?.avatarKey}
-          size={36}
-        />
-        <Text style={styles.composePlaceholder}>Ask your group</Text>
-      </Pressable>
     </View>
   );
 
@@ -451,46 +430,6 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontFamily: typography.bold,
   },
-  composeCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    backgroundColor: colors.card,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.sm,
-  },
-  composePlaceholder: {
-    ...typography.body,
-    color: colors.textMuted,
-    fontFamily: typography.regular,
-    flex: 1,
-  },
-  composeActions: {
-    flexDirection: "row",
-    gap: spacing.xs,
-    marginTop: spacing.xs,
-    marginBottom: spacing.sm,
-  },
-  composeAction: {
-    flex: 1,
-    minHeight: 40,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    borderRadius: radii.md,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  composeActionText: {
-    ...typography.caption,
-    color: colors.text,
-    fontFamily: typography.semibold,
-  },
-  composeLocked: { opacity: 0.5 },
   claimBanner: {
     flexDirection: "row",
     alignItems: "center",

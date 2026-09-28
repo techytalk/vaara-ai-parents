@@ -112,15 +112,15 @@ export function ChatHomeScreen() {
         items.length === 0 && styles.empty,
       ]}
       ListHeaderComponent={
-        <Text style={styles.intro}>
-          Conversations from your groups. Lasting threads show up here — tap to open.
-        </Text>
+        items.length > 0 ? (
+          <Text style={styles.intro}>From your groups</Text>
+        ) : null
       }
       ListEmptyComponent={
         <EmptyState
           icon="chatbubbles-outline"
-          title="Start a conversation"
-          message="Open a group and say hello. Active threads from your groups show up here — and nearby ones when your groups are quiet."
+          title="No conversations yet"
+          message="Open Messages to ask your group. Active threads show up here."
         />
       }
       onEndReached={() => {
@@ -242,7 +242,8 @@ const styles = StyleSheet.create({
   list: { padding: spacing.md, gap: spacing.sm, paddingBottom: 40 },
   empty: { flexGrow: 1 },
   intro: {
-    fontFamily: typography.regular,
+    fontFamily: typography.semibold,
+    fontSize: 13,
     color: colors.textMuted,
     marginBottom: spacing.sm,
   },
