@@ -74,7 +74,7 @@ export function backLabelForOrigin(from?: NavFrom | null): string {
     case "discover":
       return "Discover";
     case "messages":
-      return "Messages";
+      return "Circles";
     default:
       return "Back";
   }

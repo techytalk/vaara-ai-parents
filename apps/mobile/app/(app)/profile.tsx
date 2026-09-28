@@ -229,7 +229,7 @@ export default function ProfileScreen() {
         />
         <MenuRow
           icon="chatbubbles-outline"
-          label="Messages"
+          label="Circles"
           onPress={() => openMore("/(app)/messages", "messages")}
         />
         <MenuRow

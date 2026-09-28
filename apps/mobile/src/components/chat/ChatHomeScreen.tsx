@@ -153,7 +153,7 @@ export function ChatHomeScreen() {
         <EmptyState
           icon="chatbubbles-outline"
           title="No conversations yet"
-          message="Open Messages to ask your group. Active threads show up here."
+          message="Open Circles to ask your group. Active threads show up here."
         />
       }
       onEndReached={() => {

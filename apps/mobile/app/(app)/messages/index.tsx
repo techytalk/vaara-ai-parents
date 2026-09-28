@@ -288,7 +288,7 @@ export default function MessagesInboxScreen() {
         ) : (
           <View style={styles.headerBackPad} />
         )}
-        <Text style={styles.title}>Messages</Text>
+        <Text style={styles.title}>Circles</Text>
         <View style={styles.headerActions}>
           <Pressable
             accessibilityRole="button"

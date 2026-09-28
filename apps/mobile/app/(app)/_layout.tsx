@@ -150,8 +150,8 @@ export default function AppLayout() {
       <Tabs.Screen
         name="messages"
         options={{
-          title: "Messages",
-          tabBarLabel: "Messages",
+          title: "Circles",
+          tabBarLabel: "Circles",
           headerShown: false,
           tabBarIcon: tabIcon("chatbubbles", "chatbubbles-outline"),
           href: "/messages",
