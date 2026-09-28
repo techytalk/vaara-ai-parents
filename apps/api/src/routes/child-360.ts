@@ -1,6 +1,13 @@
 import { Hono } from "hono";
 import { pool } from "@vaara/db";
-import { invalidateFamilyPage } from "@vaara/redis";
+import {
+  child360PageKey,
+  getCachedJson,
+  invalidateChild360Page,
+  invalidateFamilyPage,
+  PAGE_CACHE_TTL,
+  setCachedJson,
+} from "@vaara/redis";
 import { formatSchoolLabel } from "../lib/school.js";
 import { authMiddleware, type AuthVariables } from "../middleware/auth.js";
 import {
@@ -45,6 +52,21 @@ function hubChildSummary(child: OwnedChildRow) {
   };
 }
 
+type Child360HubPayload = {
+  child: ReturnType<typeof hubChildSummary>;
+  activities: ReturnType<typeof mapActivity>[];
+  healthNotes: ReturnType<typeof mapHealthNote>[];
+  interests: string[];
+  opportunityPlans: ReturnType<typeof mapOpportunityPlan>[];
+  hub: {
+    activityName: string | null;
+    healthNoteCount: number;
+    interestPreview: string | null;
+    pathwayLean: string | null;
+    opportunityPreview: string | null;
+  };
+};
+
 function trimName(value: unknown, max: number): string | null {
   if (typeof value !== "string") return null;
   const t = value.trim();
@@ -59,6 +81,10 @@ export function createChild360Routes() {
   app.get("/children/:childId/360", async (c) => {
     const userId = c.get("user").sub;
     const childId = c.req.param("childId");
+    const cacheKey = child360PageKey(userId, childId);
+    const cached = await getCachedJson<Child360HubPayload>(cacheKey);
+    if (cached) return c.json(cached);
+
     const client = await pool.connect();
     try {
       const child = await loadOwnedChild(client, userId, childId);
@@ -111,7 +137,7 @@ export function createChild360Routes() {
         planRows[0] ??
         null;
 
-      return c.json({
+      const payload: Child360HubPayload = {
         child: hubChildSummary(child),
         activities: activityRows,
         healthNotes: notes.rows.map(mapHealthNote),
@@ -124,7 +150,9 @@ export function createChild360Routes() {
           pathwayLean: child.pathway_lean,
           opportunityPreview: hubPlan?.opportunitySlug ?? null,
         },
-      });
+      };
+      await setCachedJson(cacheKey, payload, PAGE_CACHE_TTL.child360);
+      return c.json(payload);
     } finally {
       client.release();
     }
@@ -196,6 +224,7 @@ export function createChild360Routes() {
          RETURNING *`,
         [childId, name, body.setting, howOften, status, next.rows[0].n]
       );
+      await invalidateChild360Page(userId, childId);
       return c.json(mapActivity(rows[0]), 201);
     } finally {
       client.release();
@@ -268,6 +297,7 @@ export function createChild360Routes() {
          RETURNING *`,
         [name, setting, howOften, status, activityId, childId]
       );
+      await invalidateChild360Page(userId, childId);
       return c.json(mapActivity(rows[0]));
     } finally {
       client.release();
@@ -291,6 +321,7 @@ export function createChild360Routes() {
       if (result.rows.length === 0) {
         return c.json({ error: "Activity not found" }, 404);
       }
+      await invalidateChild360Page(userId, childId);
       return c.json({ ok: true, deleted: mapActivity(result.rows[0]) });
     } finally {
       client.release();
@@ -345,6 +376,7 @@ export function createChild360Routes() {
          RETURNING *`,
         [childId, body.label, noteBody, next.rows[0].n]
       );
+      await invalidateChild360Page(userId, childId);
       return c.json(mapHealthNote(rows[0]), 201);
     } finally {
       client.release();
@@ -392,6 +424,7 @@ export function createChild360Routes() {
          RETURNING *`,
         [label, noteBody, noteId, childId]
       );
+      await invalidateChild360Page(userId, childId);
       return c.json(mapHealthNote(rows[0]));
     } finally {
       client.release();
@@ -415,6 +448,7 @@ export function createChild360Routes() {
       if (result.rows.length === 0) {
         return c.json({ error: "Note not found" }, 404);
       }
+      await invalidateChild360Page(userId, childId);
       return c.json({ ok: true, deleted: mapHealthNote(result.rows[0]) });
     } finally {
       client.release();
@@ -462,6 +496,7 @@ export function createChild360Routes() {
         );
       }
       await client.query("COMMIT");
+      await invalidateChild360Page(userId, childId);
       return c.json({ labels });
     } catch (err) {
       await client.query("ROLLBACK");
@@ -505,6 +540,7 @@ export function createChild360Routes() {
         [value, childId, userId]
       );
       await invalidateFamilyPage(userId);
+      await invalidateChild360Page(userId, childId);
       return c.json({ pathwayLean: rows[0]?.pathway_lean ?? null });
     } finally {
       client.release();
@@ -607,6 +643,7 @@ export function createChild360Routes() {
              RETURNING *`,
             [status, targetYear, slug, existing.rows[0].id]
           );
+          await invalidateChild360Page(userId, childId);
           return c.json(mapOpportunityPlan(rows[0]));
         }
       } else if (slug) {
@@ -624,6 +661,7 @@ export function createChild360Routes() {
              RETURNING *`,
             [status, targetYear, existing.rows[0].id]
           );
+          await invalidateChild360Page(userId, childId);
           return c.json(mapOpportunityPlan(rows[0]));
         }
       }
@@ -650,6 +688,7 @@ export function createChild360Routes() {
           resolvedEditionId,
         ]
       );
+      await invalidateChild360Page(userId, childId);
       return c.json(mapOpportunityPlan(rows[0]), 201);
     } finally {
       client.release();
@@ -708,6 +747,7 @@ export function createChild360Routes() {
          RETURNING *`,
         [status, targetYear, planId, childId]
       );
+      await invalidateChild360Page(userId, childId);
       return c.json(mapOpportunityPlan(rows[0]));
     } finally {
       client.release();
@@ -731,6 +771,7 @@ export function createChild360Routes() {
       if (result.rows.length === 0) {
         return c.json({ error: "Plan not found" }, 404);
       }
+      await invalidateChild360Page(userId, childId);
       return c.json({ ok: true, deleted: mapOpportunityPlan(result.rows[0]) });
     } finally {
       client.release();

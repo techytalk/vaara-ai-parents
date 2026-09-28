@@ -39,6 +39,7 @@ import {
 import {
   familyPageKey,
   getCachedJson,
+  invalidateChild360Page,
   invalidateFamilyPage,
   PAGE_CACHE_TTL,
   setCachedJson,
@@ -782,6 +783,7 @@ export function createMeRoutes() {
 
       await client.query("COMMIT");
       await invalidateFamilyPage(userId);
+      await invalidateChild360Page(userId, childId);
 
       const child = await fetchChildById(client, childId);
       return c.json(child);
@@ -820,6 +822,7 @@ export function createMeRoutes() {
       const user = await fetchAuthUserById(client, userId);
       await client.query("COMMIT");
       await invalidateFamilyPage(userId);
+      await invalidateChild360Page(userId, childId);
       return c.json({
         ok: true,
         onboardingComplete: complete,

@@ -14,6 +14,7 @@ export {
 export {
   chatLinearPageKey,
   chatThreadPageKey,
+  child360PageKey,
   curriculaPageKey,
   deleteCachedKeys,
   discoverPageKey,
@@ -21,6 +22,7 @@ export {
   feedCacheKey,
   getCachedJson,
   invalidateChatMessagePages,
+  invalidateChild360Page,
   invalidateCircleFeedCache,
   invalidateDiscoverForPins,
   invalidateFamilyPage,

@@ -7,7 +7,9 @@ export const PAGE_CACHE_TTL = {
   discover: Number(process.env.DISCOVER_CACHE_TTL_SECONDS ?? 90),
   pathTree: Number(process.env.PATH_TREE_CACHE_TTL_SECONDS ?? 1800),
   curricula: Number(process.env.CURRICULA_CACHE_TTL_SECONDS ?? 86400),
-  chat: Number(process.env.CHAT_PAGE_CACHE_TTL_SECONDS ?? 3600),
+  // Shared circle and thread pages. Writes delete the key; this is the backup.
+  chat: Number(process.env.CHAT_PAGE_CACHE_TTL_SECONDS ?? 86400),
+  child360: Number(process.env.CHILD360_CACHE_TTL_SECONDS ?? 90),
 } as const;
 
 export function feedCacheKey(params: {
@@ -35,6 +37,10 @@ function cacheToken(value: string): string {
 
 export function familyPageKey(userId: string): string {
   return `page:family:v1:${userId}`;
+}
+
+export function child360PageKey(userId: string, childId: string): string {
+  return `page:child360:v1:${userId}:${childId}`;
 }
 
 export function discoverPageKey(params: {
@@ -139,6 +145,13 @@ export async function deleteCachedKeys(keys: string[]): Promise<void> {
 
 export async function invalidateFamilyPage(userId: string): Promise<void> {
   await deleteCachedKeys([familyPageKey(userId)]);
+}
+
+export async function invalidateChild360Page(
+  userId: string,
+  childId: string
+): Promise<void> {
+  await deleteCachedKeys([child360PageKey(userId, childId)]);
 }
 
 export async function invalidateDiscoverForPins(pins: string[]): Promise<void> {
