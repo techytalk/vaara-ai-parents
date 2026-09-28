@@ -312,6 +312,9 @@ export function registerCircleDirectoryRoute(
         type,
         limit,
       });
+      if ("error" in result) {
+        return c.json({ error: result.error }, result.status as 400);
+      }
       return c.json(result);
     } finally {
       client.release();

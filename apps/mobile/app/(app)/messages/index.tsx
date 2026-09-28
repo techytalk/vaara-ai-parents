@@ -7,7 +7,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, type Href } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -289,15 +289,28 @@ export default function MessagesInboxScreen() {
           <View style={styles.headerBackPad} />
         )}
         <Text style={styles.title}>Messages</Text>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="New message"
-          hitSlop={8}
-          onPress={() => router.push("/(app)/messages/new")}
-          style={styles.headerRight}
-        >
-          <Ionicons name="add-circle-outline" size={28} color={colors.primaryDark} />
-        </Pressable>
+        <View style={styles.headerActions}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Search circles"
+            hitSlop={8}
+            onPress={() =>
+              router.push("/(app)/messages/search-circles" as Href)
+            }
+            style={styles.headerRight}
+          >
+            <Ionicons name="search-outline" size={26} color={colors.primaryDark} />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="New message"
+            hitSlop={8}
+            onPress={() => router.push("/(app)/messages/new")}
+            style={styles.headerRight}
+          >
+            <Ionicons name="add-circle-outline" size={28} color={colors.primaryDark} />
+          </Pressable>
+        </View>
       </View>
 
       <FlatList
@@ -506,7 +519,14 @@ const styles = StyleSheet.create({
     marginLeft: -2,
   },
   headerBackPad: { minWidth: 72 },
-  headerRight: { minWidth: 72, alignItems: "flex-end" },
+  headerRight: { minWidth: 40, alignItems: "flex-end" },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    minWidth: 72,
+    justifyContent: "flex-end",
+  },
   title: {
     flex: 1,
     textAlign: "center",

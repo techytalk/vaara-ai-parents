@@ -330,9 +330,24 @@
           </div>`;
         }).join("");
         const n = selectedIds().length;
+        const selected = messages.find((m) => m.id === selectedMessageId);
+        const guestThreadId =
+          selected?.author_was_guest === true && selected?.side_thread_id
+            ? selected.side_thread_id
+            : "";
+        const guestRemoved =
+          Boolean(guestThreadId) && selected?.status === "moderated";
+        const guestActive =
+          Boolean(guestThreadId) && selected?.status === "visible";
         panel.innerHTML = rows + `<div class="bar">
           <button type="button" class="danger" id="hideBtn" ${n ? "" : "disabled"}>Hide selected (${n})</button>
           <button type="button" class="secondary" id="unhideBtn" ${n ? "" : "disabled"}>Unhide selected</button>
+          ${guestActive
+            ? `<button type="button" class="danger" id="removeGuestBtn">Remove guest question</button>`
+            : ""}
+          ${guestRemoved
+            ? `<button type="button" class="secondary" id="restoreGuestBtn">Restore guest question</button>`
+            : ""}
         </div>`;
         panel.querySelectorAll(".msg").forEach((row) => {
           row.addEventListener("click", (e) => {
@@ -350,6 +365,8 @@
         });
         $("hideBtn")?.addEventListener("click", openConfirm);
         $("unhideBtn")?.addEventListener("click", () => void unhideSelected());
+        $("removeGuestBtn")?.addEventListener("click", () => void removeGuestQuestion(guestThreadId));
+        $("restoreGuestBtn")?.addEventListener("click", () => void restoreGuestQuestion(guestThreadId));
       }
 
       function renderReplies() {
@@ -427,6 +444,52 @@
           checked = new Set();
           if (selectedCircleId) await loadMessages(selectedCircleId, true);
           if (selectedMessageId) await loadReplies(selectedMessageId);
+        } catch (err) {
+          showError(err.message || String(err));
+        }
+      }
+
+      async function removeGuestQuestion(threadId) {
+        if (!threadId) return;
+        if (!confirm("Remove this guest question? The asker loses access and circle parents no longer see it.")) {
+          return;
+        }
+        showError("");
+        try {
+          await api(
+            `/internal/admin/moderation/threads/${encodeURIComponent(threadId)}/remove-guest`,
+            {
+              method: "POST",
+              headers: adminHeaders(true),
+              body: JSON.stringify({ reason: "not_appropriate" }),
+            }
+          );
+          checked = new Set();
+          if (selectedCircleId) await loadMessages(selectedCircleId, true);
+          else renderReplies();
+        } catch (err) {
+          showError(err.message || String(err));
+        }
+      }
+
+      async function restoreGuestQuestion(threadId) {
+        if (!threadId) return;
+        if (!confirm("Restore this guest question? The asker regains thread access and circle parents see it again.")) {
+          return;
+        }
+        showError("");
+        try {
+          await api(
+            `/internal/admin/moderation/threads/${encodeURIComponent(threadId)}/restore-guest`,
+            {
+              method: "POST",
+              headers: adminHeaders(true),
+              body: JSON.stringify({}),
+            }
+          );
+          checked = new Set();
+          if (selectedCircleId) await loadMessages(selectedCircleId, true);
+          else renderReplies();
         } catch (err) {
           showError(err.message || String(err));
         }

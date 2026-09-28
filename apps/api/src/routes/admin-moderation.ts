@@ -1,6 +1,6 @@
 import type { Hono } from "hono";
 import { pool } from "@vaara/db";
-import { invalidateChatMessagePages } from "@vaara/redis";
+import { invalidateChatMessagePages, publishUserInboxEvent } from "@vaara/redis";
 import { publishChatNudge } from "../services/chat.js";
 import {
   getModerationThread,
@@ -11,6 +11,8 @@ import {
   listModerationActions,
   listParentModerationCircles,
   parseMessageIds,
+  removeGuestQuestion,
+  restoreGuestQuestion,
   searchModeration,
   unhideMessages,
   setParentPostingBlock,
@@ -249,6 +251,89 @@ export function mountAdminModeration(app: Hono, requireAdminAuth: AdminAuth) {
         return c.json({ error: result.error }, result.status as 404);
       }
       await client.query("COMMIT");
+      return c.json({ ok: true, ...result });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  });
+
+  app.post("/admin/moderation/threads/:threadId/remove-guest", async (c) => {
+    const admin = await requireAdminAuth(c);
+    if (!admin) return c.json({ error: "Unauthorized" }, 401);
+    const threadId = (c.req.param("threadId") ?? "").trim();
+    if (!isUuid(threadId)) return c.json({ error: "Invalid thread id" }, 400);
+    let body: { reason?: string; note?: string } = {};
+    try {
+      body = await c.req.json();
+    } catch {
+      /* optional body */
+    }
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await removeGuestQuestion(client, {
+        threadId,
+        actor: admin.email,
+        reason: body.reason,
+        note: body.note,
+      });
+      if ("error" in result) {
+        await client.query("ROLLBACK");
+        return c.json({ error: result.error }, result.status as 400 | 404);
+      }
+      await client.query("COMMIT");
+      await invalidateChatMessagePages({
+        circleIds: [result.circleId],
+        threadIds: [result.threadId],
+      });
+      for (const guestUserId of result.guestUserIds) {
+        await publishUserInboxEvent(guestUserId, {
+          type: "access.revoked",
+          userId: guestUserId,
+          circleId: result.circleId,
+          threadId: result.threadId,
+        });
+      }
+      return c.json({ ok: true, ...result });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  });
+
+  app.post("/admin/moderation/threads/:threadId/restore-guest", async (c) => {
+    const admin = await requireAdminAuth(c);
+    if (!admin) return c.json({ error: "Unauthorized" }, 401);
+    const threadId = (c.req.param("threadId") ?? "").trim();
+    if (!isUuid(threadId)) return c.json({ error: "Invalid thread id" }, 400);
+    let body: { note?: string } = {};
+    try {
+      body = await c.req.json();
+    } catch {
+      /* optional body */
+    }
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await restoreGuestQuestion(client, {
+        threadId,
+        actor: admin.email,
+        note: body.note,
+      });
+      if ("error" in result) {
+        await client.query("ROLLBACK");
+        return c.json({ error: result.error }, result.status as 400 | 404);
+      }
+      await client.query("COMMIT");
+      await invalidateChatMessagePages({
+        circleIds: [result.circleId],
+        threadIds: [result.threadId],
+      });
       return c.json({ ok: true, ...result });
     } catch (error) {
       await client.query("ROLLBACK");

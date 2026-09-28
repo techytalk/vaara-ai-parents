@@ -393,7 +393,7 @@ export type CircleDirectoryItem = {
   circleType: string;
   subtitle: string | null;
   accessMode: "member" | "guest";
-  acceptsGuestPosts: boolean;
+  acceptsGuestPosts?: boolean;
 };
 
 export type CrossPostResult = {
@@ -1641,6 +1641,46 @@ export const api = {
       guestQuota: GuestQuota;
     }>(`/v1/circles/directory${q ? `?${q}` : ""}`, {}, token);
   },
+
+  searchMessagesCircles: (
+    token: string,
+    params?: { q?: string; type?: string; cursor?: string; limit?: number }
+  ) => {
+    const qs = new URLSearchParams();
+    if (params?.q) qs.set("q", params.q);
+    if (params?.type) qs.set("type", params.type);
+    if (params?.cursor) qs.set("cursor", params.cursor);
+    if (params?.limit) qs.set("limit", String(params.limit));
+    const q = qs.toString();
+    return request<{
+      yourGroups: CircleDirectoryItem[];
+      otherCircles: CircleDirectoryItem[];
+      guestQuota: GuestQuota;
+      nextCursor: string | null;
+    }>(`/v1/chat/circle-search${q ? `?${q}` : ""}`, {}, token);
+  },
+
+  createGuestThread: (
+    token: string,
+    circleId: string,
+    body: { title?: string; body: string; kind?: string }
+  ) =>
+    request<{
+      id: string;
+      circle_id?: string;
+      circleId?: string;
+      title: string | null;
+      body: string | null;
+      kind: string;
+      status: string;
+      created_seq?: number;
+      last_activity_seq?: number;
+    }>(
+      `/v1/circles/${circleId}/guest-threads`,
+      { method: "POST", body: JSON.stringify(body) },
+      token,
+      SCREEN_REQUEST_TIMEOUT_MS
+    ),
 
   createCrossPosts: (
     token: string,

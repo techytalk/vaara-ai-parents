@@ -8,12 +8,16 @@ product and data contract.
 > channel message (same-circle members + guests; thread roots can appear
 > on Home/feed). See `docs/SLACK_STYLE_THREADS.md`.
 >
-> **Amendment (school guests):** Guests do not join groups. Any
-> parent-role account may use **Ask this school** to create one
-> persistent, thread-only guest question in a whole-`school` circle.
-> They cannot open its channel, other threads, or member list.
-> Class/grade circles stay members-only. Details in
+> **Amendment (circle guests):** Guests do not join groups. Any
+> parent-role account may use **Ask this school** or Messages →
+> **Search circles** to create one persistent, thread-only guest question
+> in an eligible `school`, `locality`, `curriculum`, board-and-grade
+> `class`, or `community` circle. They cannot open its channel, other
+> threads, or member list. Child-specific `school_class`, `school_age`,
+> and `age_locality` circles stay members-only. Details in
 > `docs/SLACK_STYLE_THREADS.md` §3.2.
+> Messages search for school, location, and curriculum circles is in
+> `docs/MESSAGES_CIRCLE_SEARCH.md`.
 
 **UI for this model is new. Existing post/feed tables and APIs are retained
 while their data is migrated into single-circle threads.** After migration
@@ -512,7 +516,9 @@ documents, and polls. Do not use an unconstrained polymorphic foreign key.
   opted-in service-request thread.
 - None of these grants allows the full group, history, or member list.
 - `guest_author` remains active while the thread exists; closing stops writes
-  but not reading. It can be revoked only by moderation/block enforcement.
+  but not reading. Only authenticated Vaara staff using internal Admin may
+  remove an abusive guest question and revoke this grant. Circle parents may
+  report it but are not moderators.
 - `guest_replier` is for parent identities only. Provider identities must use
   `provider_responder` and the service-consent rules.
 

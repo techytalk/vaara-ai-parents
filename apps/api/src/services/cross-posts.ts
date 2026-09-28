@@ -10,6 +10,11 @@ import { dispatchPostCreated } from "../lib/async-events.js";
 import type { CircleTarget } from "@vaara/redis";
 import { toIsoTimestamp } from "../lib/feed-cursor.js";
 import { insertTimelineOutbox } from "./timeline-outbox.js";
+import {
+  GUEST_CIRCLE_TYPES,
+  isGuestCircleType,
+  parseGuestCircleTypeFilter,
+} from "../lib/guest-circles.js";
 
 export const MAX_GUEST_CIRCLES_PER_POST = 5;
 /** Soft safety cap on member circles in one publish (not a product “5” limit). */
@@ -126,28 +131,31 @@ export async function searchCircleDirectory(
   client: PoolClient,
   userId: string,
   params: { q?: string; type?: string; limit?: number }
-): Promise<{
-  circles: CircleDirectoryItem[];
-  guestQuota: {
-    used: number;
-    remaining: number;
-    limit: number;
-    timezone: string;
-  };
-}> {
+): Promise<
+  | {
+      circles: CircleDirectoryItem[];
+      guestQuota: {
+        used: number;
+        remaining: number;
+        limit: number;
+        timezone: string;
+      };
+    }
+  | { error: string; status: number }
+> {
   const limit = Math.min(Math.max(params.limit ?? 30, 1), 50);
   const q = params.q?.trim() ?? "";
-  const type = params.type?.trim() || null;
+  const typeParsed = parseGuestCircleTypeFilter(params.type);
+  if (!typeParsed.ok) {
+    return { error: typeParsed.error, status: 400 };
+  }
+  const type = typeParsed.type;
 
-  const sqlParams: unknown[] = [userId];
-  let typeClause = "";
+  const sqlParams: unknown[] = [userId, [...GUEST_CIRCLE_TYPES]];
+  let typeClause = `AND c.circle_type = ANY($2::text[])`;
   if (type) {
     sqlParams.push(type);
     typeClause = `AND c.circle_type = $${sqlParams.length}`;
-  } else {
-    // Class-level school circles are too numerous for guest search; keep
-    // school / curriculum / locality / grade / community instead.
-    typeClause = `AND c.circle_type <> 'school_class'`;
   }
 
   let searchClause = "";
@@ -171,10 +179,7 @@ export async function searchCircleDirectory(
   const { rows } = await client.query(
     `SELECT c.id, c.circle_type, c.key, c.display_name, c.metadata,
             c.accepts_guest_posts,
-            EXISTS (
-              SELECT 1 FROM circle_members cm
-              WHERE cm.circle_id = c.id AND cm.user_id = $1
-            ) AS is_member
+            false AS is_member
      FROM circles c
      WHERE c.accepts_guest_posts = true
        ${typeClause}
@@ -185,15 +190,12 @@ export async function searchCircleDirectory(
        )
      ORDER BY
        CASE c.circle_type
-         WHEN 'school_class' THEN 1
-         WHEN 'school_age' THEN 1
-         WHEN 'class' THEN 2
-         WHEN 'school' THEN 3
-         WHEN 'age_locality' THEN 4
-         WHEN 'curriculum' THEN 5
-         WHEN 'community' THEN 6
-         WHEN 'locality' THEN 7
-         ELSE 8
+         WHEN 'class' THEN 1
+         WHEN 'school' THEN 2
+         WHEN 'curriculum' THEN 3
+         WHEN 'community' THEN 4
+         WHEN 'locality' THEN 5
+         ELSE 6
        END,
        c.display_name
      LIMIT $${sqlParams.length}`,
@@ -211,7 +213,7 @@ export async function searchCircleDirectory(
         circleType: circleRow.circle_type,
         subtitle: subtitleFromCircle(circleRow),
         accessMode: "guest" as const,
-        acceptsGuestPosts: Boolean(circleRow.accepts_guest_posts),
+        acceptsGuestPosts: isGuestCircleType(circleRow.circle_type),
       };
     }),
     guestQuota,
@@ -315,7 +317,7 @@ export async function createCrossPosts(
   for (const id of targetCircleIds) {
     const row = byId.get(id)!;
     const isMember = Boolean(row.is_member);
-    if (!isMember && !row.accepts_guest_posts) {
+    if (!isMember && (!row.accepts_guest_posts || !isGuestCircleType(String(row.circle_type)))) {
       return {
         ok: false,
         error: `${row.display_name} does not accept guest posts`,

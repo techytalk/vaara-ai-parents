@@ -134,17 +134,18 @@ awkward, and temporary channel membership adds unnecessary history,
 member-list, unread, notification, and privacy complexity.
 
 A parent-role account that is not a member may select **Ask this school**
-on a whole-school page. This creates one thread root in that school circle
-and grants the asker access to that thread only.
+on a whole-school page, or use **Messages → Search circles** for an eligible
+circle. This creates one thread root in that circle and grants the asker
+access to that thread only.
 
 | Rule | Decision |
 |---|---|
-| Eligible target | `school` (whole-school) circle only |
-| Class / grade circles | Members only; guest questions rejected |
+| Eligible target | `school`, `locality`, `curriculum`, `class`, and `community` |
+| Child-specific circles | `school_class`, `school_age`, and `age_locality` stay members-only |
 | Who may ask | Any parent-role account; no PIN, city, or school-interest relationship required |
 | What the guest can read | Their thread root and all replies in that thread |
 | What the guest can write | Replies in their thread while it is open |
-| Main school channel | No access |
+| Main circle channel | No access |
 | Other threads / member list | No access |
 | Direct messages | No direct member browsing or guest-initiated DM in v1 |
 | Duration | No time limit; access follows the thread/grant while open and not revoked/moderated |
@@ -152,7 +153,7 @@ and grants the asker access to that thread only.
 | Notifications | Guest author follows the thread automatically and receives thread-reply notifications unless muted |
 | Limits | Existing guest-thread daily quota, blocks, content guard, reports, and moderation apply |
 
-The guest is never inserted into `circle_members`, the school group never
+The guest is never inserted into `circle_members`, the target circle never
 appears as one of their Messages groups, and no join/leave/expiry lifecycle
 is needed. A `circle_thread_access_grants` row with
 `grant_role = 'guest_author'` is the durable authorization.
@@ -160,13 +161,19 @@ is needed. A `circle_thread_access_grants` row with
 Tutors/providers remain a separate `provider_responder` grant path.
 Discovery/share viewers remain read-only unless explicitly granted.
 
-Manual member-to-outsider invite/revoke UI is not required for v1.
+No circle parent is an admin or moderator. Circle parents may report a guest
+question, but only authenticated Vaara staff using the internal moderation
+surface may remove it or suspend its author. Manual member-to-outsider
+invite/revoke UI is not required for v1.
 
 #### Implementation contract
 
-1. Entry point: school profile → **Ask this school**.
-2. Resolve the target circle from that school and require
-   `circle_type = 'school'`.
+1. Entry point: school profile → **Ask this school**. Messages →
+   **Search circles** is the same guest thread, started from a directory
+   result. See `docs/MESSAGES_CIRCLE_SEARCH.md`.
+2. Resolve the target circle and require the explicit guest allowlist:
+   `school`, `locality`, `curriculum`, `class`, or `community`. Directory
+   search and send must use the same allowlist.
 3. Require an authenticated account with the parent role. Do not require
    matching PIN, city, curriculum, grade, or school membership.
 4. Create a channel root plus its thread, labelled as a guest-authored
@@ -185,6 +192,10 @@ Manual member-to-outsider invite/revoke UI is not required for v1.
    and the opened thread.
 10. The grant remains valid until explicitly revoked or the thread becomes
     closed/deleted/moderated. There is no timer or background expiry job.
+11. **Remove guest question** is a Vaara-admin-only atomic action: moderate
+    the thread/root/replies, revoke the `guest_author` grant, publish
+    `access.revoked`, invalidate caches, and deny every guest route for that
+    thread. Hiding only the root message is insufficient.
 
 ### 3.3 Not a thread
 
@@ -422,7 +433,9 @@ when flipping from topic-boards to Slack threads.
 | 5 | Guest group membership / pass? | **No** — one guest thread only |
 | 6 | Guest geo / interest gate? | **No** — any parent-role account |
 | 7 | Guest access expiry? | **No** — grant follows the thread lifecycle |
-| 8 | Class/grade guest questions? | **No** — members only |
+| 8 | Eligible guest circle types? | `school`, `locality`, `curriculum`, board-and-grade `class`, and `community` |
+| 9 | Child-specific guest questions? | **No** — `school_class`, `school_age`, and `age_locality` are members-only |
+| 10 | Who moderates guest questions? | Vaara staff through internal Admin only; circle parents report but do not moderate |
 
 ---
 
@@ -433,10 +446,14 @@ when flipping from topic-boards to Slack threads.
 | Slack-style channel + one-level threads for all groups | Implemented, remediation required before release |
 | Same-circle members can create/join threads | Accepted |
 | Whole-school guest question (thread-only, persistent) | **Implemented** (school Ask + grant + inbox guest threads + Guest badge) |
-| Class/grade guest questions | **Rejected** — members only |
+| Messages → Search circles → send | **Implemented** (mobile Search circles + Ask as guest; `GET /v1/chat/circle-search`) |
+| Location, curriculum, board-and-grade, and community guest questions | **Implemented** via shared guest allowlist |
+| School-class, school-age, and age-locality guest questions | **Rejected** — members only |
 | Guest geo/PIN gate | None; parent role still required |
 | Guest group pass / join / expiry | **Rejected** — no group access |
-| Manual invite/revoke guest UI | Not required for v1 |
+| Parent/circle moderator role | **Rejected** — parents report; only Vaara staff moderate |
+| Admin Remove guest question | **Implemented** (atomic remove/restore + internal Admin UI) |
+| Manual member invite/revoke guest UI | Not required for v1 |
 | Threads can appear on Home/feed like lasting messages | Accepted (eligible roots with replies) |
 | Topic-list-only interiors for wide groups | **Removed** — groups open as channels |
 | Live code / migrations | **Blocked:** complete remediation, then apply corrected `052` and ship app/API together |

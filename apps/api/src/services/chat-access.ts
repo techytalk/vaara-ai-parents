@@ -223,15 +223,23 @@ export async function incrementDailyQuota(
   client: PoolClient,
   userId: string,
   quotaKey: string,
-  limit: number
+  limit: number,
+  timezone?: string
 ): Promise<boolean> {
+  const tz = timezone?.trim() || null;
   const { rows } = await client.query(
-    `INSERT INTO chat_daily_quotas (user_id, quota_key, day, count)
-     VALUES ($1, $2, CURRENT_DATE, 1)
-     ON CONFLICT (user_id, quota_key, day)
-     DO UPDATE SET count = chat_daily_quotas.count + 1
-     RETURNING count`,
-    [userId, quotaKey]
+    tz
+      ? `INSERT INTO chat_daily_quotas (user_id, quota_key, day, count)
+         VALUES ($1, $2, (now() AT TIME ZONE $3)::date, 1)
+         ON CONFLICT (user_id, quota_key, day)
+         DO UPDATE SET count = chat_daily_quotas.count + 1
+         RETURNING count`
+      : `INSERT INTO chat_daily_quotas (user_id, quota_key, day, count)
+         VALUES ($1, $2, CURRENT_DATE, 1)
+         ON CONFLICT (user_id, quota_key, day)
+         DO UPDATE SET count = chat_daily_quotas.count + 1
+         RETURNING count`,
+    tz ? [userId, quotaKey, tz] : [userId, quotaKey]
   );
   return Number(rows[0].count) <= limit;
 }

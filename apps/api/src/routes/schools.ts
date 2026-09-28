@@ -27,6 +27,8 @@ import { authMiddleware, type AuthVariables } from "../middleware/auth.js";
 import { rateLimitMiddleware } from "../middleware/rate-limit.js";
 import { createThread, publishChatNudge } from "../services/chat.js";
 import { incrementDailyQuota, isCircleMember } from "../services/chat-access.js";
+import { getUserTimezone } from "../services/cross-posts.js";
+import { GUEST_THREAD_DAILY_LIMIT } from "../lib/guest-circles.js";
 import { syncCircleMembership } from "../services/circle-sync.js";
 import { userHasRole } from "../lib/user-roles.js";
 
@@ -884,9 +886,20 @@ export function createSchoolsRoutes() {
 
       const member = await isCircleMember(client, circleId, userId);
       const guest = !member;
-      if (guest && !(await incrementDailyQuota(client, userId, "guest_thread", 5))) {
-        await client.query("ROLLBACK");
-        return c.json({ error: "Guest thread daily limit reached" }, 429);
+      if (guest) {
+        const timezone = await getUserTimezone(client, userId);
+        if (
+          !(await incrementDailyQuota(
+            client,
+            userId,
+            "guest_thread",
+            GUEST_THREAD_DAILY_LIMIT,
+            timezone
+          ))
+        ) {
+          await client.query("ROLLBACK");
+          return c.json({ error: "Guest thread daily limit reached" }, 429);
+        }
       }
 
       const result = await createThread({

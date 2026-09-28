@@ -178,6 +178,10 @@ const MIGRATIONS = [
     version: "079_app_opens",
     file: "079_app_opens.sql",
   },
+  {
+    version: "080_guest_moderation_actions",
+    file: "080_guest_moderation_actions.sql",
+  },
 ];
 
 async function isMigrationApplied(

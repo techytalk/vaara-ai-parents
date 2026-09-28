@@ -21,6 +21,10 @@ import {
   isMediaStorageConfigured,
 } from "../lib/media-storage.js";
 import {
+  GUEST_THREAD_DAILY_LIMIT,
+} from "../lib/guest-circles.js";
+import { getUserTimezone } from "../services/cross-posts.js";
+import {
   incrementDailyQuota,
   isCircleMember,
   loadThreadAccess,
@@ -38,6 +42,7 @@ import {
   listThreadMessages,
   openProviderThread,
   publishChatNudge,
+  searchMessagesCircles,
   setMessageReaction,
 } from "../services/chat.js";
 import { drainChatOutbox } from "../services/chat-outbox.js";
@@ -70,6 +75,25 @@ export function createChatRoutes() {
     const client = await pool.connect();
     try {
       return c.json(await listInbox(client, userId));
+    } finally {
+      client.release();
+    }
+  });
+
+  app.get("/circle-search", async (c) => {
+    const userId = c.get("user").sub;
+    const client = await pool.connect();
+    try {
+      const result = await searchMessagesCircles(client, userId, {
+        q: c.req.query("q"),
+        type: c.req.query("type"),
+        cursor: c.req.query("cursor"),
+        limit: Number(c.req.query("limit") ?? 30),
+      });
+      if ("error" in result) {
+        return c.json({ error: result.error }, result.status as 400);
+      }
+      return c.json(result);
     } finally {
       client.release();
     }
@@ -680,7 +704,16 @@ export function createCircleChatRoutes() {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      if (!(await incrementDailyQuota(client, userId, "guest_thread", 5))) {
+      const timezone = await getUserTimezone(client, userId);
+      if (
+        !(await incrementDailyQuota(
+          client,
+          userId,
+          "guest_thread",
+          GUEST_THREAD_DAILY_LIMIT,
+          timezone
+        ))
+      ) {
         await client.query("ROLLBACK");
         return c.json({ error: "Guest thread daily limit reached" }, 429);
       }
@@ -690,7 +723,7 @@ export function createCircleChatRoutes() {
         circleId,
         title: body.title,
         body: body.body,
-        kind: body.kind,
+        kind: body.kind ?? "question",
         guest: true,
       });
       if ("error" in result) {
@@ -701,6 +734,13 @@ export function createCircleChatRoutes() {
         );
       }
       await client.query("COMMIT");
+      await invalidateChatMessagePages({ circleIds: [circleId] });
+      await publishChatNudge({
+        circleId,
+        threadId: String(result.thread.id),
+        seq: Number(result.thread.created_seq ?? result.thread.last_activity_seq ?? 0),
+        authorId: userId,
+      });
       return c.json(result.thread, 201);
     } catch (error) {
       await client.query("ROLLBACK");
@@ -988,7 +1028,7 @@ export function createThreadRoutes() {
     const client = await pool.connect();
     try {
       const access = await loadThreadAccess(client, threadId, userId);
-      if (!access || access.authorId !== userId) {
+      if (!access || !access.canRead || access.authorId !== userId) {
         return c.json({ error: "Thread not found" }, 404);
       }
       const current = await client.query(
@@ -1041,7 +1081,7 @@ export function createThreadRoutes() {
     const client = await pool.connect();
     try {
       const access = await loadThreadAccess(client, threadId, userId);
-      if (!access || access.authorId !== userId) {
+      if (!access || !access.canRead || access.authorId !== userId) {
         return c.json({ error: "Thread not found" }, 404);
       }
       const replies = await client.query(

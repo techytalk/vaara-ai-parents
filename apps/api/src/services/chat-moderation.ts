@@ -203,6 +203,7 @@ export async function listCircleModerationMessages(
        m.status,
        m.body,
        m.thread_id,
+       m.author_was_guest,
        t.id AS side_thread_id,
        to_char(m.created_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD HH24:MI') AS created_ist,
        u.id AS author_id,
@@ -593,6 +594,227 @@ export async function setParentPostingBlock(
     userId: String(updated.rows[0].id),
     anonymousHandle: String(updated.rows[0].anonymous_handle),
     contentBlocked: updated.rows[0].content_blocked === true,
+  };
+}
+
+export async function removeGuestQuestion(
+  client: PoolClient,
+  params: {
+    threadId: string;
+    actor: string;
+    reason?: string;
+    note?: string;
+  }
+): Promise<
+  | {
+      threadId: string;
+      circleId: string;
+      guestUserIds: string[];
+      messageIds: string[];
+    }
+  | { error: string; status: number }
+> {
+  const thread = await client.query<{
+    id: string;
+    circle_id: string;
+    root_message_id: string | null;
+    status: string;
+    author_id: string;
+  }>(
+    `SELECT id, circle_id, root_message_id, status, author_id
+     FROM circle_threads WHERE id = $1`,
+    [params.threadId]
+  );
+  if (!thread.rows[0]) return { error: "Thread not found", status: 404 };
+  const row = thread.rows[0];
+  if (!row.root_message_id) {
+    return { error: "Thread has no root message", status: 400 };
+  }
+
+  const grant = await client.query<{ user_id: string }>(
+    `SELECT user_id
+     FROM circle_thread_access_grants
+     WHERE thread_id = $1
+       AND grant_role = 'guest_author'
+       AND revoked_at IS NULL
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [params.threadId]
+  );
+  if (grant.rows.length === 0) {
+    return { error: "No active guest author on this thread", status: 400 };
+  }
+
+  await client.query(
+    `UPDATE circle_threads
+     SET status = 'moderated', updated_at = now()
+     WHERE id = $1`,
+    [params.threadId]
+  );
+
+  const messages = await client.query<{ id: string }>(
+    `UPDATE circle_messages
+     SET status = 'moderated'
+     WHERE status = 'visible'
+       AND (
+         id = $1
+         OR thread_id = $2
+       )
+     RETURNING id`,
+    [row.root_message_id, params.threadId]
+  );
+
+  const revoked = await client.query<{ user_id: string }>(
+    `UPDATE circle_thread_access_grants
+     SET revoked_at = now()
+     WHERE thread_id = $1
+       AND grant_role = 'guest_author'
+       AND revoked_at IS NULL
+     RETURNING user_id`,
+    [params.threadId]
+  );
+
+  const messageIds = messages.rows.map((m) => String(m.id));
+  await client.query(
+    `INSERT INTO admin_moderation_actions (
+       action, actor, reason, note, message_ids, payload
+     )
+     VALUES ('remove_guest_question', $1, $2, $3, $4::uuid[], $5::jsonb)`,
+    [
+      params.actor,
+      params.reason?.trim() || "not_appropriate",
+      params.note?.trim() || null,
+      messageIds,
+      JSON.stringify({
+        threadId: params.threadId,
+        circleId: row.circle_id,
+        guestUserIds: revoked.rows.map((g) => String(g.user_id)),
+      }),
+    ]
+  );
+
+  await insertChatOutbox(client, "thread.updated", "thread", params.threadId, {
+    circleId: row.circle_id,
+    threadId: params.threadId,
+    status: "moderated",
+  });
+
+  return {
+    threadId: params.threadId,
+    circleId: String(row.circle_id),
+    guestUserIds: revoked.rows.map((g) => String(g.user_id)),
+    messageIds,
+  };
+}
+
+export async function restoreGuestQuestion(
+  client: PoolClient,
+  params: {
+    threadId: string;
+    actor: string;
+    note?: string;
+  }
+): Promise<
+  | {
+      threadId: string;
+      circleId: string;
+      guestUserIds: string[];
+      messageIds: string[];
+    }
+  | { error: string; status: number }
+> {
+  const thread = await client.query<{
+    id: string;
+    circle_id: string;
+    root_message_id: string | null;
+    status: string;
+    author_id: string;
+  }>(
+    `SELECT id, circle_id, root_message_id, status, author_id
+     FROM circle_threads WHERE id = $1`,
+    [params.threadId]
+  );
+  if (!thread.rows[0]) return { error: "Thread not found", status: 404 };
+  const row = thread.rows[0];
+  if (row.status !== "moderated") {
+    return { error: "Thread is not moderated", status: 400 };
+  }
+  if (!row.root_message_id) {
+    return { error: "Thread has no root message", status: 400 };
+  }
+
+  await client.query(
+    `UPDATE circle_threads
+     SET status = 'open', updated_at = now()
+     WHERE id = $1`,
+    [params.threadId]
+  );
+
+  const messages = await client.query<{ id: string }>(
+    `UPDATE circle_messages
+     SET status = 'visible'
+     WHERE status = 'moderated'
+       AND (
+         id = $1
+         OR thread_id = $2
+       )
+     RETURNING id`,
+    [row.root_message_id, params.threadId]
+  );
+
+  const restored = await client.query<{ user_id: string }>(
+    `UPDATE circle_thread_access_grants
+     SET revoked_at = NULL
+     WHERE thread_id = $1
+       AND grant_role = 'guest_author'
+       AND user_id = $2
+       AND revoked_at IS NOT NULL
+     RETURNING user_id`,
+    [params.threadId, row.author_id]
+  );
+
+  if (restored.rows.length === 0) {
+    await client.query(
+      `INSERT INTO circle_thread_access_grants (
+         thread_id, user_id, grant_role, granted_by, can_reply
+       )
+       VALUES ($1, $2, 'guest_author', $2, true)
+       ON CONFLICT (thread_id, user_id, grant_role) DO UPDATE SET
+         revoked_at = NULL,
+         can_reply = true`,
+      [params.threadId, row.author_id]
+    );
+  }
+
+  const messageIds = messages.rows.map((m) => String(m.id));
+  await client.query(
+    `INSERT INTO admin_moderation_actions (
+       action, actor, reason, note, message_ids, payload
+     )
+     VALUES ('restore_guest_question', $1, NULL, $2, $3::uuid[], $4::jsonb)`,
+    [
+      params.actor,
+      params.note?.trim() || null,
+      messageIds,
+      JSON.stringify({
+        threadId: params.threadId,
+        circleId: row.circle_id,
+        guestUserIds: [String(row.author_id)],
+      }),
+    ]
+  );
+
+  await insertChatOutbox(client, "thread.updated", "thread", params.threadId, {
+    circleId: row.circle_id,
+    threadId: params.threadId,
+    status: "open",
+  });
+
+  return {
+    threadId: params.threadId,
+    circleId: String(row.circle_id),
+    guestUserIds: [String(row.author_id)],
+    messageIds,
   };
 }
 

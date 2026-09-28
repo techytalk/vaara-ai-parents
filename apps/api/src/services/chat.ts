@@ -26,6 +26,12 @@ import {
 import { isBlocked } from "../lib/author.js";
 import { MODERATED_MESSAGE_COPY } from "../lib/chat-copy.js";
 import { userHasRole } from "../lib/user-roles.js";
+import {
+  GUEST_CIRCLE_TYPES,
+  GUEST_THREAD_DAILY_LIMIT,
+  isGuestCircleType,
+  parseGuestCircleTypeFilter,
+} from "../lib/guest-circles.js";
 import { assertCanPost } from "./chat-moderation.js";
 import {
   insertChatAttachments,
@@ -695,9 +701,9 @@ export async function createThread(params: {
     if (circle.rows.length === 0) {
       return { error: "Group not found", status: 404 };
     }
-    if (String(circle.rows[0].circle_type) !== "school") {
+    if (!isGuestCircleType(String(circle.rows[0].circle_type))) {
       return {
-        error: "Guest questions are only allowed in whole-school groups",
+        error: "Guest questions are not allowed in this group",
         status: 403,
       };
     }
@@ -2046,6 +2052,207 @@ export async function listHome(
             id: last.id,
           })
         : null,
+  };
+}
+
+export async function searchMessagesCircles(
+  client: PoolClient,
+  userId: string,
+  params: { q?: string; type?: string; cursor?: string; limit?: number }
+): Promise<
+  | {
+      yourGroups: Array<{
+        id: string;
+        displayName: string;
+        circleType: string;
+        subtitle: string | null;
+        accessMode: "member";
+      }>;
+      otherCircles: Array<{
+        id: string;
+        displayName: string;
+        circleType: string;
+        subtitle: string | null;
+        accessMode: "guest";
+      }>;
+      guestQuota: {
+        used: number;
+        remaining: number;
+        limit: number;
+        timezone: string;
+      };
+      nextCursor: string | null;
+    }
+  | { error: string; status: number }
+> {
+  const limit = Math.min(Math.max(params.limit ?? 30, 1), 50);
+  const q = params.q?.trim() ?? "";
+  const typeParsed = parseGuestCircleTypeFilter(params.type);
+  if (!typeParsed.ok) {
+    return { error: typeParsed.error, status: 400 };
+  }
+  const type = typeParsed.type;
+
+  let cursorName: string | null = null;
+  let cursorId: string | null = null;
+  if (params.cursor?.trim()) {
+    try {
+      const parsed = JSON.parse(
+        Buffer.from(params.cursor.trim(), "base64url").toString("utf8")
+      ) as { n?: string; id?: string };
+      if (typeof parsed.n === "string" && typeof parsed.id === "string") {
+        cursorName = parsed.n;
+        cursorId = parsed.id;
+      }
+    } catch {
+      return { error: "Invalid cursor", status: 400 };
+    }
+  }
+
+  const searchSql = (paramIndex: number) =>
+    q
+      ? `AND (
+           lower(c.display_name) LIKE $${paramIndex}
+           OR lower(coalesce(c.metadata->>'school_name', '')) LIKE $${paramIndex}
+           OR lower(coalesce(c.metadata->>'city', '')) LIKE $${paramIndex}
+           OR lower(coalesce(c.metadata->>'locality', '')) LIKE $${paramIndex}
+           OR lower(coalesce(c.metadata->>'curriculum_name', '')) LIKE $${paramIndex}
+           OR lower(coalesce(c.metadata->>'code', '')) LIKE $${paramIndex}
+           OR lower(coalesce(c.metadata->>'grade_label', '')) LIKE $${paramIndex}
+           OR lower(coalesce(c.metadata->>'community_name', '')) LIKE $${paramIndex}
+           OR lower(coalesce(c.key, '')) LIKE $${paramIndex}
+         )`
+      : "";
+
+  function subtitle(meta: Record<string, unknown>, circleType: string): string | null {
+    const parts: string[] = [];
+    for (const key of [
+      "school_name",
+      "city",
+      "locality",
+      "curriculum_name",
+      "code",
+      "grade_label",
+      "community_name",
+    ]) {
+      const value = meta?.[key];
+      if (typeof value === "string" && value.trim()) parts.push(value.trim());
+    }
+    if (parts.length === 0) return circleType.replace(/_/g, " ");
+    return [...new Set(parts)].join(" · ");
+  }
+
+  const memberParams: unknown[] = [userId];
+  let memberTypeClause = "";
+  if (type) {
+    memberParams.push(type);
+    memberTypeClause = `AND c.circle_type = $${memberParams.length}`;
+  }
+  let memberSearchClause = "";
+  if (q) {
+    memberParams.push(`%${q.toLowerCase()}%`);
+    memberSearchClause = searchSql(memberParams.length);
+  }
+  memberParams.push(30);
+  const members = await client.query(
+    `SELECT c.id, c.circle_type, c.display_name, c.metadata
+     FROM circle_members cm
+     JOIN circles c ON c.id = cm.circle_id
+     WHERE cm.user_id = $1
+       ${memberTypeClause}
+       ${memberSearchClause}
+     ORDER BY c.display_name, c.id
+     LIMIT $${memberParams.length}`,
+    memberParams
+  );
+
+  const otherParams: unknown[] = [userId, [...GUEST_CIRCLE_TYPES]];
+  let otherTypeClause = `AND c.circle_type = ANY($2::text[])`;
+  if (type) {
+    otherParams.push(type);
+    otherTypeClause = `AND c.circle_type = $${otherParams.length}`;
+  }
+  let otherSearchClause = "";
+  if (q) {
+    otherParams.push(`%${q.toLowerCase()}%`);
+    otherSearchClause = searchSql(otherParams.length);
+  }
+  let cursorClause = "";
+  if (cursorName != null && cursorId != null) {
+    otherParams.push(cursorName, cursorId);
+    cursorClause = `AND (c.display_name, c.id) > ($${otherParams.length - 1}, $${otherParams.length}::uuid)`;
+  }
+  otherParams.push(limit + 1);
+  const others = await client.query(
+    `SELECT c.id, c.circle_type, c.display_name, c.metadata
+     FROM circles c
+     WHERE c.accepts_guest_posts = true
+       ${otherTypeClause}
+       ${otherSearchClause}
+       ${cursorClause}
+       AND NOT EXISTS (
+         SELECT 1 FROM circle_members cm
+         WHERE cm.circle_id = c.id AND cm.user_id = $1
+       )
+     ORDER BY c.display_name, c.id
+     LIMIT $${otherParams.length}`,
+    otherParams
+  );
+
+  const page = others.rows.slice(0, limit);
+  const hasMore = others.rows.length > limit;
+  const last = page[page.length - 1];
+  const nextCursor =
+    hasMore && last
+      ? Buffer.from(
+          JSON.stringify({ n: String(last.display_name), id: String(last.id) }),
+          "utf8"
+        ).toString("base64url")
+      : null;
+
+  const timezoneRows = await client.query(
+    `SELECT timezone FROM users WHERE id = $1`,
+    [userId]
+  );
+  const timezone = String(timezoneRows.rows[0]?.timezone || "Asia/Kolkata");
+  const usedRows = await client.query(
+    `SELECT COALESCE(count, 0)::int AS count
+     FROM chat_daily_quotas
+     WHERE user_id = $1
+       AND quota_key = 'guest_thread'
+       AND day = (now() AT TIME ZONE $2)::date`,
+    [userId, timezone]
+  );
+  const used = Number(usedRows.rows[0]?.count ?? 0);
+
+  return {
+    yourGroups: members.rows.map((row) => ({
+      id: String(row.id),
+      displayName: String(row.display_name),
+      circleType: String(row.circle_type),
+      subtitle: subtitle(
+        (row.metadata ?? {}) as Record<string, unknown>,
+        String(row.circle_type)
+      ),
+      accessMode: "member" as const,
+    })),
+    otherCircles: page.map((row) => ({
+      id: String(row.id),
+      displayName: String(row.display_name),
+      circleType: String(row.circle_type),
+      subtitle: subtitle(
+        (row.metadata ?? {}) as Record<string, unknown>,
+        String(row.circle_type)
+      ),
+      accessMode: "guest" as const,
+    })),
+    guestQuota: {
+      used,
+      remaining: Math.max(0, GUEST_THREAD_DAILY_LIMIT - used),
+      limit: GUEST_THREAD_DAILY_LIMIT,
+      timezone,
+    },
+    nextCursor,
   };
 }
 

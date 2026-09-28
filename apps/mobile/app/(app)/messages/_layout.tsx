@@ -5,6 +5,14 @@ export default function MessagesLayout() {
     <Stack>
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="new" options={{ title: "New message" }} />
+      <Stack.Screen
+        name="search-circles"
+        options={{ headerShown: false, title: "Search circles" }}
+      />
+      <Stack.Screen
+        name="ask/[circleId]"
+        options={{ headerShown: false, title: "Ask as guest" }}
+      />
       <Stack.Screen name="[conversationId]" options={{ title: "Chat" }} />
       <Stack.Screen
         name="groups/[circleId]/index"
