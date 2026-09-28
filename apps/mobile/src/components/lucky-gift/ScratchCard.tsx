@@ -22,6 +22,15 @@ const COLS = 8;
 const ROWS = 6;
 const REVEAL_RATIO = 0.42;
 
+function formatSupportPhone(phone: string): string {
+  const digits = phone.replace(/[^\d]/g, "");
+  if (digits.startsWith("91") && digits.length === 12) {
+    const local = digits.slice(2);
+    return `+91 ${local.slice(0, 5)} ${local.slice(5)}`;
+  }
+  return phone;
+}
+
 type Revealed = Extract<LuckyGiftResponse, { status: "revealed" }>;
 type Pending = Extract<LuckyGiftResponse, { status: "pending" }>;
 
@@ -228,14 +237,43 @@ export function LuckyGiftScratchCard({
           </>
         ) : result?.outcome === "win" ? (
           <>
-            <Text style={styles.lead}>
-              We’ll use this number only to send your {result.prizeLabel} details.
-            </Text>
+            {result.claimsOpen ? (
+              <>
+                <Text style={styles.lead}>
+                  Contact this number to claim your {result.prizeLabel}.
+                </Text>
+                <Text style={styles.phoneDisplay} selectable>
+                  {formatSupportPhone(result.supportPhone)}
+                </Text>
+                <View style={styles.row}>
+                  <Pressable
+                    style={styles.linkBtn}
+                    onPress={() => void openSupport("call")}
+                  >
+                    <Ionicons name="call-outline" size={18} color={colors.primary} />
+                    <Text style={styles.linkText}>Call</Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.linkBtn}
+                    onPress={() => void openSupport("whatsapp")}
+                  >
+                    <Ionicons name="logo-whatsapp" size={18} color={colors.primary} />
+                    <Text style={styles.linkText}>WhatsApp</Text>
+                  </Pressable>
+                </View>
+              </>
+            ) : (
+              <Text style={styles.lead}>The claim window is closed.</Text>
+            )}
             <Text style={styles.code}>Claim code {result.claimCode}</Text>
             {result.phoneSubmitted ? (
               <Text style={styles.ok}>Phone saved. We’ll be in touch.</Text>
             ) : result.claimsOpen ? (
               <>
+                <Text style={styles.lead}>
+                  Or leave your number and we’ll send the voucher details. We’ll
+                  use it only for that.
+                </Text>
                 <TextInput
                   style={styles.input}
                   value={phone}
@@ -252,25 +290,7 @@ export function LuckyGiftScratchCard({
                   disabled={submitting}
                 />
               </>
-            ) : (
-              <Text style={styles.lead}>The claim window is closed.</Text>
-            )}
-            <View style={styles.row}>
-              <Pressable
-                style={styles.linkBtn}
-                onPress={() => void openSupport("call")}
-              >
-                <Ionicons name="call-outline" size={18} color={colors.primary} />
-                <Text style={styles.linkText}>Call</Text>
-              </Pressable>
-              <Pressable
-                style={styles.linkBtn}
-                onPress={() => void openSupport("whatsapp")}
-              >
-                <Ionicons name="logo-whatsapp" size={18} color={colors.primary} />
-                <Text style={styles.linkText}>WhatsApp</Text>
-              </Pressable>
-            </View>
+            ) : null}
             <PrimaryButton
               label="Continue"
               onPress={() => onFinished(result)}
@@ -279,29 +299,13 @@ export function LuckyGiftScratchCard({
         ) : (
           <>
             <Text style={styles.lead}>
-              You’re connected to your circles — neighbourhood, school, board
-              and class. Talk there about kids, school, activities, and everyday
-              questions.
+              Read the messages in your circles — neighbourhood, school, board
+              and class — and talk there about kids, school, activities, and
+              everyday questions.
             </Text>
             {result ? (
               <Text style={styles.code}>Claim code {result.claimCode}</Text>
             ) : null}
-            <View style={styles.row}>
-              <Pressable
-                style={styles.linkBtn}
-                onPress={() => void openSupport("call")}
-              >
-                <Ionicons name="call-outline" size={18} color={colors.primary} />
-                <Text style={styles.linkText}>Call</Text>
-              </Pressable>
-              <Pressable
-                style={styles.linkBtn}
-                onPress={() => void openSupport("whatsapp")}
-              >
-                <Ionicons name="logo-whatsapp" size={18} color={colors.primary} />
-                <Text style={styles.linkText}>WhatsApp</Text>
-              </Pressable>
-            </View>
             <PrimaryButton
               label="Continue to your circles"
               onPress={() => onFinished(result)}
@@ -387,6 +391,13 @@ const styles = StyleSheet.create({
   },
   scratchCellClear: {
     backgroundColor: "transparent",
+  },
+  phoneDisplay: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: colors.text,
+    letterSpacing: 0.3,
+    marginBottom: 4,
   },
   code: {
     fontSize: 15,
