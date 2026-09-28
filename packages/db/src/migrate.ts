@@ -182,6 +182,10 @@ const MIGRATIONS = [
     version: "080_guest_moderation_actions",
     file: "080_guest_moderation_actions.sql",
   },
+  {
+    version: "081_lucky_gift_admin_name",
+    file: "081_lucky_gift_admin_name.sql",
+  },
 ];
 
 async function isMigrationApplied(

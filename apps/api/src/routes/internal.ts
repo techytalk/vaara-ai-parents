@@ -1572,6 +1572,7 @@ export function createInternalRoutes() {
     }
     try {
       const result = await adminUpdateLuckyGiftCampaign({
+        name: typeof body.name === "string" ? body.name : undefined,
         prizeLabel:
           typeof body.prizeLabel === "string" ? body.prizeLabel : undefined,
         supportPhone:

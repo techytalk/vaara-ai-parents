@@ -15,6 +15,7 @@ export type PeriodWindows = Record<LuckyGiftPeriod, PeriodWindow>;
 export type LuckyGiftCampaign = {
   id: string;
   slug: string;
+  name: string;
   prizeLabel: string;
   supportPhone: string;
   winnerQuota: number;
@@ -57,6 +58,7 @@ const PERIODS: LuckyGiftPeriod[] = ["morning", "afternoon", "evening"];
 type CampaignRow = {
   id: string;
   slug: string;
+  name: string;
   prize_label: string;
   support_phone: string;
   winner_quota: number;
@@ -93,6 +95,7 @@ function mapCampaign(row: CampaignRow): LuckyGiftCampaign {
   return {
     id: row.id,
     slug: row.slug,
+    name: row.name,
     prizeLabel: row.prize_label,
     supportPhone: row.support_phone,
     winnerQuota: Number(row.winner_quota),
@@ -736,6 +739,7 @@ export async function adminListWinners(slug = "suchitra-500") {
 }
 
 export type AdminCampaignPatch = {
+  name?: string;
   prizeLabel?: string;
   supportPhone?: string;
   carryUnclaimedForward?: boolean;
@@ -810,6 +814,19 @@ export async function adminUpdateLuckyGiftCampaign(
       return { error: "claimDeadline must be on or after endsAt", status: 400 };
     }
 
+    let nextName: string | null = null;
+    if (patch.name != null) {
+      nextName = patch.name.trim();
+      if (!nextName) {
+        await client.query("ROLLBACK");
+        return { error: "Enter a campaign name", status: 400 };
+      }
+      if (nextName.length > 80) {
+        await client.query("ROLLBACK");
+        return { error: "Campaign name must be 80 characters or fewer", status: 400 };
+      }
+    }
+
     if (patch.supportPhone != null) {
       const phone = patch.supportPhone.trim();
       if (!/^\+[1-9]\d{7,14}$/.test(phone)) {
@@ -874,20 +891,22 @@ export async function adminUpdateLuckyGiftCampaign(
 
     const { rows } = await client.query<CampaignRow>(
       `UPDATE lucky_gift_campaigns SET
-         prize_label = COALESCE($2, prize_label),
-         support_phone = COALESCE($3, support_phone),
-         carry_unclaimed_forward = COALESCE($4, carry_unclaimed_forward),
-         period_windows = COALESCE($5::jsonb, period_windows),
-         starts_at = COALESCE($6::timestamptz, starts_at),
-         ends_at = COALESCE($7::timestamptz, ends_at),
-         claim_deadline = COALESCE($8::timestamptz, claim_deadline),
-         claims_open = COALESCE($9, claims_open),
-         active = $10,
+         name = COALESCE($2, name),
+         prize_label = COALESCE($3, prize_label),
+         support_phone = COALESCE($4, support_phone),
+         carry_unclaimed_forward = COALESCE($5, carry_unclaimed_forward),
+         period_windows = COALESCE($6::jsonb, period_windows),
+         starts_at = COALESCE($7::timestamptz, starts_at),
+         ends_at = COALESCE($8::timestamptz, ends_at),
+         claim_deadline = COALESCE($9::timestamptz, claim_deadline),
+         claims_open = COALESCE($10, claims_open),
+         active = $11,
          updated_at = now()
        WHERE id = $1
        RETURNING *`,
       [
         campaign.id,
+        nextName,
         patch.prizeLabel?.trim() || null,
         patch.supportPhone?.trim() || null,
         patch.carryUnclaimedForward ?? null,

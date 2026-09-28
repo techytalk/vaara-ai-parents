@@ -130,7 +130,7 @@
     <div class="toolbar">
       <div>
         <h1>Lucky gift campaign</h1>
-        <p class="muted">Suchitra ₹500 scratch card — toggle on only after dates, phone, and moments are set.</p>
+        <p class="muted" id="campaignSubtitle">Toggle on only after the name, dates, phone, and moments are set.</p>
       </div>
       <div>
         <span id="statusBadge" class="badge off">Loading…</span>
@@ -145,6 +145,11 @@
     <div class="panel">
       <h2>Campaign controls</h2>
       <div class="grid2">
+        <div class="row">
+          <label for="campaignName">Campaign name</label>
+          <input id="campaignName" maxlength="80" style="width:100%" />
+          <p class="muted" style="margin:4px 0 0">Admin tracking only. Parents do not see this.</p>
+        </div>
         <div class="row">
           <label for="prizeLabel">Prize label</label>
           <input id="prizeLabel" style="width:100%" />
@@ -296,6 +301,10 @@
         }
 
         function fillForm(campaign) {
+          $("campaignName").value = campaign.name || "";
+          $("campaignSubtitle").textContent =
+            (campaign.name || "Lucky gift") +
+            " — toggle on only after dates, phone, and moments are set.";
           $("prizeLabel").value = campaign.prizeLabel || "";
           $("supportPhone").value = campaign.supportPhone || "";
           $("startsAt").value = toKolkataInput(campaign.startsAt);
@@ -388,6 +397,7 @@
           showError("");
           showOk("");
           const body = {
+            name: $("campaignName").value.trim(),
             prizeLabel: $("prizeLabel").value.trim(),
             supportPhone: $("supportPhone").value.trim(),
             startsAt: fromKolkataInput($("startsAt").value),
