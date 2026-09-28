@@ -25,6 +25,41 @@ async function authed<T>(fn: (token: string) => Promise<T>): Promise<T> {
   return fn(token);
 }
 
+type HomeSection = {
+  kind: "section";
+  id: string;
+  title: string;
+  hint?: string;
+};
+
+type HomeListRow = ChatHomeItem | HomeSection;
+
+function withHomeSections(items: ChatHomeItem[]): HomeListRow[] {
+  const rows: HomeListRow[] = [];
+  let sawMember = false;
+  let sawOutside = false;
+  for (const item of items) {
+    const outside =
+      item.kind === "thread" &&
+      (item.access === "discovery" || item.access === "other");
+    if (item.kind === "thread" && !outside && !sawMember) {
+      rows.push({ kind: "section", id: "sec-yours", title: "Your circles" });
+      sawMember = true;
+    }
+    if (outside && !sawOutside) {
+      rows.push({
+        kind: "section",
+        id: "sec-other",
+        title: "Not in your circles",
+        hint: "These are from other groups, not yours.",
+      });
+      sawOutside = true;
+    }
+    rows.push(item);
+  }
+  return rows;
+}
+
 export function ChatHomeScreen() {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
@@ -58,6 +93,7 @@ export function ChatHomeScreen() {
     () => query.data?.pages.flatMap((page) => page.items) ?? [],
     [query.data]
   );
+  const rows = useMemo(() => withHomeSections(items), [items]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -97,8 +133,10 @@ export function ChatHomeScreen() {
 
   return (
     <FlatList
-      data={items}
-      keyExtractor={(item) => `${item.kind}:${item.id}`}
+      data={rows}
+      keyExtractor={(item) =>
+        item.kind === "section" ? item.id : `${item.kind}:${item.id}`
+      }
       onLayout={onView}
       refreshControl={
         <RefreshControl
@@ -109,13 +147,8 @@ export function ChatHomeScreen() {
       }
       contentContainerStyle={[
         styles.list,
-        items.length === 0 && styles.empty,
+        rows.length === 0 && styles.empty,
       ]}
-      ListHeaderComponent={
-        items.length > 0 ? (
-          <Text style={styles.intro}>From your groups</Text>
-        ) : null
-      }
       ListEmptyComponent={
         <EmptyState
           icon="chatbubbles-outline"
@@ -134,7 +167,13 @@ export function ChatHomeScreen() {
           <ActivityIndicator color={colors.primary} style={{ marginVertical: 12 }} />
         ) : null
       }
-      renderItem={({ item }) => (
+      renderItem={({ item }) =>
+        item.kind === "section" ? (
+          <View style={styles.section}>
+            <Text style={styles.intro}>{item.title}</Text>
+            {item.hint ? <Text style={styles.hint}>{item.hint}</Text> : null}
+          </View>
+        ) : (
         <HomeRow
           item={item}
           onPress={() => {
@@ -145,7 +184,10 @@ export function ChatHomeScreen() {
               });
               return;
             }
-            if (item.kind === "thread" && item.access === "discovery") {
+            if (
+              item.kind === "thread" &&
+              (item.access === "discovery" || item.access === "other")
+            ) {
               router.push({
                 pathname: "/(app)/messages/threads/[threadId]",
                 params: { threadId: item.id },
@@ -170,7 +212,8 @@ export function ChatHomeScreen() {
             });
           }}
         />
-      )}
+        )
+      }
     />
   );
 }
@@ -221,7 +264,6 @@ function HomeRow({
         </View>
         {circleLabel ? (
           <Text style={styles.circleName} numberOfLines={2}>
-            {item.access === "discovery" ? "Suggested · " : ""}
             {circleLabel}
           </Text>
         ) : null}
@@ -241,11 +283,17 @@ const styles = StyleSheet.create({
   },
   list: { padding: spacing.md, gap: spacing.sm, paddingBottom: 40 },
   empty: { flexGrow: 1 },
+  section: { marginTop: spacing.sm, marginBottom: spacing.xs },
   intro: {
     fontFamily: typography.semibold,
     fontSize: 13,
     color: colors.textMuted,
-    marginBottom: spacing.sm,
+  },
+  hint: {
+    marginTop: 2,
+    fontFamily: typography.regular,
+    fontSize: 12,
+    color: colors.textSubtle,
   },
   row: {
     flexDirection: "row",

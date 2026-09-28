@@ -1877,6 +1877,60 @@ export async function listHome(
     [userId]
   );
 
+  // Startup fill: if the parent's own groups and matching groups are thin,
+  // borrow active threads from other circles. Child-specific circles stay out.
+  const HOME_MIN_THREADS = 5;
+  const thin =
+    memberThreads.rows.length + discovery.rows.length < HOME_MIN_THREADS;
+  const unrelated = thin
+    ? await client.query(
+        `SELECT
+           t.*, c.display_name, c.circle_type, c.key,
+           false AS following,
+           NULL::bigint AS last_read_seq,
+           hi.first_seen_at,
+           root.status AS root_status
+         FROM circle_threads t
+         JOIN circles c ON c.id = t.circle_id
+         LEFT JOIN home_thread_impressions hi
+           ON hi.thread_id = t.id AND hi.user_id = $1
+         LEFT JOIN circle_messages root ON root.id = t.root_message_id
+         WHERE t.status = 'open'
+           AND t.home_visibility = 'discoverable'
+           AND c.circle_type::text NOT IN ('school_class', 'school_age', 'age_locality')
+           AND (
+             t.reply_count > 0
+             OR NULLIF(btrim(COALESCE(t.body, '')), '') IS NOT NULL
+             OR EXISTS (
+               SELECT 1 FROM circle_message_media mm
+               WHERE mm.message_id = t.root_message_id AND mm.scan_status = 'clean'
+             )
+           )
+           AND NOT EXISTS (
+             SELECT 1 FROM circle_members cm
+             WHERE cm.circle_id = t.circle_id AND cm.user_id = $1
+           )
+           AND t.author_id <> $1
+           AND NOT (${DISCOVERY_MATCH_SQL})
+           AND NOT EXISTS (
+             SELECT 1 FROM circle_thread_access_grants g
+             WHERE g.thread_id = t.id
+               AND g.user_id = $1
+               AND g.revoked_at IS NULL
+               AND (g.expires_at IS NULL OR g.expires_at > now())
+           )
+           AND (hi.dismissed_at IS NULL)
+           AND NOT EXISTS (
+             SELECT 1 FROM user_blocks ub
+             WHERE (ub.blocker_id = $1 AND ub.blocked_id = t.author_id)
+                OR (ub.blocker_id = t.author_id AND ub.blocked_id = $1)
+           )
+         ORDER BY t.reply_count DESC, t.last_message_at DESC
+         LIMIT $2`,
+        [userId, HOME_MIN_THREADS - (memberThreads.rows.length + discovery.rows.length)]
+      )
+    : { rows: [] as typeof discovery.rows };
+
   const updates = await client.query(
     `SELECT u.id, u.title, u.preview, u.published_at, p.user_id AS provider_id, p.org_name
      FROM provider_channel_updates u
@@ -1894,7 +1948,7 @@ export async function listHome(
   // Roots that are attachment-only have no text to preview on Home.
   const homePreviewLabels = await loadAttachmentPreviewLabels(client, [
     ...new Set(
-      [...memberThreads.rows, ...discovery.rows]
+      [...memberThreads.rows, ...discovery.rows, ...unrelated.rows]
         .filter(
           (row) =>
             row.root_status !== "moderated" &&
@@ -1989,6 +2043,29 @@ export async function listHome(
         replyCount: row.reply_count,
         following: false,
         relevance: circleRank[row.circle_type] ?? 0,
+      },
+    });
+  }
+
+  for (const row of unrelated.rows) {
+    rows.push({
+      kind: "thread",
+      bucket: 7,
+      lastAt: new Date(row.last_message_at).toISOString(),
+      id: row.id,
+      payload: {
+        kind: "thread",
+        access: "other",
+        id: row.id,
+        circleId: row.circle_id,
+        circleName: row.display_name,
+        circleType: row.circle_type,
+        title: homePreview(row).title,
+        body: homePreview(row).body,
+        lastMessageAt: row.last_message_at,
+        replyCount: row.reply_count,
+        following: false,
+        relevance: 0,
       },
     });
   }

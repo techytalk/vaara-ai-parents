@@ -689,7 +689,7 @@ export type ChatInbox = {
 
 export type ChatHomeItem = {
   kind: "thread" | "service";
-  access?: "member" | "discovery";
+  access?: "member" | "discovery" | "other";
   id: string;
   circleId?: string;
   circleName?: string;
