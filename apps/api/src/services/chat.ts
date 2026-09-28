@@ -2088,7 +2088,7 @@ export async function searchMessagesCircles(
   const limit = Math.min(Math.max(params.limit ?? 30, 1), 50);
   const q = params.q?.trim() ?? "";
   const typeParsed = parseGuestCircleTypeFilter(params.type);
-  if (!typeParsed.ok) {
+  if (typeParsed.ok === false) {
     return { error: typeParsed.error, status: 400 };
   }
   const type = typeParsed.type;
