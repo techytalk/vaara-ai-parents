@@ -72,7 +72,6 @@ export default function HomeScreen() {
   const [claimSheetOpen, setClaimSheetOpen] = useState(false);
   const authExitStartedRef = useRef(false);
   const homeFirstOpenFiredRef = useRef(false);
-  const luckyGiftAttemptedRef = useRef(false);
 
   useEffect(() => {
     clearOnboardingDraft();
@@ -252,8 +251,7 @@ export default function HomeScreen() {
   }
 
   useEffect(() => {
-    if (!user || !circlesQuery.isSuccess || luckyGiftAttemptedRef.current) return;
-    luckyGiftAttemptedRef.current = true;
+    if (!user?.id || !circlesQuery.isSuccess) return;
     let cancelled = false;
     (async () => {
       try {
@@ -273,7 +271,7 @@ export default function HomeScreen() {
     return () => {
       cancelled = true;
     };
-  }, [user, circlesQuery.isSuccess]);
+  }, [user?.id, circlesQuery.isSuccess]);
 
   useEffect(() => {
     if (homeFirstOpenFiredRef.current) return;
@@ -344,7 +342,7 @@ export default function HomeScreen() {
               Claim your {luckyGift.status === "revealed" ? luckyGift.prizeLabel : "₹500 gift voucher"}
             </Text>
             <Text style={styles.claimBannerLead}>
-              Add your phone so we can send the voucher details.
+              We need your contact number to reach out to you about the gift.
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />

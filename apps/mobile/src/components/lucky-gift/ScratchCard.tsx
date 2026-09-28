@@ -1,11 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Animated,
+  Easing,
   Linking,
   PanResponder,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -18,9 +21,14 @@ import { api, type LuckyGiftResponse } from "@/lib/api";
 import { trackEvent } from "@/lib/analytics";
 import { getToken } from "@/lib/session";
 
-const COLS = 8;
-const ROWS = 6;
-const REVEAL_RATIO = 0.42;
+const COLS = 32;
+const ROWS = 20;
+const CELL_COUNT = COLS * ROWS;
+const BRUSH_RADIUS = 26;
+const REVEAL_RATIO = 0.36;
+const STROKE_STEP = 7;
+
+const FOIL = ["#C9C1B4", "#B7AFA2", "#DDD6CA", "#A89F92"] as const;
 
 function formatSupportPhone(phone: string): string {
   const digits = phone.replace(/[^\d]/g, "");
@@ -30,6 +38,128 @@ function formatSupportPhone(phone: string): string {
   }
   return phone;
 }
+
+function clamp(n: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, n));
+}
+
+const PETALS = ["🌸", "🌺", "🌼", "🌷", "💐"] as const;
+
+type Petal = {
+  id: number;
+  emoji: (typeof PETALS)[number];
+  left: number;
+  delay: number;
+  duration: number;
+  size: number;
+  drift: number;
+  spin: string;
+};
+
+function makePetals(count: number): Petal[] {
+  return Array.from({ length: count }, (_, id) => ({
+    id,
+    emoji: PETALS[id % PETALS.length],
+    left: Math.random() * 92,
+    delay: Math.random() * 900,
+    duration: 2400 + Math.random() * 1800,
+    size: 18 + Math.random() * 16,
+    drift: (Math.random() - 0.5) * 90,
+    spin: `${(Math.random() > 0.5 ? 1 : -1) * (160 + Math.random() * 280)}deg`,
+  }));
+}
+
+function FlowerFall({ onDone }: { onDone: () => void }) {
+  const { height } = useWindowDimensions();
+  const petals = useMemo(() => makePetals(34), []);
+  const progress = useRef(petals.map(() => new Animated.Value(0))).current;
+  const onDoneRef = useRef(onDone);
+  onDoneRef.current = onDone;
+
+  useEffect(() => {
+    const fall = Animated.parallel(
+      petals.map((petal, i) =>
+        Animated.timing(progress[i], {
+          toValue: 1,
+          duration: petal.duration,
+          delay: petal.delay,
+          easing: Easing.in(Easing.quad),
+          useNativeDriver: true,
+        })
+      )
+    );
+    fall.start(({ finished }) => {
+      if (finished) onDoneRef.current();
+    });
+    return () => fall.stop();
+  }, [petals, progress]);
+
+  return (
+    <View pointerEvents="none" style={styles.flowers}>
+      {petals.map((petal, i) => (
+        <Animated.Text
+          key={petal.id}
+          style={{
+            position: "absolute",
+            left: `${petal.left}%`,
+            fontSize: petal.size,
+            opacity: progress[i].interpolate({
+              inputRange: [0, 0.08, 0.82, 1],
+              outputRange: [0, 1, 1, 0],
+            }),
+            transform: [
+              {
+                translateY: progress[i].interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [-48, height + 24],
+                }),
+              },
+              {
+                translateX: progress[i].interpolate({
+                  inputRange: [0, 0.5, 1],
+                  outputRange: [0, petal.drift, petal.drift * 0.35],
+                }),
+              },
+              {
+                rotate: progress[i].interpolate({
+                  inputRange: [0, 1],
+                  outputRange: ["0deg", petal.spin],
+                }),
+              },
+            ],
+          }}
+        >
+          {petal.emoji}
+        </Animated.Text>
+      ))}
+    </View>
+  );
+}
+
+const ScratchCell = memo(function ScratchCell({
+  index,
+  cleared,
+}: {
+  index: number;
+  cleared: boolean;
+}) {
+  const col = index % COLS;
+  const row = Math.floor(index / COLS);
+  const shade = FOIL[(col + row * 2) % FOIL.length];
+  return (
+    <View
+      pointerEvents="none"
+      style={{
+        position: "absolute",
+        left: `${(col / COLS) * 100}%`,
+        top: `${(row / ROWS) * 100}%`,
+        width: `${100 / COLS + 0.15}%`,
+        height: `${100 / ROWS + 0.15}%`,
+        backgroundColor: cleared ? "transparent" : shade,
+      }}
+    />
+  );
+});
 
 type Revealed = Extract<LuckyGiftResponse, { status: "revealed" }>;
 type Pending = Extract<LuckyGiftResponse, { status: "pending" }>;
@@ -54,20 +184,35 @@ export function LuckyGiftScratchCard({
     startInResult ? "result" : "cover"
   );
   const [cleared, setCleared] = useState(() =>
-    Array.from({ length: COLS * ROWS }, () => false)
+    Array.from({ length: CELL_COUNT }, () => false)
   );
   const [result, setResult] = useState<Revealed | null>(claim ?? null);
   const [phone, setPhone] = useState("+91");
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [scratching, setScratching] = useState(false);
-  const [boardSize, setBoardSize] = useState({ w: 280, h: 180 });
+  const [lifting, setLifting] = useState(false);
+  const [celebrate, setCelebrate] = useState(false);
   const scratchedRef = useRef(startInResult);
   const clearedRef = useRef(cleared);
+  const boardRef = useRef({ w: 280, h: 180 });
+  const lastPointRef = useRef<{ x: number; y: number } | null>(null);
+  const frameRef = useRef<number | null>(null);
+  const peelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const liftingRef = useRef(false);
+  const phaseRef = useRef(phase);
+  const strokeToRef = useRef<(x: number, y: number) => void>(() => undefined);
 
   useEffect(() => {
-    clearedRef.current = cleared;
-  }, [cleared]);
+    phaseRef.current = phase;
+  }, [phase]);
+
+  useEffect(() => {
+    return () => {
+      if (frameRef.current != null) cancelAnimationFrame(frameRef.current);
+      if (peelTimerRef.current) clearTimeout(peelTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (!visible) return;
@@ -87,6 +232,8 @@ export function LuckyGiftScratchCard({
       const token = await getToken();
       if (!token) {
         scratchedRef.current = false;
+        liftingRef.current = false;
+        setLifting(false);
         return;
       }
       const res = await api.scratchLuckyGift(token);
@@ -96,59 +243,107 @@ export function LuckyGiftScratchCard({
       }
       setResult(res);
       setPhase("result");
+      if (res.outcome === "win") setCelebrate(true);
       trackEvent("lucky_gift_scratched", { outcome: res.outcome });
     } catch {
       scratchedRef.current = false;
+      liftingRef.current = false;
+      setLifting(false);
     } finally {
       setScratching(false);
     }
   }
 
-  function clearCell(index: number) {
-    if (scratchedRef.current || phase !== "cover") return;
-    const next = clearedRef.current.slice();
-    if (next[index]) return;
-    next[index] = true;
+  function paint(next: boolean[]) {
     clearedRef.current = next;
-    setCleared(next);
-    const ratio = next.filter(Boolean).length / next.length;
-    if (ratio >= REVEAL_RATIO) {
-      void reveal();
+    if (frameRef.current != null) return;
+    frameRef.current = requestAnimationFrame(() => {
+      frameRef.current = null;
+      setCleared(clearedRef.current.slice());
+    });
+  }
+
+  function scratchAt(x: number, y: number, next: boolean[]) {
+    const { w, h } = boardRef.current;
+    if (w <= 0 || h <= 0) return;
+    const cellW = w / COLS;
+    const cellH = h / ROWS;
+    const minCol = clamp(Math.floor((x - BRUSH_RADIUS) / cellW), 0, COLS - 1);
+    const maxCol = clamp(Math.floor((x + BRUSH_RADIUS) / cellW), 0, COLS - 1);
+    const minRow = clamp(Math.floor((y - BRUSH_RADIUS) / cellH), 0, ROWS - 1);
+    const maxRow = clamp(Math.floor((y + BRUSH_RADIUS) / cellH), 0, ROWS - 1);
+    const r2 = BRUSH_RADIUS * BRUSH_RADIUS;
+    for (let row = minRow; row <= maxRow; row++) {
+      for (let col = minCol; col <= maxCol; col++) {
+        const cx = (col + 0.5) * cellW;
+        const cy = (row + 0.5) * cellH;
+        const dx = cx - x;
+        const dy = cy - y;
+        if (dx * dx + dy * dy <= r2) next[row * COLS + col] = true;
+      }
     }
   }
+
+  function finishCover() {
+    if (liftingRef.current || scratchedRef.current) return;
+    liftingRef.current = true;
+    setLifting(true);
+    const all = Array.from({ length: CELL_COUNT }, () => true);
+    paint(all);
+    peelTimerRef.current = setTimeout(() => {
+      void reveal();
+    }, 380);
+  }
+
+  function strokeTo(x: number, y: number) {
+    if (scratchedRef.current || liftingRef.current || phaseRef.current !== "cover") {
+      return;
+    }
+    const next = clearedRef.current.slice();
+    const last = lastPointRef.current;
+    if (!last) {
+      scratchAt(x, y, next);
+    } else {
+      const dx = x - last.x;
+      const dy = y - last.y;
+      const dist = Math.hypot(dx, dy);
+      const steps = Math.max(1, Math.ceil(dist / STROKE_STEP));
+      for (let i = 1; i <= steps; i++) {
+        scratchAt(last.x + (dx * i) / steps, last.y + (dy * i) / steps, next);
+      }
+    }
+    lastPointRef.current = { x, y };
+    paint(next);
+    const ratio = next.filter(Boolean).length / CELL_COUNT;
+    if (ratio >= REVEAL_RATIO) finishCover();
+  }
+
+  strokeToRef.current = strokeTo;
 
   const pan = useMemo(
     () =>
       PanResponder.create({
-        onStartShouldSetPanResponder: () => phase === "cover",
-        onMoveShouldSetPanResponder: () => phase === "cover",
+        onStartShouldSetPanResponder: () =>
+          phaseRef.current === "cover" && !scratchedRef.current,
+        onMoveShouldSetPanResponder: () =>
+          phaseRef.current === "cover" && !scratchedRef.current,
         onPanResponderGrant: (evt) => {
+          lastPointRef.current = null;
           const { locationX, locationY } = evt.nativeEvent;
-          const col = Math.min(
-            COLS - 1,
-            Math.max(0, Math.floor((locationX / boardSize.w) * COLS))
-          );
-          const row = Math.min(
-            ROWS - 1,
-            Math.max(0, Math.floor((locationY / boardSize.h) * ROWS))
-          );
-          clearCell(row * COLS + col);
+          strokeToRef.current(locationX, locationY);
         },
         onPanResponderMove: (evt) => {
           const { locationX, locationY } = evt.nativeEvent;
-          const col = Math.min(
-            COLS - 1,
-            Math.max(0, Math.floor((locationX / boardSize.w) * COLS))
-          );
-          const row = Math.min(
-            ROWS - 1,
-            Math.max(0, Math.floor((locationY / boardSize.h) * ROWS))
-          );
-          clearCell(row * COLS + col);
+          strokeToRef.current(locationX, locationY);
+        },
+        onPanResponderRelease: () => {
+          lastPointRef.current = null;
+        },
+        onPanResponderTerminate: () => {
+          lastPointRef.current = null;
         },
       }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [phase, boardSize.w, boardSize.h]
+    []
   );
 
   async function submitPhone() {
@@ -186,53 +381,74 @@ export function LuckyGiftScratchCard({
   if (!visible) return null;
 
   const prizeLabel = pending?.prizeLabel ?? result?.prizeLabel ?? "₹500 gift voucher";
+  const scratchedCount = cleared.filter(Boolean).length;
+  const progress = Math.min(1, scratchedCount / (CELL_COUNT * REVEAL_RATIO));
+  const supportPhone = result ? formatSupportPhone(result.supportPhone) : "";
 
   return (
     <View style={styles.scrim} pointerEvents="auto">
       <View style={styles.dim} />
       <View style={styles.card}>
         <Text style={styles.kicker}>Lucky gift</Text>
+        {phase !== "cover" && result?.outcome !== "win" ? (
+          <Text style={styles.miss}>
+            You didn&apos;t win the {result?.prizeLabel ?? "gift"} this time.
+          </Text>
+        ) : null}
         <Text style={styles.title}>
           {phase === "cover"
             ? `Scratch for a ${prizeLabel}`
             : result?.outcome === "win"
               ? `You won a ${result.prizeLabel}`
-              : "Not this time"}
+              : "But you're now part of the Vaara parenting community"}
         </Text>
 
         {phase === "cover" ? (
           <>
             <Text style={styles.lead}>
-              Drag your finger across the card to reveal whether you won.
+              Scratch the foil with your finger. A few swipes opens your result.
             </Text>
             <View
               style={styles.scratchWrap}
+              pointerEvents="box-only"
               onLayout={(e) => {
                 const { width, height } = e.nativeEvent.layout;
-                setBoardSize({ w: width, h: height });
+                boardRef.current = { w: width, h: height };
               }}
               {...pan.panHandlers}
             >
-              <View style={styles.scratchUnder}>
-                <Ionicons name="gift-outline" size={36} color={colors.primary} />
-                <Text style={styles.scratchUnderText}>Your result is ready</Text>
+              <View pointerEvents="none" style={styles.scratchUnder}>
+                <Ionicons name="gift" size={40} color={colors.primary} />
+                <Text style={styles.scratchUnderText}>
+                  {lifting ? "Opening your result…" : "Your result is under here"}
+                </Text>
               </View>
-              <View style={styles.scratchGrid}>
+              <View pointerEvents="none" style={styles.scratchGrid}>
                 {cleared.map((isClear, i) => (
-                  <View
-                    key={i}
-                    style={[
-                      styles.scratchCell,
-                      isClear && styles.scratchCellClear,
-                    ]}
-                  />
+                  <ScratchCell key={i} index={i} cleared={isClear} />
                 ))}
               </View>
+              {scratchedCount < CELL_COUNT * 0.12 && !lifting ? (
+                <View pointerEvents="none" style={styles.foilHint}>
+                  <Ionicons name="hand-left-outline" size={22} color="#4E463C" />
+                  <Text style={styles.foilHintText}>Scratch here</Text>
+                </View>
+              ) : null}
             </View>
+            <View style={styles.progressTrack}>
+              <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
+            </View>
+            <Text style={styles.hint}>
+              {lifting || scratching
+                ? "Opening your result…"
+                : scratchedCount > 0
+                  ? "Keep scratching"
+                  : "Drag your finger across the foil"}
+            </Text>
             <SecondaryButton
               label={scratching ? "Revealing…" : "Reveal now"}
               onPress={() => void reveal()}
-              disabled={scratching}
+              disabled={scratching || lifting}
             />
           </>
         ) : result?.outcome === "win" ? (
@@ -240,10 +456,11 @@ export function LuckyGiftScratchCard({
             {result.claimsOpen ? (
               <>
                 <Text style={styles.lead}>
-                  Contact this number to claim your {result.prizeLabel}.
-                </Text>
-                <Text style={styles.phoneDisplay} selectable>
-                  {formatSupportPhone(result.supportPhone)}
+                  Please reach out to{" "}
+                  <Text style={styles.phoneDisplay} selectable>
+                    {supportPhone}
+                  </Text>{" "}
+                  for claiming the gift.
                 </Text>
                 <View style={styles.row}>
                   <Pressable
@@ -267,12 +484,13 @@ export function LuckyGiftScratchCard({
             )}
             <Text style={styles.code}>Claim code {result.claimCode}</Text>
             {result.phoneSubmitted ? (
-              <Text style={styles.ok}>Phone saved. We’ll be in touch.</Text>
+              <Text style={styles.ok}>
+                Number saved. We’ll reach out to you about the gift.
+              </Text>
             ) : result.claimsOpen ? (
               <>
-                <Text style={styles.lead}>
-                  Or leave your number and we’ll send the voucher details. We’ll
-                  use it only for that.
+                <Text style={styles.ask}>
+                  We need your contact number to reach out to you about the gift.
                 </Text>
                 <TextInput
                   style={styles.input}
@@ -280,12 +498,12 @@ export function LuckyGiftScratchCard({
                   onChangeText={setPhone}
                   keyboardType="phone-pad"
                   autoComplete="tel"
-                  placeholder="+91XXXXXXXXXX"
+                  placeholder="Your mobile number"
                   placeholderTextColor={colors.textMuted}
                 />
                 {phoneError ? <Text style={styles.error}>{phoneError}</Text> : null}
                 <PrimaryButton
-                  label={submitting ? "Saving…" : "Save phone"}
+                  label={submitting ? "Saving…" : "Save my number"}
                   onPress={() => void submitPhone()}
                   disabled={submitting}
                 />
@@ -299,20 +517,18 @@ export function LuckyGiftScratchCard({
         ) : (
           <>
             <Text style={styles.lead}>
-              Read the messages in your circles — neighbourhood, school, board
-              and class — and talk there about kids, school, activities, and
-              everyday questions.
+              You&apos;re connected with parents from your neighbourhood and
+              your child&apos;s school, board and class. Ask questions, share
+              your experiences, and see what other parents are talking about.
             </Text>
-            {result ? (
-              <Text style={styles.code}>Claim code {result.claimCode}</Text>
-            ) : null}
             <PrimaryButton
-              label="Continue to your circles"
+              label="Explore your parent circles"
               onPress={() => onFinished(result)}
             />
           </>
         )}
       </View>
+      {celebrate ? <FlowerFall onDone={() => setCelebrate(false)} /> : null}
     </View>
   );
 }
@@ -326,6 +542,11 @@ const styles = StyleSheet.create({
   dim: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(15, 23, 42, 0.55)",
+  },
+  flowers: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 2,
+    overflow: "hidden",
   },
   card: {
     marginHorizontal: 16,
@@ -353,51 +574,88 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: 8,
   },
+  miss: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: colors.textMuted,
+    marginBottom: 6,
+  },
   lead: {
     fontSize: 15,
     lineHeight: 22,
     color: colors.textMuted,
     marginBottom: 14,
   },
+  ask: {
+    fontSize: 15,
+    lineHeight: 22,
+    fontWeight: "600",
+    color: colors.text,
+    marginBottom: 10,
+  },
   scratchWrap: {
-    width: 280,
-    height: 180,
+    width: "100%",
+    maxWidth: 320,
+    height: 188,
     alignSelf: "center",
     borderRadius: 16,
     overflow: "hidden",
-    marginBottom: 14,
-    backgroundColor: "#f4efe6",
+    marginBottom: 10,
+    backgroundColor: "#F6F1E6",
+    borderWidth: 2,
+    borderColor: "#C4A574",
   },
   scratchUnder: {
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
+    backgroundColor: "#F6F1E6",
   },
   scratchUnderText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: colors.textMuted,
+    fontSize: 14,
+    fontWeight: "700",
+    color: colors.primaryDark,
   },
   scratchGrid: {
     ...StyleSheet.absoluteFillObject,
-    flexDirection: "row",
-    flexWrap: "wrap",
   },
-  scratchCell: {
-    width: `${100 / COLS}%`,
-    height: `${100 / ROWS}%`,
-    backgroundColor: "#c45c4a",
+  foilHint: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
   },
-  scratchCellClear: {
-    backgroundColor: "transparent",
+  foilHintText: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#4E463C",
+    letterSpacing: 0.2,
+  },
+  progressTrack: {
+    height: 6,
+    borderRadius: 99,
+    backgroundColor: colors.borderLight,
+    overflow: "hidden",
+    marginBottom: 6,
+  },
+  progressFill: {
+    height: "100%",
+    borderRadius: 99,
+    backgroundColor: colors.primary,
+  },
+  hint: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: colors.textMuted,
+    textAlign: "center",
+    marginBottom: 12,
   },
   phoneDisplay: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: "800",
     color: colors.text,
-    letterSpacing: 0.3,
-    marginBottom: 4,
+    letterSpacing: 0.2,
   },
   code: {
     fontSize: 15,
@@ -420,7 +678,8 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     gap: 12,
-    marginVertical: 10,
+    marginTop: -4,
+    marginBottom: 8,
   },
   linkBtn: {
     flexDirection: "row",

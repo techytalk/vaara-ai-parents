@@ -51,6 +51,10 @@ function getAppVersion(): string {
   return Constants.expoConfig?.version ?? "unknown";
 }
 
+const SUPPORT_EMAIL = "support@vaara.ai";
+const SUPPORT_PHONE_DISPLAY = "+91 75694 28359";
+const SUPPORT_PHONE_TEL = "+917569428359";
+
 export default function SupportScreen() {
   useOriginBackHeader();
   const router = useRouter();
@@ -61,23 +65,28 @@ export default function SupportScreen() {
       `Vaara Parents ${appVersion} (${Platform.OS})\n\nDescribe your question:\n`
     );
     const subject = encodeURIComponent("Vaara Parents support");
-    Linking.openURL(`mailto:support@vaara.ai?subject=${subject}&body=${body}`).catch(
+    Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`).catch(
       () => {}
     );
+  }
+
+  function callSupport() {
+    Linking.openURL(`tel:${SUPPORT_PHONE_TEL}`).catch(() => {});
   }
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Email support</Text>
+        <Text style={styles.cardTitle}>Support</Text>
         <Text style={styles.cardBody}>
           For account help, privacy questions, or community safety concerns,
-          contact our team. Your email will include app version and platform
-          only — never child data, messages, or access tokens.
+          reach us at {SUPPORT_EMAIL} or {SUPPORT_PHONE_DISPLAY}. An email
+          includes app version and platform only — never child data, messages,
+          or access tokens.
         </Text>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Email support at support@vaara.ai"
+          accessibilityLabel={`Email support at ${SUPPORT_EMAIL}`}
           onPress={openSupportEmail}
           style={({ pressed }) => [
             styles.emailButton,
@@ -85,7 +94,19 @@ export default function SupportScreen() {
           ]}
         >
           <Ionicons name="mail-outline" size={18} color={colors.textInverse} />
-          <Text style={styles.emailButtonText}>support@vaara.ai</Text>
+          <Text style={styles.emailButtonText}>{SUPPORT_EMAIL}</Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Call support at ${SUPPORT_PHONE_DISPLAY}`}
+          onPress={callSupport}
+          style={({ pressed }) => [
+            styles.phoneButton,
+            pressed && styles.emailButtonPressed,
+          ]}
+        >
+          <Ionicons name="call-outline" size={18} color={colors.primary} />
+          <Text style={styles.phoneButtonText}>{SUPPORT_PHONE_DISPLAY}</Text>
         </Pressable>
       </View>
 
@@ -200,6 +221,23 @@ const styles = StyleSheet.create({
   emailButtonText: {
     ...typography.body,
     color: colors.textInverse,
+    fontFamily: typography.semibold,
+  },
+  phoneButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: radii.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  phoneButtonText: {
+    ...typography.body,
+    color: colors.primary,
     fontFamily: typography.semibold,
   },
   sectionTitle: {
