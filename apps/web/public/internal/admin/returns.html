@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow" />
+    <title>Vaara — Returns</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+        --teal: #0e9a8a;
+        --teal-dark: #08786d;
+        --bg: #fffcf7;
+        --card: #fff;
+        --text: #0d1b2a;
+        --muted: #5e6974;
+        --border: #e8e3db;
+        --ok: #078675;
+        --warn: #b96d00;
+      }
+      body { margin: 0; padding: 24px; background: var(--bg); color: var(--text); }
+      h1 { font-size: 1.45rem; margin: 0 0 6px; }
+      .muted { color: var(--muted); font-size: 0.9rem; margin: 0 0 18px; max-width: 46rem; }
+      label { display: block; font-size: 0.85rem; margin: 0 0 4px; color: var(--muted); }
+      select, button {
+        font: inherit;
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+      }
+      button {
+        background: var(--teal);
+        color: #fff;
+        border: none;
+        cursor: pointer;
+      }
+      button:disabled { opacity: 0.55; cursor: wait; }
+      .toolbar { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; margin-bottom: 16px; }
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 10px;
+        margin-bottom: 16px;
+      }
+      .stat {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 12px 14px;
+      }
+      .stat .n { font-size: 1.6rem; font-weight: 700; }
+      .stat .l { font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        overflow: hidden;
+        font-size: 0.9rem;
+      }
+      th, td {
+        text-align: left;
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--border);
+        vertical-align: top;
+      }
+      th {
+        background: #f7f4ee;
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        color: var(--muted);
+      }
+      tr:last-child td { border-bottom: none; }
+      tr.later td { background: #f3fbf9; }
+      .badge {
+        display: inline-block;
+        border-radius: 999px;
+        padding: 2px 8px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+      .badge.ok { background: #e7f7f4; color: var(--ok); }
+      .badge.warn { background: #fff2d9; color: var(--warn); }
+      .badge.muted { background: #f3f1ec; color: var(--muted); }
+      .sub { color: var(--muted); font-size: 0.78rem; margin-top: 2px; }
+      .err {
+        color: #b91c1c;
+        background: #feecec;
+        border-radius: 10px;
+        padding: 10px 12px;
+        margin-bottom: 12px;
+        display: none;
+      }
+      .empty { color: var(--muted); padding: 18px 0; }
+      @media (max-width: 720px) {
+        body { padding: 14px; }
+        table { display: block; overflow-x: auto; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="adminNav"></div>
+    <h1>Returns</h1>
+    <p class="muted">
+      Signed up, then did they come back. Staying logged in does not count.
+      An app open is counted when they bring the app to the front, once per half hour.
+      Opens from before this update were not saved.
+      Last activity is a feed view, post, or message we already have, so you can see who did something on a later day.
+    </p>
+
+    <div class="toolbar">
+      <div>
+        <label>Show</label>
+        <select id="filter">
+          <option value="all">All parents</option>
+          <option value="returned">Came back on a later day</option>
+          <option value="once">Only active on signup day</option>
+          <option value="quiet">No feed, post, or message</option>
+        </select>
+      </div>
+      <button id="refresh" type="button">Refresh</button>
+    </div>
+
+    <div id="err" class="err"></div>
+
+    <div class="stats">
+      <div class="stat"><div class="n" id="nParents">—</div><div class="l">Parents</div></div>
+      <div class="stat"><div class="n" id="nLater">—</div><div class="l">Active on a later day</div></div>
+      <div class="stat"><div class="n" id="nQuiet">—</div><div class="l">No feed, post, or message</div></div>
+      <div class="stat"><div class="n" id="nOpens">—</div><div class="l">Opened the app again</div></div>
+    </div>
+
+    <div id="list"><p class="empty">Loading…</p></div>
+
+    <script src="/internal/admin/admin-auth.js"></script>
+    <script>
+      const API_BASE = VaaraAdmin.API_BASE;
+      function $(id) { return document.getElementById(id); }
+
+      function showError(msg) {
+        const box = $("err");
+        if (!msg) { box.style.display = "none"; box.textContent = ""; return; }
+        box.style.display = "block";
+        box.textContent = msg;
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function openLabel(parent) {
+        if (!parent.opens_recorded) return '<span class="badge muted">Not recorded yet</span>';
+        if (parent.opened_again) return '<span class="badge ok">Yes</span>';
+        return '<span class="badge warn">Once</span>';
+      }
+
+      function render(parents) {
+        const list = $("list");
+        list.replaceChildren();
+        if (!parents.length) {
+          list.appendChild(Object.assign(document.createElement("p"), {
+            className: "empty",
+            textContent: "No parents for this filter.",
+          }));
+          return;
+        }
+        const table = document.createElement("table");
+        table.innerHTML = `
+          <thead>
+            <tr>
+              <th>Signed up (IST)</th>
+              <th>Email</th>
+              <th>Last opened</th>
+              <th>Opened again</th>
+              <th>Times opened</th>
+              <th>Days opened</th>
+              <th>Last activity</th>
+              <th>Later day</th>
+            </tr>
+          </thead>
+        `;
+        const tbody = document.createElement("tbody");
+        for (const parent of parents) {
+          const tr = document.createElement("tr");
+          if (parent.active_later || parent.opened_again) tr.className = "later";
+          const handle = parent.anonymous_handle
+            ? `<div class="sub">${escapeHtml(parent.anonymous_handle)}</div>`
+            : "";
+          const later = parent.active_later
+            ? '<span class="badge ok">Yes</span>'
+            : '<span class="badge muted">No</span>';
+          tr.innerHTML = `
+            <td>${escapeHtml(parent.signed_up_ist || "—")}</td>
+            <td>${escapeHtml(parent.email || "—")}${handle}</td>
+            <td>${parent.last_open_ist ? escapeHtml(parent.last_open_ist) : "—"}</td>
+            <td>${openLabel(parent)}</td>
+            <td>${parent.opens_recorded ? Number(parent.sessions || 0) : "—"}</td>
+            <td>${parent.opens_recorded ? Number(parent.open_days || 0) : "—"}</td>
+            <td>${escapeHtml(parent.last_activity_ist || "—")}</td>
+            <td>${later}</td>
+          `;
+          tbody.appendChild(tr);
+        }
+        table.appendChild(tbody);
+        list.appendChild(table);
+      }
+
+      async function loadReturns() {
+        showError("");
+        const btn = $("refresh");
+        btn.disabled = true;
+        try {
+          const filter = $("filter").value;
+          const res = await fetch(
+            `${API_BASE}/internal/admin/returns?filter=${encodeURIComponent(filter)}`,
+            { headers: VaaraAdmin.headers(false) }
+          );
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+          const summary = data.summary || {};
+          $("nParents").textContent = summary.parents ?? 0;
+          $("nLater").textContent = summary.activeLater ?? 0;
+          $("nQuiet").textContent = summary.quiet ?? 0;
+          $("nOpens").textContent = summary.openedAgain ?? 0;
+          render(data.parents || []);
+        } catch (err) {
+          showError(err instanceof Error ? err.message : "Failed to load");
+        } finally {
+          btn.disabled = false;
+        }
+      }
+
+      $("refresh").addEventListener("click", loadReturns);
+      $("filter").addEventListener("change", loadReturns);
+      (async () => {
+        const ok = await VaaraAdmin.requireAuth();
+        if (!ok) return;
+        VaaraAdmin.mountBar($("adminNav"));
+        loadReturns();
+      })();
+    </script>
+  </body>
+</html>

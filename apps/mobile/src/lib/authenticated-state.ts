@@ -1,4 +1,5 @@
 import type { AuthUser, Child, Circle } from "@/lib/api";
+import { recordAppOpenNow } from "@/lib/app-open";
 import { clearSession, getToken, saveSession } from "@/lib/session";
 import { queryClient } from "@/providers/QueryProvider";
 
@@ -32,6 +33,7 @@ export async function beginAuthenticatedSession(
   queryClient.clear();
   await saveSession(token, user);
   queryClient.setQueryData(["sessionUser"], user);
+  recordAppOpenNow();
 }
 
 export async function endAuthenticatedSession() {

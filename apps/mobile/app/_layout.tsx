@@ -22,6 +22,7 @@ import { AppQueryProvider } from "@/providers/QueryProvider";
 import { ReportProvider } from "@/providers/ReportProvider";
 import { ClaritySession } from "@/components/ClaritySession";
 import { colors } from "@/constants/theme";
+import { startAppOpenTracking } from "@/lib/app-open";
 import { initAnalytics } from "@/lib/analytics";
 import { pathFromShareUrl, savePendingLink } from "@/lib/pending-link";
 import { getToken } from "@/lib/session";
@@ -42,6 +43,7 @@ export default function RootLayout() {
   useEffect(() => {
     if (!fontsLoaded && !fontError) return;
     void initAnalytics();
+    return startAppOpenTracking();
   }, [fontError, fontsLoaded]);
 
   useEffect(() => {

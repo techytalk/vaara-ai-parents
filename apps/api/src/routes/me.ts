@@ -973,6 +973,67 @@ export function createMeRoutes() {
     }
   });
 
+  app.post("/app-open", async (c) => {
+    const userId = c.get("user").sub;
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const { rows } = await client.query<{
+        last_app_open_at: Date | null;
+        counted: boolean;
+      }>(
+        `WITH prev AS (
+           SELECT last_app_open_at
+           FROM users
+           WHERE id = $1
+           FOR UPDATE
+         ),
+         decision AS (
+           SELECT
+             last_app_open_at,
+             last_app_open_at IS NULL
+               OR last_app_open_at < now() - interval '30 minutes'
+               OR (last_app_open_at AT TIME ZONE 'Asia/Kolkata')::date
+                  < (now() AT TIME ZONE 'Asia/Kolkata')::date AS new_session,
+             last_app_open_at IS NOT NULL
+               AND last_app_open_at >= now() - interval '5 minutes' AS too_soon
+           FROM prev
+         )
+         UPDATE users u
+         SET
+           last_app_open_at = CASE
+             WHEN decision.too_soon THEN u.last_app_open_at
+             ELSE now()
+           END,
+           app_open_count = u.app_open_count + CASE
+             WHEN decision.new_session AND NOT decision.too_soon THEN 1
+             ELSE 0
+           END
+         FROM decision
+         WHERE u.id = $1
+         RETURNING u.last_app_open_at, (decision.new_session AND NOT decision.too_soon) AS counted`,
+        [userId]
+      );
+      const counted = rows[0]?.counted === true;
+      if (counted) {
+        await client.query(
+          `INSERT INTO user_app_open_days (user_id, opened_on, open_count)
+           VALUES ($1, (now() AT TIME ZONE 'Asia/Kolkata')::date, 1)
+           ON CONFLICT (user_id, opened_on)
+           DO UPDATE SET open_count = user_app_open_days.open_count + 1`,
+          [userId]
+        );
+      }
+      await client.query("COMMIT");
+      return c.json({ ok: true, counted });
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  });
+
   app.post("/push-token", async (c) => {
     const userId = c.get("user").sub;
     const body = await c.req.json<{ pushToken?: string }>();

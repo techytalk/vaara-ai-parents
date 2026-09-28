@@ -2258,6 +2258,11 @@ export const api = {
       body: JSON.stringify({ pushToken }),
     }, token),
 
+  recordAppOpen: (token: string) =>
+    request<{ ok: boolean; counted: boolean }>("/v1/me/app-open", {
+      method: "POST",
+    }, token),
+
   getMeStats: (token: string) =>
     request<MeStats>("/v1/me/stats", {}, token),
 

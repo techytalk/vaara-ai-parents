@@ -561,6 +561,99 @@ export function createInternalRoutes() {
     }
   });
 
+  // Signup date vs coming back. App opens are foreground sessions.
+  // Last activity is feed views, posts, and messages already stored.
+  app.get("/admin/returns", async (c) => {
+    if (!(await requireAdminAuth(c))) return c.json({ error: "Unauthorized" }, 401);
+    const filter = (c.req.query("filter") ?? "all").trim().toLowerCase();
+    const client = await pool.connect();
+    try {
+      const { rows } = await client.query(
+        `WITH activity AS (
+           SELECT user_id, MAX(ts) AS last_at
+           FROM (
+             SELECT user_id, MAX(last_seen_at) AS ts
+             FROM feed_post_impressions
+             GROUP BY user_id
+             UNION ALL
+             SELECT user_id, MAX(last_seen_at)
+             FROM home_thread_impressions
+             GROUP BY user_id
+             UNION ALL
+             SELECT author_id, MAX(created_at)
+             FROM circle_messages
+             GROUP BY author_id
+             UNION ALL
+             SELECT author_id, MAX(created_at)
+             FROM circle_posts
+             GROUP BY author_id
+             UNION ALL
+             SELECT sender_id, MAX(created_at)
+             FROM direct_messages
+             GROUP BY sender_id
+           ) sources
+           GROUP BY user_id
+         ),
+         open_days AS (
+           SELECT user_id, COUNT(*)::int AS days, SUM(open_count)::int AS opens
+           FROM user_app_open_days
+           GROUP BY user_id
+         )
+         SELECT
+           u.id,
+           u.email,
+           u.anonymous_handle,
+           u.onboarding_complete,
+           to_char(u.created_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD HH24:MI') AS signed_up_ist,
+           to_char(u.last_app_open_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD HH24:MI') AS last_open_ist,
+           COALESCE(u.app_open_count, 0)::int AS sessions,
+           COALESCE(open_days.days, 0)::int AS open_days,
+           to_char(activity.last_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD HH24:MI') AS last_activity_ist,
+           (
+             activity.last_at IS NOT NULL
+             AND (activity.last_at AT TIME ZONE 'Asia/Kolkata')::date
+               > (u.created_at AT TIME ZONE 'Asia/Kolkata')::date
+           ) AS active_later,
+           (
+             COALESCE(u.app_open_count, 0) > 1
+             OR COALESCE(open_days.days, 0) > 1
+           ) AS opened_again,
+           (u.last_app_open_at IS NOT NULL) AS opens_recorded
+         FROM users u
+         LEFT JOIN activity ON activity.user_id = u.id
+         LEFT JOIN open_days ON open_days.user_id = u.id
+         WHERE u.role = 'parent'
+         ORDER BY u.created_at DESC`
+      );
+
+      const parents = rows.filter((row) => {
+        if (filter === "returned") return row.active_later === true || row.opened_again === true;
+        if (filter === "once") {
+          return row.active_later !== true && row.opened_again !== true && row.last_activity_ist;
+        }
+        if (filter === "quiet") return !row.last_activity_ist && row.opened_again !== true;
+        return true;
+      });
+
+      const summary = {
+        parents: rows.length,
+        activeLater: rows.filter((row) => row.active_later === true).length,
+        openedAgain: rows.filter((row) => row.opened_again === true).length,
+        opensRecorded: rows.filter((row) => row.opens_recorded === true).length,
+        quiet: rows.filter((row) => !row.last_activity_ist).length,
+      };
+
+      return c.json({
+        ok: true,
+        timezone: "Asia/Kolkata",
+        summary,
+        parents,
+      });
+    } finally {
+      client.release();
+    }
+  });
+
   // ---- Admin school list compare (analysis only) ----
 
   app.post("/admin/schools/compare", async (c) => {

@@ -174,6 +174,10 @@ const MIGRATIONS = [
     version: "078_opportunity_scope_unknown",
     file: "078_opportunity_scope_unknown.sql",
   },
+  {
+    version: "079_app_opens",
+    file: "079_app_opens.sql",
+  },
 ];
 
 async function isMigrationApplied(
