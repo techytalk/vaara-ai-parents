@@ -25,7 +25,12 @@ import {
   type SeedTarget,
 } from "../services/internal-seed.js";
 import { publishChatNudge } from "../services/chat.js";
+import { deleteUserAccount } from "../lib/account-deletion.js";
 import { signAdminToken, verifyAdminToken } from "../lib/jwt.js";
+import {
+  invalidateChild360Page,
+  invalidateFamilyPage,
+} from "@vaara/redis";
 import { mountAdminModeration } from "./admin-moderation.js";
 import { rebuildOpportunitySuggestions } from "../services/opportunity-suggestions.js";
 import { getAdminDashboard } from "../services/admin-dashboard.js";
@@ -559,6 +564,122 @@ export function createInternalRoutes() {
     } finally {
       client.release();
     }
+  });
+
+  app.get("/admin/accounts", async (c) => {
+    if (!(await requireAdminAuth(c))) return c.json({ error: "Unauthorized" }, 401);
+    const q = (c.req.query("q") ?? "").trim();
+    if (q.length < 2) {
+      return c.json({ error: "Enter at least 2 characters" }, 400);
+    }
+
+    const like = `%${q.replace(/[\\%_]/g, "\\$&")}%`;
+    const idExact = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(q)
+      ? q
+      : null;
+
+    const { rows } = await pool.query(
+      `SELECT
+         u.id,
+         u.email,
+         u.display_name,
+         u.anonymous_handle,
+         u.phone,
+         u.role,
+         u.onboarding_complete,
+         u.is_internal,
+         to_char(u.created_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD HH24:MI') AS created_ist,
+         lg.outcome AS lucky_gift_outcome,
+         (lg.scratched_at IS NOT NULL) AS lucky_gift_scratched
+       FROM users u
+       LEFT JOIN LATERAL (
+         SELECT outcome, scratched_at
+         FROM lucky_gift_cards
+         WHERE user_id = u.id
+         ORDER BY created_at DESC
+         LIMIT 1
+       ) lg ON true
+       WHERE u.email ILIKE $1 ESCAPE '\\'
+          OR COALESCE(u.phone, '') ILIKE $1 ESCAPE '\\'
+          OR COALESCE(u.display_name, '') ILIKE $1 ESCAPE '\\'
+          OR u.anonymous_handle ILIKE $1 ESCAPE '\\'
+          OR ($2::uuid IS NOT NULL AND u.id = $2::uuid)
+       ORDER BY u.created_at DESC
+       LIMIT 25`,
+      [like, idExact]
+    );
+
+    return c.json({
+      ok: true,
+      accounts: rows.map((row) => ({
+        id: row.id,
+        email: row.email,
+        displayName: row.display_name,
+        handle: row.anonymous_handle,
+        phone: row.phone,
+        role: row.role,
+        onboardingComplete: Boolean(row.onboarding_complete),
+        isInternal: Boolean(row.is_internal),
+        createdIst: row.created_ist,
+        luckyGiftOutcome: row.lucky_gift_outcome,
+        luckyGiftScratched: Boolean(row.lucky_gift_scratched),
+      })),
+    });
+  });
+
+  app.delete("/admin/accounts/:userId", async (c) => {
+    const admin = await requireAdminAuth(c);
+    if (!admin) return c.json({ error: "Unauthorized" }, 401);
+
+    const userId = c.req.param("userId");
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
+      return c.json({ error: "Invalid account id" }, 400);
+    }
+
+    let body: { confirmEmail?: string };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    const confirmEmail = (body.confirmEmail ?? "").trim().toLowerCase();
+    if (!confirmEmail) {
+      return c.json({ error: "Type the account email to confirm" }, 400);
+    }
+
+    const { rows } = await pool.query<{
+      email: string;
+      child_id: string | null;
+    }>(
+      `SELECT u.email, c.id AS child_id
+       FROM users u
+       LEFT JOIN children c ON c.user_id = u.id
+       WHERE u.id = $1`,
+      [userId]
+    );
+    if (rows.length === 0) {
+      return c.json({ error: "Account not found" }, 404);
+    }
+    if (rows[0].email.trim().toLowerCase() !== confirmEmail) {
+      return c.json({ error: "Email does not match this account" }, 400);
+    }
+
+    const childIds = rows
+      .map((row) => row.child_id)
+      .filter((id): id is string => Boolean(id));
+
+    try {
+      const deleted = await deleteUserAccount(userId);
+      if (!deleted) return c.json({ error: "Account not found" }, 404);
+    } catch (error) {
+      console.error("[admin.account.delete] failed", error);
+      return c.json({ error: "Could not delete account" }, 500);
+    }
+
+    console.log("[admin.account.delete]", admin.email, userId);
+    await invalidateFamilyPage(userId);
+    await Promise.all(childIds.map((childId) => invalidateChild360Page(userId, childId)));
+    return c.json({ ok: true });
   });
 
   // Signup date vs coming back. App opens are foreground sessions.

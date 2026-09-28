@@ -89,6 +89,17 @@ export async function deleteUserAccount(userId: string): Promise<boolean> {
     );
 
     await client.query(`DELETE FROM reports WHERE reporter_id = $1`, [userId]);
+
+    // Winning moments reference the user without ON DELETE CASCADE.
+    // Release the moment so the account can be removed and the voucher
+    // can be claimed by a later parent.
+    await client.query(
+      `UPDATE lucky_gift_winning_moments
+       SET claimed_by_user_id = NULL, claimed_at = NULL
+       WHERE claimed_by_user_id = $1`,
+      [userId]
+    );
+
     await client.query(`DELETE FROM users WHERE id = $1`, [userId]);
     await client.query("COMMIT");
   } catch (error) {

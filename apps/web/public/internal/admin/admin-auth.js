@@ -81,6 +81,7 @@
         { href: "/internal/admin/moderation.html", label: "Moderation" },
         { href: "/internal/admin/seeds.html", label: "Seed parents" },
         { href: "/internal/admin/lucky-gift.html", label: "Lucky gift" },
+        { href: "/internal/admin/delete-account.html", label: "Delete account" },
         { href: "/internal/admin/exams.html", label: "Exams" },
       ],
     },

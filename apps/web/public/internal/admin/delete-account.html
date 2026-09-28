@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow" />
+    <title>Vaara — Delete account</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+        --teal: #0e9a8a;
+        --teal-dark: #08786d;
+        --bg: #fffcf7;
+        --card: #fff;
+        --text: #0d1b2a;
+        --muted: #5e6974;
+        --border: #e8e3db;
+        --ok: #078675;
+        --danger: #b42318;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: var(--bg);
+        color: var(--text);
+      }
+      h1 { font-size: 1.45rem; margin: 0 0 6px; }
+      .muted { color: var(--muted); font-size: 0.9rem; margin: 0 0 18px; max-width: 42rem; }
+      label { display: block; font-size: 0.85rem; margin: 0 0 4px; color: var(--muted); }
+      input, button {
+        font: inherit;
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+      }
+      button {
+        background: var(--teal);
+        color: #fff;
+        border: none;
+        cursor: pointer;
+      }
+      button.danger { background: var(--danger); }
+      button:disabled { opacity: 0.55; cursor: wait; }
+      .toolbar {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        align-items: end;
+        margin-bottom: 16px;
+      }
+      .toolbar input { min-width: min(100%, 280px); }
+      .panel {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 16px;
+        margin-bottom: 16px;
+      }
+      .err, .okmsg {
+        display: none;
+        border-radius: 10px;
+        padding: 10px 12px;
+        margin-bottom: 12px;
+      }
+      .err { background: #fdecea; color: var(--danger); }
+      .okmsg { background: #e7f8f3; color: var(--ok); }
+      table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+      th, td {
+        text-align: left;
+        padding: 8px 6px;
+        border-bottom: 1px solid var(--border);
+        vertical-align: top;
+      }
+      th { color: var(--muted); font-weight: 600; }
+      .sub { color: var(--muted); font-size: 0.78rem; margin-top: 2px; }
+      .badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        background: #f3efe8;
+        color: var(--muted);
+      }
+      .confirm {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-top: 8px;
+      }
+      .confirm input { min-width: 220px; }
+      @media (max-width: 720px) {
+        body { padding: 14px; }
+        table { display: block; overflow-x: auto; }
+      }
+    </style>
+    <script src="./admin-auth.js"></script>
+  </head>
+  <body>
+    <div id="adminNav"></div>
+    <h1>Delete account</h1>
+    <p class="muted">
+      Search by email, phone, or handle, then delete that account. This is permanent.
+      The same email, Apple, or Google login can sign up again. If they had claimed a
+      lucky-gift moment, that moment goes back into the pool.
+    </p>
+
+    <div id="err" class="err"></div>
+    <div id="okmsg" class="okmsg"></div>
+
+    <div class="toolbar">
+      <div>
+        <label for="q">Find account</label>
+        <input id="q" type="search" placeholder="email, phone, or handle" autocomplete="off" />
+      </div>
+      <button type="button" id="btnSearch">Search</button>
+    </div>
+
+    <div class="panel">
+      <div id="results" class="muted">Search for an account to delete.</div>
+    </div>
+
+    <script>
+      (async function () {
+        const ok = await VaaraAdmin.requireAuth();
+        if (!ok) return;
+        VaaraAdmin.mountBar(document.getElementById("adminNav"));
+
+        const $ = (id) => document.getElementById(id);
+        let accounts = [];
+        let confirmingId = "";
+
+        function escapeHtml(value) {
+          return String(value ?? "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;");
+        }
+
+        function showError(msg) {
+          const box = $("err");
+          box.style.display = msg ? "block" : "none";
+          box.textContent = msg || "";
+        }
+
+        function showOk(msg) {
+          const box = $("okmsg");
+          box.style.display = msg ? "block" : "none";
+          box.textContent = msg || "";
+        }
+
+        function giftLabel(account) {
+          if (!account.luckyGiftOutcome) return "—";
+          const state = account.luckyGiftScratched ? account.luckyGiftOutcome : "pending " + account.luckyGiftOutcome;
+          return state;
+        }
+
+        function render() {
+          const box = $("results");
+          if (!accounts.length) {
+            box.className = "muted";
+            box.textContent = "No accounts matched.";
+            return;
+          }
+          box.className = "";
+          box.innerHTML = `<table>
+            <thead>
+              <tr>
+                <th>Account</th>
+                <th>Created (IST)</th>
+                <th>Onboarding</th>
+                <th>Lucky gift</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              ${accounts.map((account) => {
+                const confirm = confirmingId === account.id
+                  ? `<div class="confirm">
+                      <input id="confirmEmail" type="email" placeholder="Type ${escapeHtml(account.email)}" autocomplete="off" />
+                      <button type="button" class="danger" id="btnConfirm">Delete permanently</button>
+                    </div>`
+                  : `<button type="button" class="danger" data-delete="${escapeHtml(account.id)}">Delete</button>`;
+                return `<tr>
+                  <td>
+                    <div>${escapeHtml(account.email)}</div>
+                    <div class="sub">${escapeHtml(account.handle || "")}${account.phone ? " · " + escapeHtml(account.phone) : ""}${account.isInternal ? " · seed" : ""}</div>
+                  </td>
+                  <td>${escapeHtml(account.createdIst || "—")}</td>
+                  <td>${account.onboardingComplete ? "Complete" : "Incomplete"}</td>
+                  <td><span class="badge">${escapeHtml(giftLabel(account))}</span></td>
+                  <td>${confirm}</td>
+                </tr>`;
+              }).join("")}
+            </tbody>
+          </table>`;
+
+          box.querySelectorAll("[data-delete]").forEach((button) => {
+            button.addEventListener("click", () => {
+              confirmingId = button.getAttribute("data-delete") || "";
+              showError("");
+              render();
+              $("confirmEmail")?.focus();
+            });
+          });
+
+          $("btnConfirm")?.addEventListener("click", () => {
+            const account = accounts.find((item) => item.id === confirmingId);
+            if (!account) return;
+            void removeAccount(account, $("confirmEmail").value.trim());
+          });
+        }
+
+        async function search() {
+          showError("");
+          showOk("");
+          confirmingId = "";
+          const q = $("q").value.trim();
+          if (q.length < 2) {
+            showError("Enter at least 2 characters");
+            return;
+          }
+          $("btnSearch").disabled = true;
+          try {
+            const res = await fetch(
+              VaaraAdmin.API_BASE + "/internal/admin/accounts?q=" + encodeURIComponent(q),
+              { headers: VaaraAdmin.headers(false) }
+            );
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+              showError(data.error || "Search failed");
+              return;
+            }
+            accounts = data.accounts || [];
+            render();
+          } catch {
+            showError("Search failed");
+          } finally {
+            $("btnSearch").disabled = false;
+          }
+        }
+
+        async function removeAccount(account, confirmEmail) {
+          if (confirmEmail.toLowerCase() !== String(account.email).toLowerCase()) {
+            showError("Type the exact email for this account");
+            return;
+          }
+          $("btnConfirm").disabled = true;
+          showError("");
+          showOk("");
+          try {
+            const res = await fetch(
+              VaaraAdmin.API_BASE + "/internal/admin/accounts/" + encodeURIComponent(account.id),
+              {
+                method: "DELETE",
+                headers: VaaraAdmin.headers(true),
+                body: JSON.stringify({ confirmEmail }),
+              }
+            );
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+              showError(data.error || "Could not delete account");
+              $("btnConfirm").disabled = false;
+              return;
+            }
+            accounts = accounts.filter((item) => item.id !== account.id);
+            confirmingId = "";
+            showOk("Deleted " + account.email + ". That login can sign up again.");
+            render();
+          } catch {
+            showError("Could not delete account");
+            if ($("btnConfirm")) $("btnConfirm").disabled = false;
+          }
+        }
+
+        $("btnSearch").addEventListener("click", () => void search());
+        $("q").addEventListener("keydown", (event) => {
+          if (event.key === "Enter") void search();
+        });
+      })();
+    </script>
+  </body>
+</html>
