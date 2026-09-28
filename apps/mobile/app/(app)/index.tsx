@@ -17,7 +17,6 @@ import { Avatar, ScreenLoader } from "@/components/ui";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import { useRealtimeChannels } from "@/hooks/useRealtimeChannels";
 import { api } from "@/lib/api";
-import { pickPrimaryCircle } from "@/lib/home-feed";
 import { hasCompletedAppTour } from "@/lib/app-tour";
 import {
   dismissCompletionPrompt,
@@ -222,7 +221,6 @@ export default function HomeScreen() {
     });
   }, [navigation, router, unreadAlerts]);
 
-  const primaryCircle = useMemo(() => pickPrimaryCircle(circles), [circles]);
   const loading = userQuery.isLoading;
   const composeLocked = circlesQuery.isPending || circlesQuery.isError;
   const showLuckyGift =
@@ -385,23 +383,6 @@ export default function HomeScreen() {
       {listHeader}
       <ChatHomeScreen />
 
-      {primaryCircle && !tour.visible ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Start a thread"
-          onPress={() =>
-          router.push({
-            pathname: "/(app)/messages",
-            params: { from: "home" },
-          } as never)
-        }
-          style={styles.fab}
-        >
-          <Ionicons name="add" size={22} color="#fff" />
-          <Text style={styles.fabText}>Thread</Text>
-        </Pressable>
-      ) : null}
-
       <HomeTourOverlay
         visible={tour.visible}
         circles={circles}
@@ -547,26 +528,4 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   bellBadgeText: { color: "#fff", fontSize: 10, fontWeight: "700" },
-  fab: {
-    position: "absolute",
-    right: spacing.lg,
-    bottom: spacing.lg,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radii.pill,
-    backgroundColor: colors.coral,
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  fabText: {
-    ...typography.supporting,
-    color: "#fff",
-    fontFamily: typography.bold,
-  },
 });
