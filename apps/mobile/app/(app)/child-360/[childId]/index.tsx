@@ -379,6 +379,13 @@ export default function Child360HubScreen() {
           <Text style={styles.examsLinkText}>Saved exam plans</Text>
         </Pressable>
       ) : null}
+      <View style={styles.about}>
+        <Text style={styles.aboutTitle}>What is Child 360?</Text>
+        <Text style={styles.aboutBody}>
+          A private picture of this child — school, activities, health, and
+          interests. Tap a box to add or update. Other parents cannot see it.
+        </Text>
+      </View>
     </ScrollView>
   );
 }
@@ -410,6 +417,24 @@ const styles = StyleSheet.create({
     fontFamily: typography.bold,
     color: colors.primary,
     fontSize: 15,
+  },
+  about: {
+    marginTop: spacing.xl,
+    padding: spacing.md,
+    borderRadius: radii.lg,
+    backgroundColor: colors.surfaceMuted,
+  },
+  aboutTitle: {
+    fontFamily: typography.semibold,
+    fontSize: 14,
+    color: colors.text,
+    marginBottom: 4,
+  },
+  aboutBody: {
+    fontFamily: typography.regular,
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.textMuted,
   },
   chipScroll: { marginBottom: spacing.md, marginHorizontal: -spacing.lg },
   chipRow: {
