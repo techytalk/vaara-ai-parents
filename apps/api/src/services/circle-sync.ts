@@ -184,16 +184,36 @@ function addAgeLocalityCircles(
   children: ChildRow[],
   loc: {
     country_code: string | null;
-    pin_code: string;
+    pin_code: string | null;
     locality: string | null;
+    area_id?: string | null;
+    area_name?: string | null;
   }
 ) {
   const country = (loc.country_code ?? "IN").trim().toUpperCase() || "IN";
   const pin = loc.pin_code;
+  const areaId = loc.area_id;
+  const areaName = loc.area_name || loc.locality;
   for (const child of children) {
     const ageYears = effectiveAgeYears(child);
     if (ageYears == null) continue;
     const suffix = ageKeySuffix(ageYears);
+    if (areaId && areaName) {
+      pushCircle(desired, seenKeys, {
+        circleType: "age_locality",
+        key: `AGE_AREA_${areaId}_${suffix}`,
+        displayName: `${ageBandLabel(ageYears)} · ${areaName}`,
+        metadata: {
+          country_code: country,
+          area_id: areaId,
+          locality: areaName,
+          age_years: ageYears,
+          experienced: child.track === "school",
+        },
+      });
+      continue;
+    }
+    if (!pin) continue;
     pushCircle(desired, seenKeys, {
       circleType: "age_locality",
       key: `AGE_POSTAL_${country}_${pin}_${suffix}`,
@@ -237,8 +257,12 @@ export async function syncCircleMembership(
   );
 
   const locationResult = await client.query(
-    `SELECT country_code, pin_code, locality, community_name, community_key
-     FROM user_locations WHERE user_id = $1`,
+    `SELECT ul.country_code, ul.pin_code, ul.locality, ul.community_name, ul.community_key,
+            ul.area_id, a.canonical_name AS area_name, a.city AS area_city,
+            a.country_code AS area_country
+     FROM user_locations ul
+     LEFT JOIN areas a ON a.id = ul.area_id
+     WHERE ul.user_id = $1`,
     [userId]
   );
 
@@ -255,18 +279,34 @@ export async function syncCircleMembership(
     const loc = locationResult.rows[0];
     addAgeLocalityCircles(desired, seenKeys, children, loc);
 
-    const pinKey = `PIN_${loc.pin_code}`;
-    pushCircle(desired, seenKeys, {
-      circleType: "locality",
-      key: pinKey,
-      displayName: loc.locality
-        ? `${loc.pin_code} · ${loc.locality}`
-        : loc.pin_code,
-      metadata: {
-        pin_code: loc.pin_code,
-        country_code: loc.country_code ?? "IN",
-      },
-    });
+    if (loc.area_id && loc.area_name) {
+      pushCircle(desired, seenKeys, {
+        circleType: "locality",
+        key: `AREA_${loc.area_id}`,
+        displayName: loc.area_city
+          ? `${loc.area_name}, ${loc.area_city}`
+          : loc.area_name,
+        metadata: {
+          area_id: loc.area_id,
+          country_code: loc.area_country ?? loc.country_code ?? "IN",
+          locality: loc.area_name,
+          city: loc.area_city,
+        },
+      });
+    } else if (loc.pin_code) {
+      const pinKey = `PIN_${loc.pin_code}`;
+      pushCircle(desired, seenKeys, {
+        circleType: "locality",
+        key: pinKey,
+        displayName: loc.locality
+          ? `${loc.pin_code} · ${loc.locality}`
+          : loc.pin_code,
+        metadata: {
+          pin_code: loc.pin_code,
+          country_code: loc.country_code ?? "IN",
+        },
+      });
+    }
 
     const communityKey =
       loc.community_key ??

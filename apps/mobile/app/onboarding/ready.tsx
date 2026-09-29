@@ -43,6 +43,9 @@ export default function OnboardingReadyScreen() {
         if (draftedCircles) {
           nextCircles = draftedCircles;
           setCircles(draftedCircles);
+          void api.getCircles(token).then((fresh) => {
+            if (fresh.length > 0) setCircles(fresh);
+          }).catch(() => {});
           const stored = draftedUser ? await getStoredUser() : null;
           const nextUser = stored && draftedUser ? { ...stored, ...draftedUser } : null;
           if (stored && nextUser) {

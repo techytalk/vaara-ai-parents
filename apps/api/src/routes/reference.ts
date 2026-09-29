@@ -25,6 +25,10 @@ import {
   PAGE_CACHE_TTL,
   setCachedJson,
 } from "@vaara/redis";
+import { randomUUID } from "node:crypto";
+import { autocompletePlaces, resolveGooglePlace } from "../lib/places/google.js";
+import { searchPostalAreas, readPostalChoice } from "../lib/places/postal-search.js";
+import { issuePlaceSelection, readPlaceSelection } from "../lib/areas/selection.js";
 
 const STATIC_REFERENCE_CACHE =
   "public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800";
@@ -321,6 +325,159 @@ export function createReferenceRoutes() {
       } finally {
         client.release();
       }
+    }
+  );
+
+  app.get(
+    "/places",
+    authMiddleware,
+    rateLimitMiddleware({ prefix: "ref-places", limit: 30, windowSeconds: 60 }),
+    async (c) => {
+      const q = c.req.query("q")?.trim() ?? "";
+      const city = c.req.query("city")?.trim() ?? "";
+      const sessionToken = c.req.query("sessionToken")?.trim() || randomUUID();
+      const digits = q.replace(/\D/g, "");
+      if (q.length < 3 && digits.length !== 6) {
+        return c.json({ results: [], attribution: false, sessionToken });
+      }
+      const started = Date.now();
+      const client = await pool.connect();
+      try {
+        const [places, postal] = await Promise.all([
+          autocompletePlaces({ query: q, city, sessionToken }).catch(() => []),
+          searchPostalAreas(client, q).catch(() => []),
+        ]);
+        const seen = new Set(places.map((row) => row.title.toLowerCase()));
+        const results: Array<(typeof places)[number] | (typeof postal)[number]> = [
+          ...places,
+        ];
+        for (const row of postal) {
+          if (seen.has(row.title.toLowerCase())) continue;
+          results.push(row);
+          if (results.length >= 8) break;
+        }
+        console.log(
+          JSON.stringify({
+            event: "place_search",
+            ms: Date.now() - started,
+            qLen: q.length,
+            results: results.length,
+            places: places.length,
+          })
+        );
+        return c.json({
+          results,
+          attribution: places.length > 0,
+          sessionToken,
+        });
+      } finally {
+        client.release();
+      }
+    }
+  );
+
+  app.post(
+    "/places/resolve",
+    authMiddleware,
+    rateLimitMiddleware({ prefix: "ref-places-resolve", limit: 20, windowSeconds: 60 }),
+    async (c) => {
+      const body = await c.req.json<{
+        id?: string;
+        source?: "places" | "postal";
+        sessionToken?: string;
+        buildingToken?: string;
+      }>();
+      const building = body.buildingToken
+        ? readPlaceSelection(body.buildingToken)
+        : null;
+
+      if (body.source === "postal") {
+        const choice = readPostalChoice(body.id ?? "");
+        if (!choice) return c.json({ error: "That area is no longer available" }, 400);
+        const token = issuePlaceSelection({
+          source: "postal",
+          countryCode: choice.countryCode,
+          areaName: choice.areaName,
+          city: choice.city,
+          state: choice.state,
+          postalCode: choice.postalCode,
+          communityName: building?.communityName ?? null,
+          providerPlaceId: null,
+          needsArea: false,
+        });
+        return c.json({
+          placeSelectionToken: token,
+          needsArea: false,
+          title: building?.communityName ?? choice.areaName,
+          subtitle: [choice.areaName, choice.city, choice.state, choice.postalCode]
+            .filter(Boolean)
+            .join(", "),
+          communityName: building?.communityName ?? null,
+          areaName: choice.areaName,
+          city: choice.city,
+          state: choice.state,
+          postalCode: choice.postalCode,
+          source: "postal" as const,
+        });
+      }
+
+      const placeId = body.id?.trim() ?? "";
+      const sessionToken = body.sessionToken?.trim() ?? "";
+      if (!placeId || !sessionToken) {
+        return c.json({ error: "Place selection is incomplete" }, 400);
+      }
+      const resolved = await resolveGooglePlace({ placeId, sessionToken });
+      if (!resolved) return c.json({ error: "Could not load that place" }, 502);
+      const parsed = resolved.parsed;
+      const communityName = parsed.communityName ?? building?.communityName ?? null;
+      const areaName = parsed.areaName;
+      if (!areaName) {
+        const buildingToken = issuePlaceSelection({
+          source: "places",
+          countryCode: parsed.countryCode ?? "IN",
+          areaName: null,
+          city: parsed.city ?? "",
+          state: parsed.state ?? "",
+          postalCode: parsed.postalCode,
+          communityName: communityName ?? resolved.displayName,
+          providerPlaceId: null,
+          needsArea: true,
+        });
+        return c.json({
+          needsArea: true,
+          buildingToken,
+          title: communityName ?? resolved.displayName,
+          subtitle: "Choose your area",
+          communityName: communityName ?? resolved.displayName,
+          city: parsed.city,
+          source: "places" as const,
+        });
+      }
+      const token = issuePlaceSelection({
+        source: "places",
+        countryCode: parsed.countryCode ?? "IN",
+        areaName,
+        city: parsed.city ?? "",
+        state: parsed.state ?? "",
+        postalCode: parsed.postalCode,
+        communityName,
+        providerPlaceId: communityName ? null : placeId,
+        needsArea: false,
+      });
+      return c.json({
+        placeSelectionToken: token,
+        needsArea: false,
+        title: communityName ?? areaName,
+        subtitle: [communityName ? areaName : null, parsed.city, parsed.state, parsed.postalCode]
+          .filter(Boolean)
+          .join(", "),
+        communityName,
+        areaName,
+        city: parsed.city,
+        state: parsed.state,
+        postalCode: parsed.postalCode,
+        source: "places" as const,
+      });
     }
   );
 

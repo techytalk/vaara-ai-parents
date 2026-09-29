@@ -698,6 +698,12 @@ export async function processBackgroundJobs(client: PoolClient): Promise<{
   const listingsExpired = await processExpiredListings(client);
   const timelineOutbox = await drainTimelineOutbox();
   const chatOutbox = await drainChatOutbox(client);
+  try {
+    const { processPendingAreaResolutions } = await import("./area-resolution.js");
+    await processPendingAreaResolutions();
+  } catch (err) {
+    console.error("area resolution failed", err);
+  }
   return {
     remindersSent,
     pushesDelivered,

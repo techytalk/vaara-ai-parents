@@ -215,13 +215,36 @@ export type Child360Hub = {
 
 export type Location = {
   countryCode: string;
-  pinCode: string;
-  postalCode?: string;
+  pinCode: string | null;
+  postalCode?: string | null;
   locality: string | null;
   city: string | null;
   state: string | null;
   communityName: string | null;
   communityKey: string | null;
+  areaId?: string | null;
+};
+
+export type PlaceSuggestion = {
+  id: string;
+  source: "places" | "postal";
+  title: string;
+  subtitle: string;
+  kind: "building" | "area";
+};
+
+export type ResolvedPlace = {
+  placeSelectionToken?: string;
+  needsArea: boolean;
+  buildingToken?: string;
+  title: string;
+  subtitle: string;
+  communityName?: string | null;
+  areaName?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postalCode?: string | null;
+  source: "places" | "postal";
 };
 
 export type PostalCountry = {
@@ -1612,17 +1635,72 @@ export const api = {
     token: string,
     body: {
       countryCode?: string;
-      pinCode: string;
+      pinCode?: string;
       locality?: string;
       city?: string;
       state?: string;
       communityName?: string;
+      placeSelectionToken?: string;
     }
   ) =>
     request<Location & { onboardingComplete?: boolean }>("/v1/me/location", {
       method: "PATCH",
       body: JSON.stringify(body),
     }, token),
+
+  searchPlaces: (
+    token: string,
+    params: { q: string; city?: string; sessionToken: string }
+  ) => {
+    const qs = new URLSearchParams({
+      q: params.q,
+      sessionToken: params.sessionToken,
+    });
+    if (params.city) qs.set("city", params.city);
+    return request<{
+      results: PlaceSuggestion[];
+      attribution: boolean;
+      sessionToken: string;
+    }>(`/v1/reference/places?${qs.toString()}`, {}, token);
+  },
+
+  resolvePlace: (
+    token: string,
+    body: {
+      id: string;
+      source: "places" | "postal";
+      sessionToken: string;
+      buildingToken?: string;
+    }
+  ) =>
+    request<ResolvedPlace>(
+      "/v1/reference/places/resolve",
+      { method: "POST", body: JSON.stringify(body) },
+      token
+    ),
+
+  finalizeOnboarding: (
+    token: string,
+    body: {
+      onboardingAttemptId: string;
+      placeSelectionToken: string;
+      track: "school" | "preschool";
+      schoolId: string;
+      curriculumId?: string;
+      gradeId?: string;
+      ageYears?: 3 | 4;
+    }
+  ) =>
+    request<{
+      child: Child;
+      user: AuthUser;
+      circles: Circle[];
+      location: Location;
+    }>(
+      "/v1/me/onboarding/finalize",
+      { method: "POST", body: JSON.stringify(body) },
+      token
+    ),
 
   getCircles: (token: string) =>
     request<Circle[]>("/v1/circles", {}, token),

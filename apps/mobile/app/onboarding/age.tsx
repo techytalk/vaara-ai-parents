@@ -9,21 +9,16 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { api } from "@/lib/api";
 import { trackEvent } from "@/lib/analytics";
-import { getToken, saveSession } from "@/lib/session";
+import { getToken } from "@/lib/session";
 import {
-  ensureOnboardingAttemptId,
   getOnboardingAgeYears,
-  getOnboardingLocation,
   getOnboardingSchool,
   getOnboardingTrack,
   hydrateOnboardingDraft,
   setOnboardingAgeYears,
-  setOnboardingChildren,
-  setOnboardingCircles,
   setOnboardingStep,
-  setOnboardingUser,
+  setOnboardingStepAsync,
 } from "@/lib/onboarding-draft";
 import {
   colors,
@@ -40,7 +35,7 @@ const hookAccent = {
   textDecorationColor: colors.primaryLight,
 };
 
-function ageHook(pin: string): { title: ReactNode; body: string } {
+function ageHook(): { title: ReactNode; body: string } {
   return {
     title: (
       <>
@@ -48,9 +43,7 @@ function ageHook(pin: string): { title: ReactNode; body: string } {
         <Text style={hookAccent}>same age</Text> in your area.
       </>
     ),
-    body: pin
-      ? `Pick 3 years or 4 years. You will join that circle for PIN ${pin}.`
-      : "Pick 3 years or 4 years for your child.",
+    body: "Pick 3 years or 4 years for your child.",
   };
 }
 
@@ -58,12 +51,11 @@ export default function OnboardingAgeScreen() {
   const router = useRouter();
   const [token, setToken] = useState<string | null>(null);
   const [ageYears, setAgeYears] = useState<3 | 4 | null>(null);
-  const [pin, setPin] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const contentStyle = useOnboardingContentStyle();
-  const hook = ageHook(pin);
+  const hook = ageHook();
 
   useEffect(() => {
     setOnboardingStep("age");
@@ -78,12 +70,10 @@ export default function OnboardingAgeScreen() {
         await hydrateOnboardingDraft();
         const track = getOnboardingTrack();
         const school = getOnboardingSchool();
-        const loc = getOnboardingLocation().location;
         if (track !== "preschool" || !school?.id) {
           router.replace("/onboarding/school" as never);
           return;
         }
-        setPin(loc?.pinCode ?? "");
         const saved = getOnboardingAgeYears();
         if (saved === 3 || saved === 4) setAgeYears(saved);
       } catch (e) {
@@ -106,22 +96,10 @@ export default function OnboardingAgeScreen() {
     setSubmitting(true);
     setOnboardingAgeYears(ageYears);
     try {
-      const result = await api.addChild(token, {
-        track: "preschool",
-        schoolId: school.id,
-        ageYears,
-        gender: "unspecified",
-        onboardingAttemptId: ensureOnboardingAttemptId(),
-      });
-      setOnboardingChildren([result.child]);
-      if (result.circles) setOnboardingCircles(result.circles);
-      if (result.user) {
-        setOnboardingUser(result.user);
-        await saveSession(token, result.user);
-      }
+      await setOnboardingStepAsync("location");
       trackEvent("onboarding_age_complete", { age_years: ageYears });
       trackEvent("age_circle_selected", { age_years: ageYears });
-      router.replace("/onboarding/ready" as never);
+      router.replace("/onboarding/location" as never);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save");
     } finally {
@@ -173,9 +151,7 @@ export default function OnboardingAgeScreen() {
                 {years} years
               </Text>
               <Text style={styles.optionBody}>
-                {pin
-                  ? `Parents of ${years}-year-olds · ${pin}`
-                  : `Parents of ${years}-year-olds nearby`}
+                Parents of {years}-year-olds nearby
               </Text>
             </Pressable>
           );

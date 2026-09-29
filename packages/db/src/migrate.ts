@@ -186,6 +186,10 @@ const MIGRATIONS = [
     version: "081_lucky_gift_admin_name",
     file: "081_lucky_gift_admin_name.sql",
   },
+  {
+    version: "082_onboarding_areas",
+    file: "082_onboarding_areas.sql",
+  },
 ];
 
 async function isMigrationApplied(

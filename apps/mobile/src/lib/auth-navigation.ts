@@ -7,7 +7,6 @@ import {
   getOnboardingClassSelection,
   getOnboardingLocation,
   getOnboardingSchool,
-  getOnboardingStep,
   getOnboardingTrack,
   hydrateOnboardingDraft,
   setOnboardingChildren,
@@ -37,31 +36,20 @@ export async function resolveParentOnboardingHref(
   setOnboardingLocation(location, { loaded: true });
   setOnboardingChildren(kids);
 
-  if (kids.length > 0) return "/onboarding/ready";
-  if (!location) return "/onboarding/location";
+  if (kids.length > 0 && location) return "/onboarding/ready";
+  if (kids.length > 0 && !location) return "/onboarding/location";
 
   const school = getOnboardingSchool();
   const klass = getOnboardingClassSelection();
-  const step = getOnboardingStep();
   const track = getOnboardingTrack();
   const ageYears = getOnboardingAgeYears();
 
+  if (!school?.id) return "/onboarding/school";
   if (track === "preschool") {
-    if (school?.id && (ageYears === 3 || ageYears === 4 || step === "age")) {
-      return "/onboarding/age";
-    }
-    return "/onboarding/school";
+    if (ageYears !== 3 && ageYears !== 4) return "/onboarding/age";
+    return "/onboarding/location";
   }
-
-  if (school?.id && klass.curriculumId && klass.gradeId) {
-    return "/onboarding/class";
-  }
-  if (school?.id || step === "class") {
-    return "/onboarding/class";
-  }
-  if (step === "school" || location) {
-    return "/onboarding/school";
-  }
+  if (!klass.curriculumId || !klass.gradeId) return "/onboarding/class";
   return "/onboarding/location";
 }
 
@@ -73,7 +61,7 @@ export async function routeNewParentOnboarding(
   setOnboardingUser(user);
   setOnboardingLocation(null, { loaded: true });
   setOnboardingChildren([]);
-  router.replace("/onboarding/location" as never);
+  router.replace("/onboarding/school" as never);
 }
 
 export async function routeAfterAuth(

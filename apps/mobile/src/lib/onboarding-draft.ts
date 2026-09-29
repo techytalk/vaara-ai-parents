@@ -3,13 +3,19 @@ import type { AuthUser, Child, Circle, Curriculum, Location, School } from "@/li
 
 const DRAFT_KEY = "vaara_onboarding_draft_v1";
 const DRAFT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const DRAFT_VERSION = 3;
+const DRAFT_VERSION = 4;
 
 type PersistedDraft = {
   version: number;
   savedAt: number;
   onboardingAttemptId: string;
-  step?: "location" | "school" | "age" | "class" | "ready";
+  step?: "school" | "class" | "age" | "location" | "ready";
+  placeSelectionToken?: string;
+  placeTitle?: string;
+  placeSubtitle?: string;
+  placeSource?: "places" | "postal" | "pin";
+  placeCity?: string;
+  placeCommunity?: string | null;
   track?: "preschool" | "school";
   ageYears?: 3 | 4;
   countryCode?: string;
@@ -37,6 +43,12 @@ type OnboardingDraft = {
   catalogueGeneration: number | null;
   curriculumId: string | null;
   gradeId: string | null;
+  placeSelectionToken: string | null;
+  placeTitle: string | null;
+  placeSubtitle: string | null;
+  placeSource: "places" | "postal" | "pin" | null;
+  placeCity: string | null;
+  placeCommunity: string | null;
 };
 
 const draft: OnboardingDraft = {
@@ -54,6 +66,12 @@ const draft: OnboardingDraft = {
   catalogueGeneration: null,
   curriculumId: null,
   gradeId: null,
+  placeSelectionToken: null,
+  placeTitle: null,
+  placeSubtitle: null,
+  placeSource: null,
+  placeCity: null,
+  placeCommunity: null,
 };
 
 let writeChain: Promise<void> = Promise.resolve();
@@ -77,13 +95,19 @@ async function persistNow(): Promise<void> {
       track: draft.track ?? undefined,
       ageYears: draft.ageYears ?? undefined,
       countryCode: draft.location?.countryCode,
-      pinCode: draft.location?.pinCode,
+      pinCode: draft.location?.pinCode || undefined,
       locality: draft.location?.locality ?? undefined,
       schoolId: draft.school?.id,
       school: draft.school,
       curriculumId: draft.curriculumId ?? undefined,
       gradeId: draft.gradeId ?? undefined,
       catalogueGeneration: draft.catalogueGeneration ?? undefined,
+      placeSelectionToken: draft.placeSelectionToken ?? undefined,
+      placeTitle: draft.placeTitle ?? undefined,
+      placeSubtitle: draft.placeSubtitle ?? undefined,
+      placeSource: draft.placeSource ?? undefined,
+      placeCity: draft.placeCity ?? undefined,
+      placeCommunity: draft.placeCommunity ?? undefined,
     };
     if (!draft.onboardingAttemptId) {
       draft.onboardingAttemptId = payload.onboardingAttemptId;
@@ -109,7 +133,14 @@ export async function hydrateOnboardingDraft(): Promise<void> {
       return;
     }
     const parsed = JSON.parse(raw) as PersistedDraft;
-    if (parsed.version !== DRAFT_VERSION && parsed.version !== 1 && parsed.version !== 2) return;
+    if (
+      parsed.version !== DRAFT_VERSION &&
+      parsed.version !== 1 &&
+      parsed.version !== 2 &&
+      parsed.version !== 3
+    ) {
+      return;
+    }
     if (Date.now() - parsed.savedAt > DRAFT_TTL_MS) {
       await SecureStore.deleteItemAsync(DRAFT_KEY);
       draft.onboardingAttemptId = newAttemptId();
@@ -127,6 +158,12 @@ export async function hydrateOnboardingDraft(): Promise<void> {
     draft.catalogueGeneration = parsed.catalogueGeneration ?? null;
     draft.curriculumId = parsed.curriculumId ?? null;
     draft.gradeId = parsed.gradeId ?? null;
+    draft.placeSelectionToken = parsed.placeSelectionToken ?? null;
+    draft.placeTitle = parsed.placeTitle ?? null;
+    draft.placeSubtitle = parsed.placeSubtitle ?? null;
+    draft.placeSource = parsed.placeSource ?? null;
+    draft.placeCity = parsed.placeCity ?? null;
+    draft.placeCommunity = parsed.placeCommunity ?? null;
     if (parsed.school && parsed.school.id) {
       draft.school = parsed.school;
     } else if (parsed.schoolId) {
@@ -141,15 +178,15 @@ export async function hydrateOnboardingDraft(): Promise<void> {
         displayLabel: parsed.schoolId,
       };
     }
-    if (parsed.pinCode) {
+    if (parsed.pinCode || parsed.placeSelectionToken || parsed.locality) {
       draft.location = {
         countryCode: parsed.countryCode ?? "IN",
-        pinCode: parsed.pinCode,
+        pinCode: parsed.pinCode ?? "",
         postalCode: parsed.pinCode,
-        locality: parsed.locality ?? null,
-        city: null,
+        locality: parsed.locality ?? parsed.placeTitle ?? null,
+        city: parsed.placeCity ?? null,
         state: null,
-        communityName: null,
+        communityName: parsed.placeCommunity ?? null,
         communityKey: null,
       };
       draft.locationLoaded = true;
@@ -279,6 +316,41 @@ export function getOnboardingLocation(): {
   };
 }
 
+export function setOnboardingPlace(input: {
+  token: string | null;
+  title: string | null;
+  subtitle: string | null;
+  source: "places" | "postal" | "pin" | null;
+  city: string | null;
+  communityName: string | null;
+}): void {
+  draft.placeSelectionToken = input.token;
+  draft.placeTitle = input.title;
+  draft.placeSubtitle = input.subtitle;
+  draft.placeSource = input.source;
+  draft.placeCity = input.city;
+  draft.placeCommunity = input.communityName;
+  void persist();
+}
+
+export function getOnboardingPlace(): {
+  token: string | null;
+  title: string | null;
+  subtitle: string | null;
+  source: "places" | "postal" | "pin" | null;
+  city: string | null;
+  communityName: string | null;
+} {
+  return {
+    token: draft.placeSelectionToken,
+    title: draft.placeTitle,
+    subtitle: draft.placeSubtitle,
+    source: draft.placeSource,
+    city: draft.placeCity,
+    communityName: draft.placeCommunity,
+  };
+}
+
 export function getOnboardingStep(): PersistedDraft["step"] | null {
   return draft.step;
 }
@@ -331,6 +403,12 @@ export async function clearOnboardingDraft(): Promise<void> {
     draft.catalogueGeneration = null;
     draft.curriculumId = null;
     draft.gradeId = null;
+    draft.placeSelectionToken = null;
+    draft.placeTitle = null;
+    draft.placeSubtitle = null;
+    draft.placeSource = null;
+    draft.placeCity = null;
+    draft.placeCommunity = null;
     try {
       await SecureStore.deleteItemAsync(DRAFT_KEY);
     } catch {

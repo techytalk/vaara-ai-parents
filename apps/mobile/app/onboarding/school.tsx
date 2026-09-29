@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -8,15 +8,13 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { api, type School } from "@/lib/api";
-import { onboardingGeoParams, trackEvent } from "@/lib/analytics";
+import { type School } from "@/lib/api";
+import { onboardingGeoParams, trackEvent, trackOnboardingBegin } from "@/lib/analytics";
 import { getToken } from "@/lib/session";
 import {
-  getOnboardingLocation,
   getOnboardingSchool,
   getOnboardingTrack,
   hydrateOnboardingDraft,
-  setOnboardingLocation,
   setOnboardingSchoolAsync,
   setOnboardingStep,
   setOnboardingTrack,
@@ -28,7 +26,6 @@ import {
   FieldLabel,
   OnboardingPayoff,
   PrimaryButton,
-  SecondaryButton,
   useOnboardingContentStyle,
 } from "@/components/onboarding/ui";
 import { OnboardingAccountSwitch } from "@/components/SignOutButton";
@@ -95,11 +92,7 @@ export default function OnboardingSchoolScreen() {
   const [token, setToken] = useState<string | null>(null);
   const [track, setTrack] = useState<CampusList>("school");
   const [selectedSchool, setSelectedSchool] = useState<School | null>(null);
-  const [defaultCity, setDefaultCity] = useState("");
-  const [defaultPin, setDefaultPin] = useState("");
-  const [defaultState, setDefaultState] = useState("");
-  const [defaultLocality, setDefaultLocality] = useState("");
-  const [defaultCountry, setDefaultCountry] = useState("IN");
+  const beganRef = useRef(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [addingSchool, setAddingSchool] = useState(false);
@@ -117,22 +110,10 @@ export default function OnboardingSchoolScreen() {
       setToken(t);
       try {
         await hydrateOnboardingDraft();
-        const drafted = getOnboardingLocation();
-        const loc = drafted.locationLoaded
-          ? drafted.location
-          : await api.getLocation(t);
-        if (!drafted.locationLoaded) {
-          setOnboardingLocation(loc, { loaded: true });
+        if (!beganRef.current) {
+          beganRef.current = true;
+          trackOnboardingBegin();
         }
-        if (!loc) {
-          router.replace("/onboarding/location");
-          return;
-        }
-        setDefaultCity(loc.city ?? "");
-        setDefaultPin(loc.pinCode ?? "");
-        setDefaultState(loc.state ?? "");
-        setDefaultLocality(loc.locality ?? "");
-        setDefaultCountry(loc.countryCode ?? "IN");
         const savedTrack = getOnboardingTrack();
         if (savedTrack === "preschool" || savedTrack === "school") {
           setTrack(savedTrack);
@@ -145,7 +126,7 @@ export default function OnboardingSchoolScreen() {
           }
         }
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to load location");
+        setError(e instanceof Error ? e.message : "Failed to load");
       } finally {
         setLoading(false);
       }
@@ -174,7 +155,6 @@ export default function OnboardingSchoolScreen() {
     setOnboardingTrack(track);
     await setOnboardingSchoolAsync(selectedSchool);
     const schoolKind = selectedSchool.kind ?? "school";
-    const draftedLoc = getOnboardingLocation().location;
     trackEvent("onboarding_school_complete", {
       track,
       school_verified: selectedSchool.verified,
@@ -185,10 +165,6 @@ export default function OnboardingSchoolScreen() {
       "onboarding_geo",
       onboardingGeoParams({
         phase: "school",
-        countryCode: draftedLoc?.countryCode ?? defaultCountry,
-        enteredCity: draftedLoc?.city ?? defaultCity,
-        enteredState: draftedLoc?.state ?? defaultState,
-        pinCode: draftedLoc?.pinCode ?? defaultPin,
         schoolCity: selectedSchool.city,
         schoolState: selectedSchool.state,
         schoolPin: selectedSchool.pinCode,
@@ -247,11 +223,11 @@ export default function OnboardingSchoolScreen() {
         token={token}
         selected={selectedSchool}
         onSelect={setSelectedSchool}
-        defaultCity={defaultCity}
-        defaultPin={defaultPin}
-        defaultState={defaultState}
-        defaultLocality={defaultLocality}
-        defaultCountry={defaultCountry}
+        defaultCity=""
+        defaultPin=""
+        defaultState=""
+        defaultLocality=""
+        defaultCountry="IN"
         onCreateModeChange={setAddingSchool}
         offersPreschoolOnCreate={track === "preschool"}
         createLabel="Add school"
@@ -270,10 +246,6 @@ export default function OnboardingSchoolScreen() {
           disabled={!selectedSchool}
         />
       ) : null}
-      <SecondaryButton
-        label="Back"
-        onPress={() => router.replace("/onboarding/location" as never)}
-      />
       <OnboardingAccountSwitch step="school" />
 
       <View style={styles.privacy}>

@@ -11,20 +11,17 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { api, type Curriculum, type School } from "@/lib/api";
+import { type Curriculum, type School } from "@/lib/api";
 import { trackEvent } from "@/lib/analytics";
-import { getToken, saveSession } from "@/lib/session";
+import { getToken } from "@/lib/session";
 import {
-  ensureOnboardingAttemptId,
   getOnboardingClassSelection,
   getOnboardingSchool,
   hydrateOnboardingDraft,
-  setOnboardingChildren,
-  setOnboardingCircles,
   setOnboardingClassSelection,
-  setOnboardingTrack,
-  setOnboardingUser,
   setOnboardingStep,
+  setOnboardingStepAsync,
+  setOnboardingTrack,
 } from "@/lib/onboarding-draft";
 import { getCurriculaCached } from "@/lib/reference-cache";
 import {
@@ -152,27 +149,13 @@ export default function OnboardingClassScreen() {
     setError(null);
     setSubmitting(true);
     try {
-      const result = await api.addChild(
-        token,
-        {
-          track: "school",
-          schoolId: school.id,
-          curriculumId,
-          gradeId,
-          gender: "unspecified",
-          onboardingAttemptId: ensureOnboardingAttemptId(),
-        },
-        { idempotencyKey: ensureOnboardingAttemptId() }
-      );
-      await saveSession(token, result.user);
       setOnboardingTrack("school");
-      setOnboardingUser(result.user);
-      setOnboardingCircles(result.circles);
-      setOnboardingChildren([result.child]);
+      setOnboardingClassSelection({ curriculumId, gradeId });
+      await setOnboardingStepAsync("location");
       trackEvent("onboarding_class_complete");
-      router.replace("/onboarding/ready" as never);
+      router.replace("/onboarding/location" as never);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to finish setup");
+      setError(e instanceof Error ? e.message : "Failed to save");
     } finally {
       setSubmitting(false);
     }
@@ -299,7 +282,7 @@ export default function OnboardingClassScreen() {
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       <PrimaryButton
-        label="Enter Vaara"
+        label={submitting ? "Continuing…" : "Continue"}
         onPress={onFinish}
         loading={submitting}
         disabled={!canContinue}

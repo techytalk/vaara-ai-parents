@@ -32,6 +32,12 @@ import {
 } from "../lib/idempotency.js";
 import { listUserRoles } from "../lib/user-roles.js";
 import { lookupPostalCode } from "../lib/postal-code/index.js";
+import { readPlaceSelection } from "../lib/areas/selection.js";
+import { resolveCanonicalArea } from "../lib/areas/resolve.js";
+import {
+  FinalizeError,
+  prepareOnboardingFinalize,
+} from "../services/onboarding-finalize.js";
 import {
   recordOnboardingGeoLocation,
   recordOnboardingGeoSchool,
@@ -860,6 +866,48 @@ export function createMeRoutes() {
     }
   });
 
+  app.post("/onboarding/finalize", async (c) => {
+    const userId = c.get("user").sub;
+    const body = await c.req.json();
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const prepared = await prepareOnboardingFinalize(client, userId, body, c.req);
+      if ("replay" in prepared && prepared.replay) {
+        await client.query("COMMIT");
+        return c.json(prepared.replay);
+      }
+      if (!("childId" in prepared)) {
+        await client.query("ROLLBACK");
+        return c.json({ error: "Could not finish onboarding" }, 500);
+      }
+      const child = await fetchChildById(client, prepared.childId);
+      const user = await fetchAuthUserById(client, userId);
+      const circles = await fetchUserCircles(client, userId);
+      const payload = { child, user, circles, location: prepared.location };
+      const attemptId = String(body.onboardingAttemptId ?? "");
+      await storeIdempotentResponse(
+        client,
+        userId,
+        "POST /v1/me/onboarding/finalize",
+        attemptId,
+        200,
+        payload
+      );
+      await client.query("COMMIT");
+      await invalidateFamilyPage(userId);
+      return c.json(payload);
+    } catch (err) {
+      await client.query("ROLLBACK");
+      if (err instanceof FinalizeError) {
+        return c.json({ error: err.message }, err.status as 400);
+      }
+      throw err;
+    } finally {
+      client.release();
+    }
+  });
+
   app.patch("/location", async (c) => {
     const userId = c.get("user").sub;
     const body = await c.req.json<{
@@ -869,7 +917,88 @@ export function createMeRoutes() {
       city?: string;
       state?: string;
       communityName?: string;
+      placeSelectionToken?: string;
     }>();
+
+    if (body.placeSelectionToken) {
+      const selection = readPlaceSelection(body.placeSelectionToken);
+      if (!selection || selection.needsArea || !selection.areaName) {
+        return c.json({ error: "Choose where you live now before continuing" }, 400);
+      }
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const area = await resolveCanonicalArea(client, {
+          countryCode: selection.countryCode,
+          city: selection.city,
+          state: selection.state,
+          areaName: selection.areaName,
+          providerPlaceId: selection.providerPlaceId,
+          postalCode: selection.postalCode,
+          createIfMissing: true,
+        });
+        if (!area) {
+          await client.query("ROLLBACK");
+          return c.json({ error: "Could not resolve that area" }, 400);
+        }
+        const communityName = selection.communityName?.trim() || null;
+        const communityKey = communityName ? normalizeCommunityKey(communityName) : null;
+        const pinCode = selection.postalCode?.trim() || null;
+        await client.query(
+          `INSERT INTO user_locations (
+             user_id, country_code, pin_code, locality, city, state,
+             community_name, community_key, area_id, updated_at
+           )
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
+           ON CONFLICT (user_id) DO UPDATE SET
+             country_code = EXCLUDED.country_code,
+             pin_code = EXCLUDED.pin_code,
+             locality = EXCLUDED.locality,
+             city = EXCLUDED.city,
+             state = EXCLUDED.state,
+             community_name = EXCLUDED.community_name,
+             community_key = EXCLUDED.community_key,
+             area_id = EXCLUDED.area_id,
+             updated_at = now()`,
+          [
+            userId,
+            area.countryCode,
+            pinCode,
+            area.canonicalName,
+            area.city,
+            area.state,
+            communityName,
+            communityKey,
+            area.id,
+          ]
+        );
+        await syncCircleMembership(client, userId);
+        const complete = await evaluateOnboardingComplete(client, userId);
+        await client.query(
+          "UPDATE users SET onboarding_complete = $2, updated_at = now() WHERE id = $1",
+          [userId, complete]
+        );
+        await client.query("COMMIT");
+        await invalidateFamilyPage(userId);
+        return c.json({
+          countryCode: area.countryCode,
+          pinCode,
+          postalCode: pinCode,
+          locality: area.canonicalName,
+          city: area.city,
+          state: area.state,
+          communityName,
+          communityKey,
+          areaId: area.id,
+          onboardingComplete: complete,
+        });
+      } catch (err) {
+        await client.query("ROLLBACK");
+        throw err;
+      } finally {
+        client.release();
+      }
+    }
 
     const countryCode = (body.countryCode?.trim() || "IN").toUpperCase();
     const pinCode = body.pinCode?.trim();

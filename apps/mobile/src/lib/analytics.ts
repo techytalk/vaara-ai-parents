@@ -124,6 +124,8 @@ export function onboardingGeoParams(input: {
   schoolCity?: string | null;
   schoolState?: string | null;
   schoolPin?: string | null;
+  source?: "places" | "postal" | "pin";
+  hasCommunity?: boolean;
 }): AnalyticsProperties {
   const country = (input.countryCode ?? "IN").toUpperCase();
   const prefix = pinPrefix(input.pinCode ?? undefined, country);
@@ -155,6 +157,10 @@ export function onboardingGeoParams(input: {
       pin: input.schoolPin,
       countryCode: country,
     });
+  }
+  if (input.source) params.source = input.source;
+  if (typeof input.hasCommunity === "boolean") {
+    params.has_community = input.hasCommunity;
   }
   return params;
 }
