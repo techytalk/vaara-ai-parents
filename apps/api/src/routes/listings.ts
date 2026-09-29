@@ -127,13 +127,17 @@ export function createListingRoutes() {
     const client = await pool.connect();
     try {
       const loc = await client.query(
-        `SELECT pin_code, community_key FROM user_locations WHERE user_id = $1`,
+        `SELECT pin_code, community_key, area_id FROM user_locations WHERE user_id = $1`,
         [userId]
       );
       if (loc.rows.length === 0) {
         return c.json({ error: "Set your location first" }, 400);
       }
-      const { pin_code: pinCode, community_key: communityKey } = loc.rows[0];
+      const {
+        pin_code: pinCode,
+        community_key: communityKey,
+        area_id: areaId,
+      } = loc.rows[0];
 
       let query = `
         SELECT l.*, (l.seller_id = $1) AS is_mine
@@ -146,8 +150,16 @@ export function createListingRoutes() {
         query += ` AND l.community_key = $${idx++}`;
         params.push(communityKey);
       } else {
-        query += ` AND l.pin_code = $${idx++}`;
-        params.push(pinCode);
+        query += ` AND (
+          ($${idx}::uuid IS NOT NULL AND l.area_id IS NOT NULL AND l.area_id = $${idx}::uuid)
+          OR (
+            ($${idx}::uuid IS NULL OR l.area_id IS NULL)
+            AND l.pin_code IS NOT NULL
+            AND l.pin_code = $${idx + 1}
+          )
+        )`;
+        params.push(areaId, pinCode);
+        idx += 2;
       }
 
       if (category) {
@@ -266,10 +278,14 @@ export function createListingRoutes() {
       }
 
       const loc = await client.query(
-        `SELECT pin_code, community_key FROM user_locations WHERE user_id = $1`,
+        `SELECT pin_code, community_key, area_id FROM user_locations WHERE user_id = $1`,
         [userId]
       );
       if (loc.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return c.json({ error: "Set your location first" }, 400);
+      }
+      if (!loc.rows[0].area_id && !loc.rows[0].pin_code) {
         await client.query("ROLLBACK");
         return c.json({ error: "Set your location first" }, 400);
       }
@@ -279,8 +295,8 @@ export function createListingRoutes() {
       const { rows } = await client.query(
         `INSERT INTO listings (
            seller_id, kind, category, title, description, price_amount,
-           community_key, pin_code, school_id, grade_id, expires_at
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+           community_key, pin_code, area_id, school_id, grade_id, expires_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
          RETURNING *`,
         [
           userId,
@@ -291,6 +307,7 @@ export function createListingRoutes() {
           kind === "for_sale" ? body.priceAmount : null,
           loc.rows[0].community_key,
           loc.rows[0].pin_code,
+          loc.rows[0].area_id,
           body.schoolId ?? null,
           body.gradeId ?? null,
           expiresAt.toISOString(),
@@ -369,14 +386,23 @@ export function createListingRoutes() {
       }
 
       const loc = await client.query(
-        `SELECT pin_code, community_key FROM user_locations WHERE user_id = $1`,
+        `SELECT pin_code, community_key, area_id FROM user_locations WHERE user_id = $1`,
         [userId]
       );
       if (loc.rows.length > 0 && listing.seller_id !== userId) {
+        const sameArea =
+          listing.area_id &&
+          loc.rows[0].area_id &&
+          listing.area_id === loc.rows[0].area_id;
+        const samePin =
+          (!listing.area_id || !loc.rows[0].area_id) &&
+          listing.pin_code &&
+          listing.pin_code === loc.rows[0].pin_code;
         const canView =
           (listing.community_key &&
             listing.community_key === loc.rows[0].community_key) ||
-          listing.pin_code === loc.rows[0].pin_code;
+          sameArea ||
+          samePin;
         if (!canView) {
           return c.json({ error: "Listing not available in your area" }, 403);
         }

@@ -45,6 +45,7 @@ export function child360PageKey(userId: string, childId: string): string {
 
 export function discoverPageKey(params: {
   pin: string;
+  areaId?: string | null;
   boards: string;
   providerType?: string;
   category?: string;
@@ -53,7 +54,8 @@ export function discoverPageKey(params: {
   verifiedOnly: boolean;
 }): string {
   return [
-    "page:discover:v1",
+    "page:discover:v2",
+    cacheToken(params.areaId || "pin"),
     cacheToken(params.pin),
     cacheToken(params.boards || "any"),
     cacheToken(params.providerType || "all"),

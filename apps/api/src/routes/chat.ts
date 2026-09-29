@@ -597,11 +597,6 @@ export function createCircleChatRoutes() {
         `SELECT circle_type FROM circles WHERE id = $1`,
         [circleId]
       );
-      const loc = await client.query(
-        `SELECT pin_code FROM user_locations WHERE user_id = $1`,
-        [userId]
-      );
-      const pin = loc.rows[0]?.pin_code ?? null;
       const localOnly =
         circle.rows[0]?.circle_type === "curriculum" && scope !== "all";
       const { rows } = await client.query(
@@ -615,9 +610,24 @@ export function createCircleChatRoutes() {
            AND t.status <> 'deleted'
            ${
              localOnly
-               ? `AND EXISTS (
-                    SELECT 1 FROM user_locations ul
-                    WHERE ul.user_id = t.author_id AND ul.pin_code = $3
+               ? `AND (
+                    t.author_id = $2
+                    OR EXISTS (
+                      SELECT 1 FROM user_locations viewer_loc
+                      JOIN user_locations author_loc
+                        ON (
+                          viewer_loc.area_id IS NOT NULL
+                          AND author_loc.area_id IS NOT NULL
+                          AND viewer_loc.area_id = author_loc.area_id
+                        ) OR (
+                          (viewer_loc.area_id IS NULL OR author_loc.area_id IS NULL)
+                          AND viewer_loc.pin_code IS NOT NULL
+                          AND author_loc.pin_code IS NOT NULL
+                          AND viewer_loc.pin_code = author_loc.pin_code
+                        )
+                      WHERE viewer_loc.user_id = $2
+                        AND author_loc.user_id = t.author_id
+                    )
                   )`
                : ""
            }
@@ -628,7 +638,7 @@ export function createCircleChatRoutes() {
            )
          ORDER BY t.last_activity_seq DESC
          LIMIT 25`,
-        localOnly ? [circleId, userId, pin] : [circleId, userId]
+        [circleId, userId]
       );
       return c.json({
         linear: true,

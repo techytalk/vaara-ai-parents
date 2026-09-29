@@ -25,7 +25,7 @@ export function createPlaydateRoutes() {
       }
 
       const mine = await client.query(
-        `SELECT age_band, scope, community_key, pin_code
+        `SELECT age_band, scope, community_key, pin_code, area_id
          FROM playdate_optins
          WHERE user_id = $1 AND active = true`,
         [userId]
@@ -44,9 +44,18 @@ export function createPlaydateRoutes() {
            AND po.age_band = $2
            AND (
              (po.scope = 'community' AND po.community_key = $3)
-             OR (po.scope = 'pin' AND po.pin_code = $4)
+             OR (
+               po.scope = 'pin' AND (
+                 ($5::uuid IS NOT NULL AND po.area_id IS NOT NULL AND po.area_id = $5::uuid)
+                 OR (
+                   ($5::uuid IS NULL OR po.area_id IS NULL)
+                   AND po.pin_code IS NOT NULL
+                   AND po.pin_code = $4
+                 )
+               )
+             )
            )`,
-        [userId, opt.age_band, opt.community_key, opt.pin_code]
+        [userId, opt.age_band, opt.community_key, opt.pin_code, opt.area_id]
       );
 
       if (rows.length < MIN_POOL_SIZE - 1) {
@@ -102,7 +111,7 @@ export function createPlaydateRoutes() {
       }
 
       const loc = await client.query(
-        `SELECT pin_code, community_key FROM user_locations WHERE user_id = $1`,
+        `SELECT pin_code, community_key, area_id FROM user_locations WHERE user_id = $1`,
         [userId]
       );
       if (loc.rows.length === 0) {
@@ -111,13 +120,14 @@ export function createPlaydateRoutes() {
 
       await client.query(
         `INSERT INTO playdate_optins
-           (user_id, child_id, age_band, scope, community_key, pin_code, active)
-         VALUES ($1, $2, $3, $4, $5, $6, true)
+           (user_id, child_id, age_band, scope, community_key, pin_code, area_id, active)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, true)
          ON CONFLICT (child_id) DO UPDATE SET
            age_band = EXCLUDED.age_band,
            scope = EXCLUDED.scope,
            community_key = EXCLUDED.community_key,
            pin_code = EXCLUDED.pin_code,
+           area_id = EXCLUDED.area_id,
            active = true`,
         [
           userId,
@@ -126,6 +136,7 @@ export function createPlaydateRoutes() {
           body.scope,
           body.scope === "community" ? loc.rows[0].community_key : null,
           loc.rows[0].pin_code,
+          loc.rows[0].area_id,
         ]
       );
 

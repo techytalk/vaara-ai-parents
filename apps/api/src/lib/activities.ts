@@ -52,26 +52,43 @@ export function mapActivity(
 export async function loadActivityExtras(
   client: PoolClient,
   activityId: string
-): Promise<{ pinCodes: string[]; curriculumIds: string[] }> {
+): Promise<{ pinCodes: string[]; areaIds: string[]; curriculumIds: string[] }> {
   const extras = await loadActivityExtrasForIds(client, [activityId]);
-  return extras.get(String(activityId)) ?? { pinCodes: [], curriculumIds: [] };
+  return (
+    extras.get(String(activityId)) ?? {
+      pinCodes: [],
+      areaIds: [],
+      curriculumIds: [],
+    }
+  );
 }
 
 export async function loadActivityExtrasForIds(
   client: PoolClient,
   activityIds: string[]
-): Promise<Map<string, { pinCodes: string[]; curriculumIds: string[] }>> {
-  const extras = new Map<string, { pinCodes: string[]; curriculumIds: string[] }>();
+): Promise<
+  Map<string, { pinCodes: string[]; areaIds: string[]; curriculumIds: string[] }>
+> {
+  const extras = new Map<
+    string,
+    { pinCodes: string[]; areaIds: string[]; curriculumIds: string[] }
+  >();
   const ids = activityIds.map((id) => String(id));
   for (const id of ids) {
-    extras.set(id, { pinCodes: [], curriculumIds: [] });
+    extras.set(id, { pinCodes: [], areaIds: [], curriculumIds: [] });
   }
   if (ids.length === 0) return extras;
 
-  const [pins, curricula] = await Promise.all([
+  const [pins, areas, curricula] = await Promise.all([
     client.query<{ activity_id: string; pin_code: string }>(
       `SELECT activity_id, pin_code
        FROM activity_pin_codes
+       WHERE activity_id = ANY($1::uuid[])`,
+      [ids]
+    ),
+    client.query<{ activity_id: string; area_id: string }>(
+      `SELECT activity_id, area_id
+       FROM activity_areas
        WHERE activity_id = ANY($1::uuid[])`,
       [ids]
     ),
@@ -85,6 +102,9 @@ export async function loadActivityExtrasForIds(
 
   for (const row of pins.rows) {
     extras.get(String(row.activity_id))?.pinCodes.push(row.pin_code);
+  }
+  for (const row of areas.rows) {
+    extras.get(String(row.activity_id))?.areaIds.push(row.area_id);
   }
   for (const row of curricula.rows) {
     extras.get(String(row.activity_id))?.curriculumIds.push(row.curriculum_id);

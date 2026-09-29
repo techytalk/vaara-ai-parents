@@ -27,10 +27,35 @@ export const DISCOVERY_MATCH_SQL = `
     SELECT 1 FROM user_locations v
     WHERE v.user_id = $1
       AND (
-        c.metadata->>'pin_code' = v.pin_code
-        OR EXISTS (
-          SELECT 1 FROM user_locations a
-          WHERE a.user_id = t.author_id AND a.pin_code = v.pin_code
+        (
+          v.area_id IS NOT NULL
+          AND (
+            c.metadata->>'area_id' = v.area_id::text
+            OR EXISTS (
+              SELECT 1 FROM user_locations a
+              WHERE a.user_id = t.author_id AND a.area_id = v.area_id
+            )
+          )
+        )
+        OR (
+          (
+            v.area_id IS NULL
+            OR NULLIF(c.metadata->>'area_id', '') IS NULL
+            OR NOT EXISTS (
+              SELECT 1 FROM user_locations a
+              WHERE a.user_id = t.author_id AND a.area_id IS NOT NULL
+            )
+          )
+          AND v.pin_code IS NOT NULL
+          AND (
+            c.metadata->>'pin_code' = v.pin_code
+            OR EXISTS (
+              SELECT 1 FROM user_locations a
+              WHERE a.user_id = t.author_id
+                AND a.pin_code = v.pin_code
+                AND (v.area_id IS NULL OR a.area_id IS NULL)
+            )
+          )
         )
       )
   )
@@ -98,13 +123,36 @@ export async function isCircleDiscoveryEligible(
            SELECT 1 FROM user_locations v
            WHERE v.user_id = $1
              AND (
-               c.metadata->>'pin_code' = v.pin_code
-               OR EXISTS (
-                 SELECT 1 FROM user_locations a
-                 WHERE a.pin_code = v.pin_code
-                   AND a.user_id IN (
-                     SELECT cm.user_id FROM circle_members cm WHERE cm.circle_id = c.id
+               (
+                 v.area_id IS NOT NULL
+                 AND (
+                   c.metadata->>'area_id' = v.area_id::text
+                   OR EXISTS (
+                     SELECT 1 FROM user_locations a
+                     WHERE a.area_id = v.area_id
+                       AND a.user_id IN (
+                         SELECT cm.user_id FROM circle_members cm WHERE cm.circle_id = c.id
+                       )
                    )
+                 )
+               )
+               OR (
+                 (
+                   v.area_id IS NULL
+                   OR NULLIF(c.metadata->>'area_id', '') IS NULL
+                 )
+                 AND v.pin_code IS NOT NULL
+                 AND (
+                   c.metadata->>'pin_code' = v.pin_code
+                   OR EXISTS (
+                     SELECT 1 FROM user_locations a
+                     WHERE a.pin_code = v.pin_code
+                       AND (v.area_id IS NULL OR a.area_id IS NULL)
+                       AND a.user_id IN (
+                         SELECT cm.user_id FROM circle_members cm WHERE cm.circle_id = c.id
+                       )
+                   )
+                 )
                )
              )
          )

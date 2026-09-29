@@ -104,7 +104,7 @@ async function backfillCircle(circleId: string): Promise<boolean> {
   }
 }
 
-async function authorsSharingPin(
+async function authorsSharingArea(
   client: PoolClient,
   viewerId: string,
   authorIds: string[]
@@ -115,7 +115,16 @@ async function authorsSharingPin(
     `SELECT DISTINCT author_loc.user_id
      FROM user_locations viewer_loc
      JOIN user_locations author_loc
-       ON author_loc.pin_code = viewer_loc.pin_code
+       ON (
+         viewer_loc.area_id IS NOT NULL
+         AND author_loc.area_id IS NOT NULL
+         AND viewer_loc.area_id = author_loc.area_id
+       ) OR (
+         (viewer_loc.area_id IS NULL OR author_loc.area_id IS NULL)
+         AND viewer_loc.pin_code IS NOT NULL
+         AND author_loc.pin_code IS NOT NULL
+         AND viewer_loc.pin_code = author_loc.pin_code
+       )
      WHERE viewer_loc.user_id = $1
        AND author_loc.user_id = ANY($2::uuid[])`,
     [viewerId, authorIds]
@@ -245,7 +254,7 @@ export async function loadCircleFeedFromTimeline(params: {
       );
     }
     if (localFilter) {
-      const allowed = await authorsSharingPin(
+      const allowed = await authorsSharingArea(
         client,
         params.userId,
         visible.map((post) => post.author.userId)
@@ -472,7 +481,7 @@ export async function loadHomeFeedFromTimeline(params: {
     }
 
     const byId = new Map(previewRows.map((row) => [String(row.id), row]));
-    const pinChecked = await authorsSharingPin(
+    const pinChecked = await authorsSharingArea(
       client,
       params.userId,
       previewRows.map((row) => String(row.author_id))

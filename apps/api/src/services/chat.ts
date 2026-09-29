@@ -613,11 +613,30 @@ export async function listMatchedServiceThreads(
             OR (ub.blocker_id = t.author_id AND ub.blocked_id = $1)
        )
        AND (
-         c.metadata->>'pin_code' = ANY (p.service_pin_codes)
-         OR EXISTS (
-           SELECT 1 FROM user_locations ul
-           WHERE ul.user_id = t.author_id
-             AND ul.pin_code = ANY (p.service_pin_codes)
+         EXISTS (
+           SELECT 1 FROM provider_service_areas psa
+           WHERE psa.provider_id = p.user_id
+             AND (
+               c.metadata->>'area_id' = psa.area_id::text
+               OR EXISTS (
+                 SELECT 1 FROM user_locations ul
+                 WHERE ul.user_id = t.author_id AND ul.area_id = psa.area_id
+               )
+             )
+         )
+         OR (
+           NOT EXISTS (
+             SELECT 1 FROM provider_service_areas psa
+             WHERE psa.provider_id = p.user_id
+           )
+           AND (
+             c.metadata->>'pin_code' = ANY (p.service_pin_codes)
+             OR EXISTS (
+               SELECT 1 FROM user_locations ul
+               WHERE ul.user_id = t.author_id
+                 AND ul.pin_code = ANY (p.service_pin_codes)
+             )
+           )
          )
        )
      ORDER BY t.last_message_at DESC
@@ -1788,10 +1807,11 @@ export async function listHome(
   options?: { cursor?: string | null; limit?: number }
 ) {
   const loc = await client.query(
-    `SELECT pin_code FROM user_locations WHERE user_id = $1`,
+    `SELECT pin_code, area_id FROM user_locations WHERE user_id = $1`,
     [userId]
   );
   const pin = loc.rows[0]?.pin_code ?? null;
+  const areaId = loc.rows[0]?.area_id ?? null;
 
   const memberThreads = await client.query(
     `SELECT
@@ -1939,10 +1959,25 @@ export async function listHome(
      WHERE u.status = 'published'
        AND (u.expires_at IS NULL OR u.expires_at > now())
        AND ch.status = 'active'
-       AND ($1::text IS NULL OR $1 = ANY (p.service_pin_codes))
+       AND (
+         EXISTS (
+           SELECT 1 FROM provider_service_areas psa
+           WHERE psa.provider_id = p.user_id AND psa.area_id = $2::uuid
+         )
+         OR (
+           (
+             $2::uuid IS NULL
+             OR NOT EXISTS (
+               SELECT 1 FROM provider_service_areas psa
+               WHERE psa.provider_id = p.user_id
+             )
+           )
+           AND ($1::text IS NULL OR $1 = ANY (p.service_pin_codes))
+         )
+       )
      ORDER BY u.published_at DESC
      LIMIT 10`,
-    [pin]
+    [pin, areaId]
   );
 
   // Roots that are attachment-only have no text to preview on Home.

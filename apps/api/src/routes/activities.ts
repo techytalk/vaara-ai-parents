@@ -497,47 +497,28 @@ export function createActivitiesRoutes() {
       location?: { pinCode?: string | null } | null;
     }>(familyPageKey(userId));
 
-    let userPin = pin?.trim();
-    if (!userPin) {
-      userPin = family?.location?.pinCode?.trim() || "";
-    }
+    let userPin = pin?.trim() || family?.location?.pinCode?.trim() || "";
+    let userArea: string | null = null;
 
     // Default Discover filters by this parent's live children in SQL, so the
     // Redis key must stay per-user unless an explicit board filter is passed.
     const boards = curriculumId?.trim() || `u:${userId}`;
 
-    if (userPin) {
-      const cached = await getCachedJson(
-        discoverPageKey({
-          pin: userPin,
-          boards,
-          providerType,
-          category,
-          q: search?.trim(),
-          sort,
-          verifiedOnly,
-        })
-      );
-      if (cached) {
-        return c.json(cached);
-      }
-    }
-
     const client = await pool.connect();
     try {
-      if (!userPin) {
-        const loc = await client.query(
-          "SELECT pin_code FROM user_locations WHERE user_id = $1",
-          [userId]
-        );
-        userPin = loc.rows[0]?.pin_code;
-      }
-      if (!userPin) {
-        return c.json({ error: "Pin code required — set your location first" }, 400);
+      const loc = await client.query(
+        "SELECT pin_code, area_id FROM user_locations WHERE user_id = $1",
+        [userId]
+      );
+      if (!userPin) userPin = loc.rows[0]?.pin_code ?? "";
+      userArea = loc.rows[0]?.area_id ?? null;
+      if (!userPin && !userArea) {
+        return c.json({ error: "Set your location first" }, 400);
       }
 
       const cacheKey = discoverPageKey({
-        pin: userPin,
+        pin: userPin || "none",
+        areaId: userArea,
         boards,
         providerType,
         category,
@@ -556,11 +537,28 @@ export function createActivitiesRoutes() {
                p.rating_avg, p.rating_count, p.fee_min, p.fee_max
         FROM activities a
         JOIN providers p ON p.user_id = a.provider_id
-        JOIN activity_pin_codes apc ON apc.activity_id = a.id
         WHERE a.status = 'published'
-          AND apc.pin_code = $1`;
-      const params: unknown[] = [userPin];
-      let idx = 2;
+          AND (
+            ($1::uuid IS NOT NULL AND EXISTS (
+              SELECT 1 FROM activity_areas aa
+              WHERE aa.activity_id = a.id AND aa.area_id = $1::uuid
+            ))
+            OR (
+              (
+                $1::uuid IS NULL
+                OR NOT EXISTS (
+                  SELECT 1 FROM activity_areas aa WHERE aa.activity_id = a.id
+                )
+              )
+              AND $2::text IS NOT NULL
+              AND EXISTS (
+                SELECT 1 FROM activity_pin_codes apc
+                WHERE apc.activity_id = a.id AND apc.pin_code = $2
+              )
+            )
+          )`;
+      const params: unknown[] = [userArea, userPin || null];
+      let idx = 3;
 
       if (verifiedOnly) {
         query += ` AND p.verified = true`;
@@ -625,6 +623,7 @@ export function createActivitiesRoutes() {
       const activities = rows.map((row) => {
         const extras = extrasById.get(String(row.id)) ?? {
           pinCodes: [],
+          areaIds: [],
           curriculumIds: [],
         };
         return mapActivity(
@@ -674,13 +673,19 @@ export function createActivitiesRoutes() {
       }
 
       const loc = await client.query(
-        "SELECT pin_code FROM user_locations WHERE user_id = $1",
+        "SELECT pin_code, area_id FROM user_locations WHERE user_id = $1",
         [userId]
       );
       const userPin = loc.rows[0]?.pin_code;
+      const userArea = loc.rows[0]?.area_id ?? null;
       const extras = await loadActivityExtras(client, activityId);
-
-      if (userPin && !extras.pinCodes.includes(userPin)) {
+      const areaMatch =
+        userArea && extras.areaIds.length > 0 && extras.areaIds.includes(userArea);
+      const pinFallback =
+        (extras.areaIds.length === 0 || !userArea) &&
+        Boolean(userPin) &&
+        extras.pinCodes.includes(userPin);
+      if ((userArea || userPin) && !areaMatch && !pinFallback) {
         return c.json({ error: "Activity not available in your area" }, 403);
       }
 

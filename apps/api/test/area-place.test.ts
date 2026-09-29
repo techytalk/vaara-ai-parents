@@ -8,6 +8,7 @@ import {
   stripSafeAreaSuffix,
 } from "../src/lib/areas/normalize.js";
 import { parseGoogleAddress } from "../src/lib/areas/parse-address.js";
+import { areaCityForStoredLocation } from "../src/lib/areas/parent-city.js";
 import {
   issuePlaceSelection,
   readPlaceSelection,
@@ -90,4 +91,23 @@ test("place selection tokens expire and reject tampering", () => {
     exp: Date.now() - 1000,
   });
   assert.equal(readPlaceSelection(expired), null);
+});
+
+test("maps seeded west-Hyderabad localities off a stored district", () => {
+  assert.equal(
+    areaCityForStoredLocation("Gachibowli Village", "K.v.rangareddy").city,
+    "Hyderabad"
+  );
+  assert.equal(
+    areaCityForStoredLocation("Nanakramguda", "Medak").hyderabadOverride,
+    true
+  );
+  assert.equal(
+    areaCityForStoredLocation("Kondapur Phase 2", "K.v.rangareddy").city,
+    "K.v.rangareddy"
+  );
+  assert.equal(
+    areaCityForStoredLocation("HSR Layout", "Bengaluru").city,
+    "Bengaluru"
+  );
 });

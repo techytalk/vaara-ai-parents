@@ -1,4 +1,5 @@
 import type { PoolClient } from "pg";
+import { sameNearbyAreaSql } from "../lib/areas/match.js";
 import { pool, readPool } from "@vaara/db";
 import {
   encodeFeedCursor,
@@ -135,7 +136,8 @@ export async function loadCircleFeed(params: {
           p.author_id = $2
           OR EXISTS (
             SELECT 1 FROM user_locations viewer_loc
-            JOIN user_locations author_loc ON author_loc.pin_code = viewer_loc.pin_code
+            JOIN user_locations author_loc
+              ON ${sameNearbyAreaSql("viewer_loc", "author_loc")}
             WHERE viewer_loc.user_id = $2
               AND author_loc.user_id = p.author_id
           )
@@ -278,7 +280,8 @@ const MEMBER_HOME_FEED_SQL = `
       OR EXISTS (
         SELECT 1
         FROM user_locations viewer_loc
-        JOIN user_locations author_loc ON author_loc.pin_code = viewer_loc.pin_code
+        JOIN user_locations author_loc
+          ON ${sameNearbyAreaSql("viewer_loc", "author_loc")}
         WHERE viewer_loc.user_id = $1
           AND author_loc.user_id = p.author_id
       )
@@ -320,7 +323,7 @@ const MEMBER_HOME_FEED_SQL = `
 
 const DISCOVERY_HOME_FEED_SQL = `
   WITH viewer_pin AS (
-    SELECT pin_code FROM user_locations WHERE user_id = $1 LIMIT 1
+    SELECT pin_code, area_id FROM user_locations WHERE user_id = $1 LIMIT 1
   ),
   viewer_curricula AS (
     SELECT DISTINCT curriculum_id FROM children WHERE user_id = $1
@@ -342,7 +345,9 @@ const DISCOVERY_HOME_FEED_SQL = `
       c.key AS circle_key,
       c.metadata AS circle_metadata,
       CASE
-        WHEN vp.pin_code IS NOT NULL AND al.pin_code = vp.pin_code THEN 0
+        WHEN vp.area_id IS NOT NULL AND al.area_id = vp.area_id THEN 0
+        WHEN (vp.area_id IS NULL OR al.area_id IS NULL)
+          AND vp.pin_code IS NOT NULL AND al.pin_code = vp.pin_code THEN 0
         WHEN EXISTS (
           SELECT 1
           FROM children ach

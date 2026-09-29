@@ -29,7 +29,7 @@ export function createCarpoolRoutes() {
     const client = await pool.connect();
     try {
       const child = await client.query(
-        `SELECT ch.school_id, ul.pin_code, ul.community_key
+        `SELECT ch.school_id, ul.pin_code, ul.community_key, ul.area_id
          FROM children ch
          JOIN user_locations ul ON ul.user_id = ch.user_id
          WHERE ch.user_id = $1
@@ -40,7 +40,7 @@ export function createCarpoolRoutes() {
         return c.json({ error: "Add a child and location first" }, 400);
       }
 
-      const { school_id, pin_code, community_key } = child.rows[0];
+      const { school_id, pin_code, community_key, area_id } = child.rows[0];
       const { rows } = await client.query(
         `SELECT o.id, o.user_id, o.role, o.direction, o.days_of_week, o.departure_time,
                 o.seats, o.notes, u.anonymous_handle
@@ -48,12 +48,19 @@ export function createCarpoolRoutes() {
          JOIN users u ON u.id = o.user_id
          WHERE o.user_id <> $1
            AND o.school_id = $2
-           AND o.pin_code = $3
-           AND (o.community_key IS NULL OR o.community_key = $4)
+           AND (
+             ($3::uuid IS NOT NULL AND o.area_id IS NOT NULL AND o.area_id = $3::uuid)
+             OR (
+               ($3::uuid IS NULL OR o.area_id IS NULL)
+               AND o.pin_code IS NOT NULL
+               AND o.pin_code = $4
+             )
+           )
+           AND (o.community_key IS NULL OR o.community_key = $5)
            AND o.status IN ('open', 'forming')
          ORDER BY o.departure_time
          LIMIT 30`,
-        [userId, school_id, pin_code, community_key]
+        [userId, school_id, area_id, pin_code, community_key]
       );
 
       return c.json(
@@ -110,7 +117,7 @@ export function createCarpoolRoutes() {
       }
 
       const loc = await client.query(
-        `SELECT pin_code, community_key FROM user_locations WHERE user_id = $1`,
+        `SELECT pin_code, community_key, area_id FROM user_locations WHERE user_id = $1`,
         [userId]
       );
       if (loc.rows.length === 0) {
@@ -119,15 +126,16 @@ export function createCarpoolRoutes() {
 
       const { rows } = await client.query(
         `INSERT INTO carpool_offers
-           (user_id, school_id, community_key, pin_code, role, direction,
+           (user_id, school_id, community_key, pin_code, area_id, role, direction,
             days_of_week, departure_time, seats, notes)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          RETURNING id`,
         [
           userId,
           schoolId,
           loc.rows[0].community_key,
           loc.rows[0].pin_code,
+          loc.rows[0].area_id,
           body.role,
           body.direction,
           body.daysOfWeek,

@@ -190,6 +190,10 @@ const MIGRATIONS = [
     version: "082_onboarding_areas",
     file: "082_onboarding_areas.sql",
   },
+  {
+    version: "083_nearby_area_match",
+    file: "083_nearby_area_match.sql",
+  },
 ];
 
 async function isMigrationApplied(
