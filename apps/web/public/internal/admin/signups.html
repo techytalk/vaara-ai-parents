@@ -147,6 +147,7 @@
         font-weight: 700;
         white-space: nowrap;
       }
+      .badge.soft { background: #f1eee8; color: var(--muted); }
       .badge.ok { background: #e7f7f4; color: var(--ok); }
       .badge.warn { background: #fff2d9; color: var(--warn); }
       .badge.blocked { background: #feecec; color: var(--blocked); }
@@ -160,6 +161,24 @@
       }
       .nav { margin-bottom: 14px; font-size: 0.9rem; }
       .empty { color: var(--muted); padding: 18px 0; }
+      .excluded {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 10px 14px;
+        margin-bottom: 18px;
+      }
+      .excluded summary {
+        cursor: pointer;
+        font-size: 0.9rem;
+        color: var(--muted);
+      }
+      .excluded table { margin-top: 0; }
+      .excluded-group { margin-top: 12px; }
+      .excluded-group h3 {
+        font-size: 0.85rem;
+        margin: 0 0 6px;
+      }
       @media (max-width: 720px) {
         body { padding: 14px; }
         table { display: block; overflow-x: auto; }
@@ -169,8 +188,22 @@
   <body>
     <div id="adminNav"></div>
     <h1>Parent signups</h1>
-    <p class="muted">Date-wise parent accounts (Asia/Kolkata).</p>
+    <p class="muted">All-time totals, then each signup day (Asia/Kolkata).</p>
 
+    <h2>Overall</h2>
+    <p class="muted" id="overallNote">Real parent accounts. Full onboarding means a child and a home location are saved.</p>
+    <div class="stats" id="overall">
+      <div class="stat"><div class="n" id="oTotal">—</div><div class="l">Parent signups</div></div>
+      <div class="stat"><div class="n" id="oComplete">—</div><div class="l">Full onboarding complete</div></div>
+      <div class="stat"><div class="n" id="oIncomplete">—</div><div class="l">Incomplete</div></div>
+      <div class="stat"><div class="n" id="oBlocked">—</div><div class="l">Blocked</div></div>
+    </div>
+    <details class="excluded" id="excludedWrap" hidden>
+      <summary id="excludedSummary">Accounts left out of overall</summary>
+      <div id="excludedList"></div>
+    </details>
+
+    <h2>By day</h2>
     <div class="toolbar">
       <div>
         <label>Date</label>
@@ -419,6 +452,99 @@
         parentCache.set(key, data.parents || []);
       }
 
+      function renderOverall(overall) {
+        if (!overall) return;
+        const o = overall;
+        const total = Number(o.total || 0);
+        const complete = Number(o.complete || 0);
+        const accounts = Number(o.accounts || 0);
+        const accountsComplete = Number(o.accounts_complete || 0);
+        const pct = total ? Math.round((complete / total) * 100) : 0;
+        $("oTotal").textContent = total;
+        $("oComplete").textContent = complete;
+        $("oIncomplete").textContent = Number(o.incomplete || 0);
+        $("oBlocked").textContent = Number(o.blocked || 0);
+        const excluded = Math.max(0, accounts - total);
+        const extra = excluded
+          ? ` ${excluded} internal or test account${excluded === 1 ? "" : "s"} left out (${accountsComplete} of ${accounts} accounts finished onboarding).`
+          : "";
+        $("overallNote").textContent =
+          `Real parent accounts. Full onboarding means a child and a home location are saved — ${complete} of ${total} (${pct}%).${extra}`;
+      }
+
+      function groupExcluded(rows) {
+        if (rows && !Array.isArray(rows)) {
+          return {
+            internal: rows.internal || [],
+            testComplete: rows.testComplete || [],
+            testIncomplete: rows.testIncomplete || [],
+          };
+        }
+        const list = rows || [];
+        return {
+          internal: list.filter((row) => row.is_internal === true),
+          testComplete: list.filter(
+            (row) => row.is_internal !== true && row.onboarding_complete
+          ),
+          testIncomplete: list.filter(
+            (row) => row.is_internal !== true && !row.onboarding_complete
+          ),
+        };
+      }
+
+      function excludedTable(rows) {
+        const table = document.createElement("table");
+        table.innerHTML = `
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th>Created (IST)</th>
+            </tr>
+          </thead>
+        `;
+        const tbody = document.createElement("tbody");
+        for (const row of rows) {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td>${escapeHtml(row.email || "—")}</td>
+            <td>${escapeHtml(row.created_ist || "—")}</td>
+          `;
+          tbody.appendChild(tr);
+        }
+        table.appendChild(tbody);
+        return table;
+      }
+
+      function renderExcluded(rows) {
+        const wrap = $("excludedWrap");
+        const groups = groupExcluded(rows);
+        const sections = [
+          ["Internal", groups.internal],
+          ["Test, onboarding complete", groups.testComplete],
+          ["Test, incomplete", groups.testIncomplete],
+        ].filter(([, list]) => list.length);
+        if (!sections.length) {
+          wrap.hidden = true;
+          $("excludedList").replaceChildren();
+          return;
+        }
+        const total = sections.reduce((n, [, list]) => n + list.length, 0);
+        $("excludedSummary").textContent =
+          `${total} left out of overall · ` +
+          sections.map(([label, list]) => `${list.length} ${label.toLowerCase()}`).join(" · ");
+        const root = document.createElement("div");
+        for (const [label, list] of sections) {
+          const section = document.createElement("div");
+          section.className = "excluded-group";
+          const heading = document.createElement("h3");
+          heading.textContent = `${label} · ${list.length}`;
+          section.append(heading, excludedTable(list));
+          root.appendChild(section);
+        }
+        $("excludedList").replaceChildren(root);
+        wrap.hidden = false;
+      }
+
       function applyDayStats(date) {
         const d = dayRows.find((row) => row.date === date);
         $("nTotal").textContent = d ? Number(d.total || 0) : 0;
@@ -463,6 +589,8 @@
           $("date").value = date;
           const status = $("status").value;
           const data = await fetchParents(date, status);
+          renderOverall(data.overall);
+          renderExcluded(data.excluded);
           const s = data.summary || {};
           $("nTotal").textContent = s.total ?? 0;
           $("nComplete").textContent = s.complete ?? 0;

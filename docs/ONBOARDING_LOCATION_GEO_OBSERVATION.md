@@ -3,7 +3,9 @@
 **Status:** capturing in API/DB (`onboarding_geo_signals`). Onboarding UI
 unchanged. Mismatch banner not built yet.  
 **Date:** 21 September 2026.  
-**Order:** do **not** change. Location (PIN) stays before school.
+**Order today:** location (PIN) stays before school.  
+**Next UX (not built):** school, then board, then place search — see
+[ONBOARDING_SCHOOL_FIRST_PLACE.md](./ONBOARDING_SCHOOL_FIRST_PLACE.md).
 
 Parents often type a **hometown / native-place PIN** even though the location
 screen already says “current PIN code”. That may be form habit, a short visit to

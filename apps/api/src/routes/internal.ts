@@ -556,9 +556,47 @@ export function createInternalRoutes() {
          ORDER BY 1 DESC`
       );
 
+      const realParent = `COALESCE(u.is_internal, false) IS NOT TRUE AND NOT ${testEmailSql("u.email")}`;
+      const { rows: overallRows } = await client.query(
+        `SELECT
+           COUNT(*) FILTER (WHERE ${realParent})::int AS total,
+           COUNT(*) FILTER (WHERE ${realParent} AND u.onboarding_complete IS TRUE)::int AS complete,
+           COUNT(*) FILTER (
+             WHERE ${realParent} AND COALESCE(u.onboarding_complete, false) IS FALSE
+           )::int AS incomplete,
+           COUNT(*) FILTER (WHERE ${realParent} AND u.content_blocked IS TRUE)::int AS blocked,
+           COUNT(*)::int AS accounts,
+           COUNT(*) FILTER (WHERE u.onboarding_complete IS TRUE)::int AS accounts_complete
+         FROM users u
+         WHERE u.role = 'parent'`
+      );
+
+      const { rows: excludedRows } = await client.query(
+        `SELECT
+           u.email,
+           (COALESCE(u.is_internal, false) IS TRUE) AS is_internal,
+           u.onboarding_complete,
+           to_char(u.created_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD') AS created_ist
+         FROM users u
+         WHERE u.role = 'parent'
+           AND NOT (${realParent})
+         ORDER BY u.created_at DESC, u.email`
+      );
+      const excluded = {
+        internal: excludedRows.filter((row) => row.is_internal === true),
+        testComplete: excludedRows.filter(
+          (row) => row.is_internal !== true && row.onboarding_complete === true
+        ),
+        testIncomplete: excludedRows.filter(
+          (row) => row.is_internal !== true && row.onboarding_complete !== true
+        ),
+      };
+
       return c.json({
         ok: true,
         timezone: "Asia/Kolkata",
+        overall: overallRows[0] ?? null,
+        excluded,
         summary: summaryRows[0] ?? null,
         recentDays,
         parents,
