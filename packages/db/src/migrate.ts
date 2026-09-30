@@ -194,6 +194,10 @@ const MIGRATIONS = [
     version: "083_nearby_area_match",
     file: "083_nearby_area_match.sql",
   },
+  {
+    version: "084_lucky_gift_winner_quota",
+    file: "084_lucky_gift_winner_quota.sql",
+  },
 ];
 
 async function isMigrationApplied(

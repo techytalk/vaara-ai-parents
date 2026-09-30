@@ -1611,6 +1611,7 @@ export function createInternalRoutes() {
         endsAt: typeof body.endsAt === "string" ? body.endsAt : "",
         claimDeadline:
           typeof body.claimDeadline === "string" ? body.claimDeadline : "",
+        winnerQuota: body.winnerQuota,
       });
       if ("error" in result) {
         return c.json({ error: result.error }, result.status as 400 | 500);
@@ -1687,6 +1688,8 @@ export function createInternalRoutes() {
         claimsOpen:
           typeof body.claimsOpen === "boolean" ? body.claimsOpen : undefined,
         active: typeof body.active === "boolean" ? body.active : undefined,
+        winnerQuota:
+          body.winnerQuota === undefined ? undefined : body.winnerQuota,
       }, body.campaignId);
       if ("error" in result) {
         return c.json({ error: result.error }, result.status as 400 | 404);

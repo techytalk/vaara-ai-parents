@@ -47,13 +47,47 @@ export type LuckyGiftResponse =
       claimsOpen: boolean;
     };
 
+const DEFAULT_WINNER_QUOTA = 10;
+const MAX_WINNER_QUOTA = 100;
+const PERIODS: LuckyGiftPeriod[] = ["morning", "afternoon", "evening"];
+
 const DEFAULT_PERIOD_WINDOWS: PeriodWindows = {
   morning: { start: "06:00", end: "11:00", count: 7 },
   afternoon: { start: "11:00", end: "17:00", count: 6 },
   evening: { start: "17:00", end: "22:00", count: 7 },
 };
 
-const PERIODS: LuckyGiftPeriod[] = ["morning", "afternoon", "evening"];
+function defaultWindowsForQuota(quota: number): PeriodWindows {
+  const base = Math.floor(quota / 3);
+  let remainder = quota - base * 3;
+  const counts = PERIODS.map(() => base);
+  for (let i = 0; i < counts.length && remainder > 0; i++) {
+    counts[i] += 1;
+    remainder -= 1;
+  }
+  return {
+    morning: { start: "06:00", end: "11:00", count: counts[0] },
+    afternoon: { start: "11:00", end: "17:00", count: counts[1] },
+    evening: { start: "17:00", end: "22:00", count: counts[2] },
+  };
+}
+
+/** Blank or omitted quota means 10. A provided value must be a whole number from 1 to 100. */
+function parseWinnerQuota(
+  value: unknown
+): { ok: true; quota: number } | { ok: false; error: string } {
+  if (value == null || value === "") {
+    return { ok: true, quota: DEFAULT_WINNER_QUOTA };
+  }
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isInteger(n) || n < 1 || n > MAX_WINNER_QUOTA) {
+    return {
+      ok: false,
+      error: `Winner quota must be a whole number from 1 to ${MAX_WINNER_QUOTA}`,
+    };
+  }
+  return { ok: true, quota: n };
+}
 
 type CampaignRow = {
   id: string;
@@ -232,7 +266,10 @@ async function uniqueClaimCode(
   return randomBytes(3).toString("hex").slice(0, 6).toUpperCase();
 }
 
-function validatePeriodWindows(windows: PeriodWindows): string | null {
+function validatePeriodWindows(
+  windows: PeriodWindows,
+  quota: number
+): string | null {
   let total = 0;
   for (const period of PERIODS) {
     const w = windows[period];
@@ -246,10 +283,13 @@ function validatePeriodWindows(windows: PeriodWindows): string | null {
     ) {
       return `${period} end must be after start`;
     }
+    if (!Number.isInteger(w.count) || w.count < 0) {
+      return `${period} count must be a whole number`;
+    }
     total += w.count;
   }
-  if (total !== 20) {
-    return `Period counts must sum to 20 (got ${total})`;
+  if (total !== quota) {
+    return `Period counts must sum to ${quota} (got ${total})`;
   }
   return null;
 }
@@ -260,7 +300,7 @@ function generateMomentsForCampaign(campaign: LuckyGiftCampaign): Array<{
   expiresAt: Date | null;
 }> {
   const windows = campaign.periodWindows;
-  const err = validatePeriodWindows(windows);
+  const err = validatePeriodWindows(windows, campaign.winnerQuota);
   if (err) throw new Error(err);
 
   const startsAt = new Date(campaign.startsAt);
@@ -687,6 +727,7 @@ export async function adminCreateLuckyGiftCampaign(input: {
   startsAt: string;
   endsAt: string;
   claimDeadline: string;
+  winnerQuota?: unknown;
 }): Promise<
   | { ok: true; campaign: LuckyGiftCampaign }
   | { error: string; status: number }
@@ -713,6 +754,9 @@ export async function adminCreateLuckyGiftCampaign(input: {
   if (supportPhone !== "+910000000000" && !/^\+[1-9]\d{7,14}$/.test(supportPhone)) {
     return { error: "supportPhone must be E.164, e.g. +9198XXXXXXXX", status: 400 };
   }
+  const quota = parseWinnerQuota(input.winnerQuota);
+  if (!quota.ok) return { error: quota.error, status: 400 };
+  const periodWindows = defaultWindowsForQuota(quota.quota);
 
   const client = await pool.connect();
   try {
@@ -732,14 +776,16 @@ export async function adminCreateLuckyGiftCampaign(input: {
 
     const { rows } = await client.query<CampaignRow>(
       `INSERT INTO lucky_gift_campaigns
-         (slug, name, prize_label, support_phone, starts_at, ends_at, claim_deadline, active)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, false)
+         (slug, name, prize_label, support_phone, winner_quota, period_windows, starts_at, ends_at, claim_deadline, active)
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, false)
        RETURNING *`,
       [
         slug,
         name,
         input.prizeLabel?.trim() || "₹500 gift voucher",
         supportPhone,
+        quota.quota,
+        JSON.stringify(periodWindows),
         input.startsAt,
         input.endsAt,
         input.claimDeadline,
@@ -850,6 +896,7 @@ export type AdminCampaignPatch = {
   supportPhone?: string;
   carryUnclaimedForward?: boolean;
   periodWindows?: PeriodWindows;
+  winnerQuota?: unknown;
   startsAt?: string;
   endsAt?: string;
   claimDeadline?: string;
@@ -879,11 +926,20 @@ export async function adminUpdateLuckyGiftCampaign(
     }
 
     const issued = await cardsIssuedCount(client, campaign.id);
+    let quota = campaign.winnerQuota;
+    if (patch.winnerQuota !== undefined) {
+      const parsed = parseWinnerQuota(patch.winnerQuota);
+      if (!parsed.ok) {
+        await client.query("ROLLBACK");
+        return { error: parsed.error, status: 400 };
+      }
+      quota = parsed.quota;
+    }
     const nextWindows = patch.periodWindows
       ? normalizePeriodWindows(patch.periodWindows)
       : campaign.periodWindows;
-    if (patch.periodWindows) {
-      const err = validatePeriodWindows(nextWindows);
+    if (patch.periodWindows || patch.winnerQuota !== undefined) {
+      const err = validatePeriodWindows(nextWindows, quota);
       if (err) {
         await client.query("ROLLBACK");
         return { error: err, status: 400 };
@@ -900,13 +956,14 @@ export async function adminUpdateLuckyGiftCampaign(
       nextStarts !== campaign.startsAt ||
       nextEnds !== campaign.endsAt ||
       nextCarry !== campaign.carryUnclaimedForward ||
+      quota !== campaign.winnerQuota ||
       !periodWindowsEqual(nextWindows, campaign.periodWindows);
 
     if (scheduleChanged && issued > 0) {
       await client.query("ROLLBACK");
       return {
         error:
-          "Cannot change dates, windows, or carry-forward after cards have been issued",
+          "Cannot change dates, windows, winner quota, or carry-forward after cards have been issued",
         status: 400,
       };
     }
@@ -962,13 +1019,13 @@ export async function adminUpdateLuckyGiftCampaign(
     );
     const momentCount = Number(momentCountRows[0]?.n ?? 0);
 
-    if (momentCount !== campaign.winnerQuota) {
+    if (momentCount !== quota) {
       if (patch.active === true) {
         await client.query("ROLLBACK");
         return {
           error: scheduleInvalidated
-            ? `Schedule changed — generate exactly ${campaign.winnerQuota} winning moments before turning ON`
-            : `Generate exactly ${campaign.winnerQuota} winning moments before activating`,
+            ? `Schedule changed — generate exactly ${quota} winning moments before turning ON`
+            : `Generate exactly ${quota} winning moments before activating`,
           status: 400,
         };
       }
@@ -986,10 +1043,10 @@ export async function adminUpdateLuckyGiftCampaign(
           status: 400,
         };
       }
-      if (momentCount !== campaign.winnerQuota) {
+      if (momentCount !== quota) {
         await client.query("ROLLBACK");
         return {
-          error: `Generate exactly ${campaign.winnerQuota} winning moments before activating`,
+          error: `Generate exactly ${quota} winning moments before activating`,
           status: 400,
         };
       }
@@ -1007,6 +1064,7 @@ export async function adminUpdateLuckyGiftCampaign(
          claim_deadline = COALESCE($9::timestamptz, claim_deadline),
          claims_open = COALESCE($10, claims_open),
          active = $11,
+         winner_quota = $12,
          updated_at = now()
        WHERE id = $1
        RETURNING *`,
@@ -1024,6 +1082,7 @@ export async function adminUpdateLuckyGiftCampaign(
         patch.claimDeadline ?? null,
         patch.claimsOpen ?? null,
         nextActive,
+        quota,
       ]
     );
 

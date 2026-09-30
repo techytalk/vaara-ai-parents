@@ -172,6 +172,11 @@
           <label for="newClaim">Claim deadline (IST)</label>
           <input id="newClaim" type="datetime-local" style="width:100%" />
         </div>
+        <div class="row">
+          <label for="newWinnerQuota">Winner quota</label>
+          <input id="newWinnerQuota" type="number" min="1" max="100" placeholder="10" style="width:100%" />
+          <p class="muted" style="margin:4px 0 0">Leave blank for 10 winners.</p>
+        </div>
       </div>
       <button type="button" id="btnCreate">Create campaign</button>
     </div>
@@ -204,6 +209,11 @@
           <label for="claimDeadline">Claim deadline (IST)</label>
           <input id="claimDeadline" type="datetime-local" style="width:100%" />
         </div>
+        <div class="row">
+          <label for="winnerQuota">Winner quota</label>
+          <input id="winnerQuota" type="number" min="1" max="100" placeholder="10" style="width:100%" />
+          <p class="muted" style="margin:4px 0 0">Leave blank for 10 winners. Morning, afternoon, and evening counts must add up to this.</p>
+        </div>
       </div>
       <div class="check">
         <input type="checkbox" id="carryForward" />
@@ -214,11 +224,11 @@
         <label for="claimsOpen" style="margin:0">Claims open</label>
       </div>
 
-      <h2>Period windows (IST) — counts must sum to 20</h2>
+      <h2>Period windows (IST) — counts must sum to the winner quota</h2>
       <div class="grid2" id="windows"></div>
 
       <button type="button" id="btnSave">Save settings</button>
-      <button type="button" class="secondary" id="btnGenerate">Generate 20 winning moments</button>
+      <button type="button" class="secondary" id="btnGenerate">Generate winning moments</button>
       <button type="button" id="btnActivate">Turn campaign ON</button>
       <button type="button" class="danger" id="btnDeactivate">Turn campaign OFF</button>
     </div>
@@ -316,11 +326,21 @@
               </div>
               <div class="row">
                 <label>Count</label>
-                <input data-period="${period}" data-field="count" type="number" min="0" max="20" value="${Number(w.count) || 0}" style="width:100%" />
+                <input data-period="${period}" data-field="count" type="number" min="0" max="100" value="${Number(w.count) || 0}" style="width:100%" />
               </div>
             `;
             wrap.appendChild(block);
           }
+        }
+
+        function readWinnerQuota(id) {
+          const raw = $(id).value.trim();
+          return raw ? Number(raw) : null;
+        }
+
+        function quotaLabel() {
+          const raw = $("winnerQuota").value.trim();
+          return raw || "10";
         }
 
         function readWindows() {
@@ -347,7 +367,11 @@
           $("claimDeadline").value = toKolkataInput(campaign.claimDeadline);
           $("carryForward").checked = !!campaign.carryUnclaimedForward;
           $("claimsOpen").checked = !!campaign.claimsOpen;
+          $("winnerQuota").value =
+            campaign.winnerQuota == null ? "" : String(campaign.winnerQuota);
           renderWindows(campaign.periodWindows || {});
+          $("btnGenerate").textContent =
+            "Generate " + (campaign.winnerQuota || 10) + " winning moments";
         }
 
         function renderStats(stats, live, active) {
@@ -456,7 +480,9 @@
             if (!data.moments || !data.moments.length) {
               momentsBox.className = "muted";
               momentsBox.textContent =
-                "Schedule not generated. Generate 20 winning moments before turning ON.";
+                "Schedule not generated. Generate " +
+                quotaLabel() +
+                " winning moments before turning ON.";
             }
           }
         }
@@ -474,6 +500,7 @@
             carryUnclaimedForward: $("carryForward").checked,
             claimsOpen: $("claimsOpen").checked,
             periodWindows: readWindows(),
+            winnerQuota: readWinnerQuota("winnerQuota"),
             campaignId: selectedCampaignId,
             ...extra,
           };
@@ -489,7 +516,9 @@
           }
           showOk(
             data.scheduleInvalidated
-              ? "Saved. Schedule changed — generate 20 winning moments again before turning ON."
+              ? "Saved. Schedule changed — generate " +
+                quotaLabel() +
+                " winning moments again before turning ON."
               : extra && extra.active === true
                 ? "Campaign turned ON."
                 : "Saved."
@@ -582,6 +611,7 @@
                 startsAt: fromKolkataInput($("newStarts").value),
                 endsAt: fromKolkataInput($("newEnds").value),
                 claimDeadline: fromKolkataInput($("newClaim").value),
+                winnerQuota: readWinnerQuota("newWinnerQuota"),
               }),
             });
             const data = await res.json().catch(() => ({}));
