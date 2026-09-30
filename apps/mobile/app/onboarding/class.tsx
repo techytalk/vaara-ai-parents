@@ -74,7 +74,7 @@ function classHook(): { title: ReactNode; body?: string } {
   return {
     title: (
       <>
-        Connect with Parents, whose children are in the{" "}
+        Connect with parents whose children are in the{" "}
         <Text style={hookAccent}>same grade</Text> and follow the{" "}
         <Text style={hookAccent}>same curriculum</Text>.
       </>
@@ -296,8 +296,8 @@ export default function OnboardingClassScreen() {
       <View style={styles.privacy}>
         <Ionicons name="lock-closed-outline" size={14} color={colors.primary} />
         <Text style={styles.privacyText}>
-          Your child&apos;s academic information is only used to connect you
-          with relevant parent circles. It is never shared publicly.
+          Ask about homework, exams, and teachers in this class — without
+          sharing your child&apos;s name.
         </Text>
       </View>
     </ScrollView>

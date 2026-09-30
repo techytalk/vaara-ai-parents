@@ -277,11 +277,11 @@ export default function LocationScreen() {
     >
       <OnboardingPayoff
         compact
-        title="Where do you live now?"
+        title="Connect with parents who live near you."
         body={
           buildingToken
             ? "Choose the area around that building."
-            : "Search your apartment or area. This is where you live now, not your hometown."
+            : "Enter the apartment or area where your family currently lives — not your hometown."
         }
         illustration={require("../../assets/illustrations/onboarding-location-near-you.png")}
       />

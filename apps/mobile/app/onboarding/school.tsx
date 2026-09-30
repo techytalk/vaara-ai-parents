@@ -63,27 +63,8 @@ function schoolHook(
     };
   }
 
-  const actionLine = "Ask Questions - Share Experiences";
-  if (!school) {
-    return {
-      title: (
-        <>
-          Connect with other parents from same school{" "}
-          <Text style={hookAccent}>anonymously</Text>.{"\n"}
-          {actionLine}
-        </>
-      ),
-    };
-  }
-
   return {
-    title: (
-      <>
-        Connect with other parents at{" "}
-        <Text style={hookAccent}>{school.name}</Text> anonymously.{"\n"}
-        {actionLine}
-      </>
-    ),
+    title: "Connect with other parents from your child's school anonymously.",
   };
 }
 
@@ -204,7 +185,7 @@ export default function OnboardingSchoolScreen() {
         ]}
       />
 
-      <FieldLabel>What describes your child?</FieldLabel>
+      <FieldLabel>Your child is in</FieldLabel>
       <View style={styles.trackRow}>
         <Chip
           label="Preschool (3–4 years)"
@@ -251,8 +232,8 @@ export default function OnboardingSchoolScreen() {
       <View style={styles.privacy}>
         <Ionicons name="lock-closed-outline" size={14} color={colors.primary} />
         <Text style={styles.privacyText}>
-          Your school is only used to connect you with parents from the same
-          school. It is never shared publicly.
+          Get honest advice from parents in the same school on teachers, fees,
+          and exams — without sharing your name.
         </Text>
       </View>
     </ScrollView>
