@@ -72,10 +72,18 @@ function defaultWindowsForQuota(quota: number): PeriodWindows {
   };
 }
 
+type WinnerQuotaResult =
+  | { ok: true; quota: number }
+  | { ok: false; error: string };
+
+function isWinnerQuotaError(
+  result: WinnerQuotaResult
+): result is { ok: false; error: string } {
+  return result.ok === false;
+}
+
 /** Blank or omitted quota means 10. A provided value must be a whole number from 1 to 100. */
-function parseWinnerQuota(
-  value: unknown
-): { ok: true; quota: number } | { ok: false; error: string } {
+function parseWinnerQuota(value: unknown): WinnerQuotaResult {
   if (value == null || value === "") {
     return { ok: true, quota: DEFAULT_WINNER_QUOTA };
   }
@@ -755,7 +763,7 @@ export async function adminCreateLuckyGiftCampaign(input: {
     return { error: "supportPhone must be E.164, e.g. +9198XXXXXXXX", status: 400 };
   }
   const quota = parseWinnerQuota(input.winnerQuota);
-  if (!quota.ok) return { error: quota.error, status: 400 };
+  if (isWinnerQuotaError(quota)) return { error: quota.error, status: 400 };
   const periodWindows = defaultWindowsForQuota(quota.quota);
 
   const client = await pool.connect();
@@ -929,7 +937,7 @@ export async function adminUpdateLuckyGiftCampaign(
     let quota = campaign.winnerQuota;
     if (patch.winnerQuota !== undefined) {
       const parsed = parseWinnerQuota(patch.winnerQuota);
-      if (!parsed.ok) {
+      if (isWinnerQuotaError(parsed)) {
         await client.query("ROLLBACK");
         return { error: parsed.error, status: 400 };
       }
