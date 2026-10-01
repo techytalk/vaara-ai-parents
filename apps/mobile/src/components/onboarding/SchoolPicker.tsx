@@ -99,6 +99,7 @@ export function SchoolPicker({
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const requestIdRef = useRef(0);
+  const searchInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     setAddCity(defaultCity);
@@ -372,20 +373,29 @@ export function SchoolPicker({
         animationType="slide"
         presentationStyle="pageSheet"
         onRequestClose={closeMenu}
+        onShow={() => {
+          setTimeout(() => searchInputRef.current?.focus(), 50);
+        }}
       >
         <View style={styles.modal}>
           <View style={styles.modalHead}>
-            <Text style={styles.modalTitle}>{label}</Text>
-            <Pressable onPress={closeMenu} accessibilityRole="button">
-              <Text style={styles.modalClose}>Done</Text>
+            <Text style={styles.modalTitle}>Find your school</Text>
+            <Pressable
+              onPress={closeMenu}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+              hitSlop={8}
+            >
+              <Ionicons name="close" size={24} color={colors.text} />
             </Pressable>
           </View>
 
           <View style={styles.searchRow}>
             <Ionicons name="search-outline" size={18} color={colors.textMuted} />
             <TextInput
+              ref={searchInputRef}
               style={styles.input}
-              placeholder="Search for school name"
+              placeholder="Type school name"
               placeholderTextColor={colors.textSubtle}
               value={query}
               onChangeText={setQuery}
@@ -418,17 +428,15 @@ export function SchoolPicker({
             keyExtractor={(item) => item.id}
             keyboardShouldPersistTaps="handled"
             ListEmptyComponent={
-              searching ? null : (
+              searching || !hasQuery ? null : (
                 <Text style={styles.suggestEmpty}>
-                  {!hasQuery
-                    ? "Type a school name to search"
-                    : trimmedQuery.length < 2
-                      ? "Enter at least 2 characters"
-                      : !searchSettled
-                        ? "Searching…"
-                        : trimmedQuery.length === 2
-                          ? "Type one more character to search all schools"
-                          : `No schools match “${trimmedQuery}”`}
+                  {trimmedQuery.length < 2
+                    ? "Enter at least 2 characters"
+                    : !searchSettled
+                      ? "Searching…"
+                      : trimmedQuery.length === 2
+                        ? "Type one more character to search all schools"
+                        : `No schools match “${trimmedQuery}”`}
                 </Text>
               )
             }
@@ -631,11 +639,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700",
     color: colors.text,
-  },
-  modalClose: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: colors.primary,
   },
   searchRow: {
     flexDirection: "row",

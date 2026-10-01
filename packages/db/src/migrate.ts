@@ -198,6 +198,10 @@ const MIGRATIONS = [
     version: "084_lucky_gift_winner_quota",
     file: "084_lucky_gift_winner_quota.sql",
   },
+  {
+    version: "085_north_hyderabad_areas",
+    file: "085_north_hyderabad_areas.sql",
+  },
 ];
 
 async function isMigrationApplied(

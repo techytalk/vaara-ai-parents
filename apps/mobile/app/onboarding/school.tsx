@@ -188,7 +188,7 @@ export default function OnboardingSchoolScreen() {
       <FieldLabel>Your child is in</FieldLabel>
       <View style={styles.trackRow}>
         <Chip
-          label="Preschool (3–4 years)"
+          label="Preschool"
           selected={track === "preschool"}
           onPress={() => onSelectTrack("preschool")}
         />
