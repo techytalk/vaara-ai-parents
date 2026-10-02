@@ -9,6 +9,8 @@ import {
   setCachedJson,
 } from "@vaara/redis";
 import { formatSchoolLabel } from "../lib/school.js";
+import { randomToken, sha256 } from "../lib/oauth.js";
+import { jeePrepOrigin } from "../lib/prep-mail.js";
 import { authMiddleware, type AuthVariables } from "../middleware/auth.js";
 import {
   isValidActivitySetting,
@@ -773,6 +775,99 @@ export function createChild360Routes() {
       }
       await invalidateChild360Page(userId, childId);
       return c.json({ ok: true, deleted: mapOpportunityPlan(result.rows[0]) });
+    } finally {
+      client.release();
+    }
+  });
+
+  app.get("/children/:childId/prep", async (c) => {
+    const userId = c.get("user").sub;
+    const childId = c.req.param("childId");
+    const client = await pool.connect();
+    try {
+      const child = await loadOwnedChild(client, userId, childId);
+      if (!child) return c.json({ error: "Child not found" }, 404);
+      const progress = await client.query(
+        `SELECT streak, answered_count, accuracy, last_practiced_at
+         FROM child_prep_progress WHERE child_id = $1`,
+        [childId]
+      );
+      const devices = await client.query(
+        `SELECT id, device_label, created_at, last_used_at, revoked_at
+         FROM oauth_grants WHERE child_id = $1 AND parent_id = $2
+         ORDER BY created_at DESC`,
+        [childId, userId]
+      );
+      const row = progress.rows[0] as
+        | { streak: number; answered_count: number; accuracy: number | null; last_practiced_at: string | null }
+        | undefined;
+      return c.json({
+        practiceUrl: jeePrepOrigin(),
+        progress: row
+          ? {
+              streak: row.streak,
+              answeredCount: row.answered_count,
+              accuracy: row.accuracy,
+              lastPracticedAt: row.last_practiced_at,
+            }
+          : null,
+        devices: devices.rows.map((device: {
+          id: string;
+          device_label: string | null;
+          created_at: string;
+          last_used_at: string | null;
+          revoked_at: string | null;
+        }) => ({
+          id: device.id,
+          label: device.device_label,
+          createdAt: device.created_at,
+          lastUsedAt: device.last_used_at,
+          revokedAt: device.revoked_at,
+        })),
+      });
+    } finally {
+      client.release();
+    }
+  });
+
+  app.post("/children/:childId/prep-links", async (c) => {
+    const userId = c.get("user").sub;
+    const childId = c.req.param("childId");
+    const body = await c.req.json().catch(() => ({})) as { mode?: string };
+    const mode = body.mode === "share" ? "share" : "self";
+    const client = await pool.connect();
+    try {
+      const child = await loadOwnedChild(client, userId, childId);
+      if (!child) return c.json({ error: "Child not found" }, 404);
+      const token = randomToken();
+      const lifetime = mode === "share" ? "7 days" : "2 minutes";
+      await client.query(
+        `INSERT INTO child_prep_links (child_id, parent_id, client_id, mode, invite_hash, expires_at)
+         VALUES ($1, $2, 'jee', $3, $4, now() + $5::interval)`,
+        [childId, userId, mode, sha256(token), lifetime]
+      );
+      return c.json({ url: `${jeePrepOrigin()}/c/${token}` });
+    } finally {
+      client.release();
+    }
+  });
+
+  app.post("/children/:childId/prep-devices/:grantId/revoke", async (c) => {
+    const userId = c.get("user").sub;
+    const childId = c.req.param("childId");
+    const grantId = c.req.param("grantId");
+    const client = await pool.connect();
+    try {
+      const child = await loadOwnedChild(client, userId, childId);
+      if (!child) return c.json({ error: "Child not found" }, 404);
+      const result = await client.query(
+        `UPDATE oauth_grants SET revoked_at = now()
+         WHERE id = $1 AND child_id = $2 AND parent_id = $3 AND revoked_at IS NULL
+         RETURNING id`,
+        [grantId, childId, userId]
+      );
+      if (result.rows.length === 0) return c.json({ error: "Device not found" }, 404);
+      return c.json({ ok: true });
     } finally {
       client.release();
     }

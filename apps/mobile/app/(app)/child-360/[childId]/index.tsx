@@ -366,6 +366,21 @@ export default function Child360HubScreen() {
           <Text style={styles.examsLinkText}>After Class 10</Text>
         </Pressable>
       ) : null}
+      {data.child.rightBand === "enjoy" ||
+      data.child.rightBand === "pathway_lean" ||
+      data.child.rightBand === "opportunities" ? (
+        <Pressable
+          style={styles.examsLink}
+          onPress={() =>
+            router.push({
+              pathname: "/(app)/child-360/[childId]/jee-prep",
+              params: { childId },
+            })
+          }
+        >
+          <Text style={styles.examsLinkText}>JEE Prep</Text>
+        </Pressable>
+      ) : null}
       {data.child.rightBand === "opportunities" ? (
         <Pressable
           style={styles.examsLink}

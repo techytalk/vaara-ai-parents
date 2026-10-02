@@ -39,6 +39,8 @@ import { createCarpoolRoutes } from "./routes/carpool.js";
 import { createPathwaysRoutes } from "./routes/pathways.js";
 import { createChild360Routes } from "./routes/child-360.js";
 import { createOpportunityRoutes } from "./routes/opportunities.js";
+import { createOAuthRoutes } from "./routes/oauth.js";
+import { createOAuthDeviceRoutes } from "./routes/oauth-device.js";
 import { getRedis, isRedisEnabled } from "@vaara/redis";
 
 const app = new Hono();
@@ -63,6 +65,8 @@ app.get("/health", async (c) => {
 });
 
 app.route("/v1/auth", createAuthRoutes());
+app.route("/oauth", createOAuthRoutes());
+app.route("/oauth", createOAuthDeviceRoutes());
 app.route("/v1/me", createMeRoutes());
 app.route("/v1/me", createChild360Routes());
 app.route("/v1/circles", createCirclesRoutes());

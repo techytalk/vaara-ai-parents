@@ -33,6 +33,7 @@ export default function Child360Layout() {
         name="[childId]/opportunities/form"
         options={{ title: "Exam plan" }}
       />
+      <Stack.Screen name="[childId]/jee-prep" options={{ title: "JEE Prep" }} />
     </Stack>
   );
 }

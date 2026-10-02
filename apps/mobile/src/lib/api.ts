@@ -1499,6 +1499,35 @@ export const api = {
   getChild360: (token: string, childId: string) =>
     request<Child360Hub>(`/v1/me/children/${childId}/360`, {}, token),
 
+  getChildPrep: (token: string, childId: string) =>
+    request<{
+      practiceUrl: string;
+      progress: {
+        streak: number;
+        answeredCount: number;
+        accuracy: number | null;
+        lastPracticedAt: string | null;
+      } | null;
+      devices: Array<{
+        id: string;
+        label: string | null;
+        createdAt: string;
+        lastUsedAt: string | null;
+        revokedAt: string | null;
+      }>;
+    }>(`/v1/me/children/${childId}/prep`, {}, token),
+
+  createChildPrepLink: (token: string, childId: string, mode: "self" | "share") =>
+    request<{ url: string }>(`/v1/me/children/${childId}/prep-links`, {
+      method: "POST",
+      body: JSON.stringify({ mode }),
+    }, token),
+
+  revokeChildPrepDevice: (token: string, childId: string, grantId: string) =>
+    request<{ ok: boolean }>(`/v1/me/children/${childId}/prep-devices/${grantId}/revoke`, {
+      method: "POST",
+    }, token),
+
   createChildActivity: (
     token: string,
     childId: string,

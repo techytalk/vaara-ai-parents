@@ -202,6 +202,8 @@ const MIGRATIONS = [
     version: "085_north_hyderabad_areas",
     file: "085_north_hyderabad_areas.sql",
   },
+  { version: "086_oauth_sign_in", file: "086_oauth_sign_in.sql" },
+  { version: "087_prep_linking", file: "087_prep_linking.sql" },
 ];
 
 async function isMigrationApplied(
